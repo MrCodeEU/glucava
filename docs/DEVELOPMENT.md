@@ -6,7 +6,10 @@ Requires Go (version in `go.mod`), and optionally Chrome/Chromium plus `golangci
 
 ```sh
 make hooks     # pre-commit: gofmt, vet, lint. pre-push: race tests, govulncheck
-make demo      # fake Strava and Dexcom data on http://127.0.0.1:8090 (login: demo@example.test / demo-password-123)
+make mock      # fake Strava and Dexcom data on http://127.0.0.1:8090 (login: demo@example.test / demo-password-123)
+make dev       # REAL services, go run, data in .data (settings from .env, see .env.example)
+make run       # same with the built binary
+make help      # all targets (cli, token, dexcom, strava-cookies, strava-check, strava-list, reset-*)
 make check     # everything CI runs
 ```
 
