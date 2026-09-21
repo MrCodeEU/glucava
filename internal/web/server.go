@@ -118,6 +118,9 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/strava/test", s.actionStravaTest)
 	page("POST /actions/tokens/create", s.actionTokenCreate)
 	page("POST /actions/tokens/revoke/{name}", s.actionTokenRevoke)
+	page("POST /actions/data/purge", s.actionPurge)
+	page("GET /export/samples.csv", s.exportSamples)
+	page("GET /export/activities.csv", s.exportActivities)
 
 	return secure(mux)
 }
@@ -126,7 +129,7 @@ func (s *Server) Handler() http.Handler {
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/settings", "/tokens", "/events",
-	"/stream/{path...}", "/actions/{path...}", "/static/{path...}",
+	"/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 
 // maxBody caps request bodies. The largest legitimate one is a pasted cookie export.

@@ -39,3 +39,18 @@ func EnsureAdminUser(app core.App) error {
 	log.Printf("bootstrap: created first user %s", email)
 	return nil
 }
+
+// EnforceSingleUser rejects creating a second user. Glucava keeps one person's
+// medical data, and every account sees all of it.
+func EnforceSingleUser(app core.App) {
+	app.OnRecordCreate("users").BindFunc(func(e *core.RecordEvent) error {
+		n, err := e.App.CountRecords("users")
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return errors.New("glucava supports a single user account")
+		}
+		return e.Next()
+	})
+}

@@ -43,7 +43,8 @@ func main() {
 	signal := trigger.NewSignal()
 	demoMode := os.Getenv("GLUCAVA_DEMO") == "1"
 
-	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app))
+	bootstrap.EnforceSingleUser(app)
+	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if demoMode {
@@ -112,6 +113,21 @@ func main() {
 			},
 		}
 		go poller.Run(ctx)
+
+		go func() { // apply the retention setting at start and every few hours
+			for {
+				if n, err := st.Prune(ctx, time.Now()); err != nil {
+					log.Printf("retention: %v", err)
+				} else if n.Samples > 0 || n.Events > 0 {
+					log.Printf("retention: deleted %d readings and %d events", n.Samples, n.Events)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(6 * time.Hour):
+				}
+			}
+		}()
 
 		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(st, vault) }}
 		go d.Run(ctx, 30*time.Second)
