@@ -24,6 +24,7 @@ type Config struct {
 	DexcomUsername string
 	NtfyURL        string
 	WebhookURL     string
+	RetentionDays  int // samples and events older than this are deleted; 0 keeps them
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -48,6 +49,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		PreMin: r.GetInt("pre_minutes"), PostMin: r.GetInt("post_minutes"), PollMin: r.GetInt("poll_interval_minutes"),
 		Lang: r.GetString("lang"), DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
 		NtfyURL: r.GetString("ntfy_url"), WebhookURL: r.GetString("webhook_url"),
+		RetentionDays: r.GetInt("retention_days"),
 	}, nil
 }
 
@@ -68,6 +70,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("dexcom_username", c.DexcomUsername)
 	r.Set("ntfy_url", c.NtfyURL)
 	r.Set("webhook_url", c.WebhookURL)
+	r.Set("retention_days", c.RetentionDays)
 	return s.App.Save(r)
 }
 

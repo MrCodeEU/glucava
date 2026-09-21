@@ -325,7 +325,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 	sig, _ := json.Marshal(map[string]any{
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "preMin": c.PreMin, "postMin": c.PostMin,
 		"pollMin": c.PollMin, "lang": c.Lang, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
-		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
+		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "", "retentionDays": c.RetentionDays, "purgeConfirm": "",
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 	secretHelp := func(set bool, what string) string {
@@ -377,6 +377,17 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 							Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
 					),
 				),
+			),
+			Card(H2(g.Text("Your data")),
+				P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),
+				Field("retentionDays", "Keep readings and events for (days)", "", Input(ID("retentionDays"), Type("number"), Min("0"), Max("3650"), bind("retentionDays"))),
+				Div(append(comp("actions"),
+					A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text("Download readings (CSV)"))...),
+					A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text("Download activities (CSV)"))...),
+				)...),
+				Field("purgeConfirm", "Delete all data", "Removes every reading, activity and event. Settings, credentials and tokens stay. Type DELETE to enable the button.",
+					Input(ID("purgeConfirm"), Type("text"), AutoComplete("off"), bind("purgeConfirm"))),
+				Btn("danger", "Delete all data", post("/actions/data/purge"), g.Attr("data-attr:disabled", "$purgeConfirm !== 'DELETE'")),
 			),
 			Div(append(comp("actions"),
 				Btn("primary", "Save settings", post("/actions/settings")),

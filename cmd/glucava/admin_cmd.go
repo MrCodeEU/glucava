@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/MrCodeEU/glucava/internal/secrets"
+	"github.com/MrCodeEU/glucava/internal/store"
 )
 
 const minPasswordLen = 12
@@ -104,5 +105,32 @@ is replaced. Back up the data dir first.`,
 			return nil
 		},
 	})
+	return cmd
+}
+
+// dataCommand adds "glucava data purge --yes".
+func dataCommand(app core.App, st *store.PB) *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "data", Short: "Manage stored glucose data",
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return app.RunAppMigrations() },
+	}
+	var yes bool
+	purge := &cobra.Command{
+		Use: "purge", Short: "Delete all readings, activities and events (settings, credentials and tokens stay)",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !yes {
+				return errors.New("this deletes all stored data; repeat with --yes")
+			}
+			n, err := st.PurgeAll(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Printf("deleted %d readings, %d activities, %d events\n", n.Samples, n.Activities, n.Events)
+			return nil
+		},
+	}
+	purge.Flags().BoolVar(&yes, "yes", false, "confirm the deletion")
+	cmd.AddCommand(purge)
 	return cmd
 }

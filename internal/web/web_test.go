@@ -658,3 +658,53 @@ func TestSessionLifetime(t *testing.T) {
 		t.Errorf("token duration = %d", got)
 	}
 }
+
+func TestPurgeNeedsConfirmation(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "5", Status: jobs.StatusDone})
+
+	if w := e.action("/actions/data/purge", `{"purgeConfirm":"delete"}`, c, nil); !strings.Contains(w.Body.String(), "Type DELETE") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if a, _ := e.srv.Store.Activity(context.Background(), "5"); a == nil {
+		t.Fatal("activity deleted without confirmation")
+	}
+	if w := e.action("/actions/data/purge", `{"purgeConfirm":"DELETE"}`, c, nil); !strings.Contains(w.Body.String(), "Deleted 0 readings, 1 activities") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if a, _ := e.srv.Store.Activity(context.Background(), "5"); a != nil {
+		t.Error("activity still there")
+	}
+}
+
+func TestExportNeedsLoginAndSetsHeaders(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	if w := e.get(t, "/export/samples.csv", nil); w.Code == http.StatusOK {
+		t.Errorf("anonymous export = %d", w.Code)
+	}
+	c := e.login(t)
+	w := e.get(t, "/export/activities.csv", c)
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/csv") ||
+		!strings.Contains(w.Header().Get("Content-Disposition"), "attachment") || w.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("code=%d headers=%v", w.Code, w.Header())
+	}
+}
+
+func TestRetentionValidation(t *testing.T) {
+	t.Parallel()
+	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, Lang: "en", DexcomRegion: "ous", RetentionDays: -1}
+	if v.validate() == "" {
+		t.Error("negative retention accepted")
+	}
+	v.RetentionDays = 3651
+	if v.validate() == "" {
+		t.Error("huge retention accepted")
+	}
+	v.RetentionDays = 0
+	if msg := v.validate(); msg != "" {
+		t.Errorf("0 rejected: %s", msg)
+	}
+}

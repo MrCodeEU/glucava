@@ -55,6 +55,8 @@ Put a TLS reverse proxy in front. Then:
 
 - `glucava user set-password <email>` reads the new password (12+ characters) from stdin and signs out every session. Logout also invalidates the session server-side. Logins last 3 days.
 - `glucava secrets rotate-key` re-encrypts stored secrets with a fresh key. Stop the server and back up the data dir first.
+- Settings → **Your data**: retention (default 365 days for readings and events; 0 keeps them), CSV export of readings and activities, and delete-all. `glucava data purge --yes` does the same from the shell. Activities are kept by retention because they log what was written to Strava.
+- Only one user account can exist.
 - Back up the data dir and the encryption key separately; a backup holding both exposes your credentials.
 
 ## Development

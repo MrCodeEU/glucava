@@ -1,9 +1,11 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -300,6 +302,7 @@ type settingsSignals struct {
 	NtfyToken      string  `json:"ntfyToken"`
 	WebhookURL     string  `json:"webhookURL"`
 	WebhookSecret  string  `json:"webhookSecret"`
+	RetentionDays  int     `json:"retentionDays"`
 }
 
 // validate returns a message for the first problem, or "".
@@ -315,6 +318,8 @@ func (v settingsSignals) validate() string {
 		return "Minutes before and after must be between 0 and 240."
 	case v.PollMin < 1 || v.PollMin > 1440:
 		return "The polling interval must be between 1 and 1440 minutes."
+	case v.RetentionDays < 0 || v.RetentionDays > 3650:
+		return "Retention must be between 0 and 3650 days."
 	case v.Lang != "en" && v.Lang != "de":
 		return "Language must be English or Deutsch."
 	case v.DexcomRegion != "us" && v.DexcomRegion != "ous" && v.DexcomRegion != "jp":
@@ -357,6 +362,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PreMin, cfg.PostMin, cfg.PollMin, cfg.Lang = v.PreMin, v.PostMin, v.PollMin, v.Lang
 	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
 	cfg.NtfyURL, cfg.WebhookURL = v.NtfyURL, v.WebhookURL
+	cfg.RetentionDays = v.RetentionDays
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return
@@ -488,4 +494,42 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.Tokens.List()
 	_ = sse.PatchElements(renderString(TokenList(list, s.loc())))
 	s.toast(sse, "ok", "Token revoked.")
+}
+
+func (s *Server) actionPurge(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		Confirm string `json:"purgeConfirm"`
+	}
+	readErr := datastar.ReadSignals(r, &v)
+	sse := datastar.NewSSE(w, r)
+	if readErr != nil || v.Confirm != "DELETE" {
+		s.toast(sse, "error", "Type DELETE to confirm.")
+		return
+	}
+	n, err := s.Store.PurgeAll(r.Context())
+	if err != nil {
+		s.toast(sse, "error", "Could not delete: "+err.Error())
+		return
+	}
+	s.toast(sse, "ok", fmt.Sprintf("Deleted %d readings, %d activities and %d events.", n.Samples, n.Activities, n.Events))
+}
+
+func (s *Server) exportSamples(w http.ResponseWriter, _ *http.Request) {
+	s.csv(w, "glucava-readings.csv", s.Store.ExportSamples)
+}
+
+func (s *Server) exportActivities(w http.ResponseWriter, _ *http.Request) {
+	s.csv(w, "glucava-activities.csv", s.Store.ExportActivities)
+}
+
+func (s *Server) csv(w http.ResponseWriter, name string, write func(io.Writer) error) {
+	var buf bytes.Buffer // buffered so a failure can still return a proper error status
+	if err := write(&buf); err != nil {
+		s.serverError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(buf.Bytes())
 }

@@ -257,3 +257,76 @@ func TestOriginalDescriptionRoundTripAndNeverCleared(t *testing.T) {
 		t.Errorf("original = %v, want pointer to empty string", got.Original)
 	}
 }
+
+func seedData(t *testing.T, s *PB) {
+	t.Helper()
+	ctx := context.Background()
+	old, recent := time.Now().AddDate(0, 0, -400), time.Now().AddDate(0, 0, -1)
+	if err := s.SaveSamples(ctx, "dexcom", []stats.Sample{{Time: old, Value: 100}, {Time: recent, Value: 120}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveActivity(ctx, &jobs.Activity{StravaID: "1", Name: "=HYPERLINK(\"x\")", Start: recent, Duration: time.Hour,
+		Status: jobs.StatusDone, Summary: &stats.Summary{TIR: 90, Min: 70, Max: 150, Avg: 100}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.RecordEvent(ctx, jobs.Event{Type: jobs.EventStravaFailed, Severity: "error", Message: "x"})
+}
+
+func TestPruneKeepsRecentAndActivities(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	seedData(t, s)
+	cfg, _ := s.LoadConfig()
+	if cfg.RetentionDays != 365 {
+		t.Fatalf("default retention = %d", cfg.RetentionDays)
+	}
+	n, err := s.Prune(context.Background(), time.Now())
+	if err != nil || n.Samples != 1 || n.Events != 0 {
+		t.Fatalf("prune = %+v, %v", n, err)
+	}
+	if got, _ := s.LoadSamples(context.Background(), "dexcom", time.Now().AddDate(-2, 0, 0), time.Now()); len(got) != 1 {
+		t.Errorf("samples left = %d", len(got))
+	}
+	acts, _ := s.ListActivities(context.Background(), 10)
+	if len(acts) != 1 {
+		t.Errorf("activities = %d, want untouched", len(acts))
+	}
+
+	cfg.RetentionDays = 0
+	_ = s.SaveConfig(cfg)
+	if n, _ := s.Prune(context.Background(), time.Now().AddDate(10, 0, 0)); n != (Counts{}) {
+		t.Errorf("retention 0 deleted %+v", n)
+	}
+}
+
+func TestPurgeAllKeepsSettingsAndSecrets(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	seedData(t, s)
+	n, err := s.PurgeAll(context.Background())
+	if err != nil || n.Samples != 2 || n.Activities != 1 || n.Events != 1 {
+		t.Fatalf("purge = %+v, %v", n, err)
+	}
+	if _, err := s.LoadConfig(); err != nil {
+		t.Errorf("settings gone: %v", err)
+	}
+}
+
+func TestExportCSV(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	seedData(t, s)
+	var b strings.Builder
+	if err := s.ExportActivities(&b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.HasPrefix(out, "strava_id,name,") || !strings.Contains(out, `'=HYPERLINK`) || !strings.Contains(out, ",90,70,150,100,") {
+		t.Errorf("activities csv:\n%s", out)
+	}
+	b.Reset()
+	if err := s.ExportSamples(&b); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(b.String()), "\n")
+	if len(lines) != 3 || lines[0] != "time_utc,mg_dl,source" || !strings.HasSuffix(lines[1], ",100,dexcom") || !strings.Contains(lines[1], "T") {
+		t.Errorf("samples csv:\n%s", b.String())
+	}
+}

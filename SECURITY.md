@@ -16,3 +16,5 @@ Glucava handles glucose data, Strava session cookies and Dexcom credentials. Ple
 - The job queue is in memory. A restart drops queued trigger jobs; the poller finds those activities again.
 - The browser profile (which holds session cookies while Chrome runs) is a private temp directory deleted after every run.
 - Base images and CI actions are pinned by digest/SHA. `docker-compose.yml` shows a hardened setup (read-only root, no capabilities, no-new-privileges).
+- Glucose readings, activities and events are stored unencrypted in SQLite (only credentials are encrypted). Use disk encryption for the data dir. Retention, CSV export and delete-all are in Settings.
+- Only one user account can exist.
