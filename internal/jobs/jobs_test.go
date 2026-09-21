@@ -22,6 +22,7 @@ type memStore struct {
 	events     []Event
 	set        Settings
 	savedCalls int
+	failSave   bool // fail SaveActivity when the activity carries a backup
 }
 
 func newStore() *memStore {
@@ -42,6 +43,12 @@ func (m *memStore) Activity(_ context.Context, id string) (*Activity, error) {
 func (m *memStore) SaveActivity(_ context.Context, a *Activity) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failSave && a.Original != nil {
+		return errors.New("disk full")
+	}
+	if a.Original == nil { // like the real store, never clear a stored backup
+		a.Original = m.acts[a.StravaID].Original
+	}
 	m.acts[a.StravaID] = *a
 	m.savedCalls++
 	return nil
@@ -284,5 +291,65 @@ func TestQueueFull(t *testing.T) {
 	}
 	if _, err := q.Enqueue(Job{Activity: b}); !errors.Is(err, ErrQueueFull) {
 		t.Errorf("err = %v, want ErrQueueFull", err)
+	}
+}
+
+func TestOriginalSavedBeforeWriteAndKeptOnReprocess(t *testing.T) {
+	w := &fakeWriter{desc: "My run\nfelt good"}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+
+	a := st.acts["42"]
+	if a.Original == nil || *a.Original != "My run\nfelt good" {
+		t.Fatalf("original = %v", a.Original)
+	}
+	// Second run sees our block in the description. The backup must not change.
+	runOne(t, q, Job{Activity: activity(), Force: true})
+	if got := *st.acts["42"].Original; got != "My run\nfelt good" {
+		t.Errorf("original after reprocess = %q", got)
+	}
+}
+
+func TestEmptyOriginalIsStored(t *testing.T) {
+	w := &fakeWriter{}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+	if o := st.acts["42"].Original; o == nil || *o != "" {
+		t.Fatalf("original = %v, want pointer to empty string", o)
+	}
+}
+
+func TestBackupFailureLeavesDescriptionUntouched(t *testing.T) {
+	w := &fakeWriter{desc: "My run"}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	st.failSave = true
+	runOne(t, q, Job{Activity: activity()})
+	if w.desc != "My run" {
+		t.Errorf("description changed without a backup: %q", w.desc)
+	}
+	if st.acts["42"].Status == StatusDone {
+		t.Error("activity marked done")
+	}
+}
+
+func TestRestore(t *testing.T) {
+	w := &fakeWriter{desc: "My run"}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+	runOne(t, q, Job{Activity: st.acts["42"], Restore: true})
+	if w.desc != "My run" {
+		t.Errorf("description = %q", w.desc)
+	}
+	if st.acts["42"].Status != StatusSkipped {
+		t.Errorf("status = %q", st.acts["42"].Status)
+	}
+}
+
+func TestRestoreWithoutOriginalReportsEvent(t *testing.T) {
+	w := &fakeWriter{desc: "keep"}
+	q, st := setup(&fakeSource{}, w)
+	runOne(t, q, Job{Activity: activity(), Restore: true})
+	if w.desc != "keep" || w.calls != 0 || len(st.events) != 1 {
+		t.Errorf("desc=%q calls=%d events=%d", w.desc, w.calls, len(st.events))
 	}
 }

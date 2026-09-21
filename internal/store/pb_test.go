@@ -232,3 +232,28 @@ func TestListActivitiesAndEventsOrderAndChangedHook(t *testing.T) {
 		t.Errorf("Changed called %d times, want 5 (3 activities + 2 events)", changes)
 	}
 }
+
+func TestOriginalDescriptionRoundTripAndNeverCleared(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	a := &jobs.Activity{StravaID: "9", Start: t0, Duration: time.Hour, Status: jobs.StatusPending}
+	if err := s.SaveActivity(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Activity(ctx, "9"); got.Original != nil {
+		t.Fatalf("original = %v before backup", got.Original)
+	}
+	empty := ""
+	a.Original = &empty
+	if err := s.SaveActivity(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	// A later save from a copy that never saw the backup must not erase it.
+	if err := s.SaveActivity(ctx, &jobs.Activity{StravaID: "9", Start: t0, Status: jobs.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Activity(ctx, "9")
+	if got.Original == nil || *got.Original != "" {
+		t.Errorf("original = %v, want pointer to empty string", got.Original)
+	}
+}

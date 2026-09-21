@@ -259,6 +259,32 @@ func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) actionRestore(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	if !digits.MatchString(r.PathValue("id")) {
+		s.toast(sse, "error", "That is not an activity id.")
+		return
+	}
+	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
+	if err != nil || act == nil {
+		s.toast(sse, "error", "That activity no longer exists.")
+		return
+	}
+	if act.Original == nil {
+		s.toast(sse, "error", "No original description was saved for this activity.")
+		return
+	}
+	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Restore: true})
+	switch {
+	case err != nil:
+		s.toast(sse, "error", "Could not queue it: "+err.Error())
+	case !queued:
+		s.toast(sse, "", "This activity is already queued.")
+	default:
+		s.toast(sse, "ok", "Restoring the original description.")
+	}
+}
+
 type settingsSignals struct {
 	Unit           string  `json:"unit"`
 	RangeLow       float64 `json:"rangeLow"`

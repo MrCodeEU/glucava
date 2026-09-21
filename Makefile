@@ -1,7 +1,11 @@
-.PHONY: build test vet fmt lint vuln check demo shot clean
+.PHONY: hooks build test vet fmt lint vuln check demo shot clean
 
 BIN := glucava
 DEMO_PW ?= demo-password-123
+
+# Use the tracked git hooks (pre-commit: fmt, vet, lint; pre-push: tests, govulncheck).
+hooks:
+	git config core.hooksPath .githooks
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $(BIN) ./cmd/glucava

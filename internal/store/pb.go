@@ -82,6 +82,10 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 		Error:    r.GetString("error"),
 		Attempts: r.GetInt("attempts"),
 	}
+	if r.GetBool("has_original") {
+		o := r.GetString("original_description")
+		a.Original = &o
+	}
 	if raw := r.GetString("summary"); raw != "" && raw != "null" {
 		var sum stats.Summary
 		if json.Unmarshal([]byte(raw), &sum) == nil {
@@ -115,6 +119,10 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 		r.Set("summary", a.Summary)
 	} else {
 		r.Set("summary", nil)
+	}
+	if a.Original != nil { // never clear a stored backup
+		r.Set("has_original", true)
+		r.Set("original_description", *a.Original)
 	}
 	if a.Status == jobs.StatusDone {
 		r.Set("processed_at", time.Now().UTC())

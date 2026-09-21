@@ -80,3 +80,20 @@ func TestMergeCRLF(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestStrip(t *testing.T) {
+	block := Prefix + "TIR 90% | min 70 | max 150 | avg 100 mg/dL\n▁▂▃"
+	for name, tc := range map[string]struct{ in, want string }{
+		"empty":       {"", ""},
+		"no block":    {"My run  \n", "My run"},
+		"only block":  {block, ""},
+		"after text":  {"My run\n\n" + block, "My run"},
+		"before text": {block + "\n\nafter", "after"},
+		"crlf":        {"My run\r\n\r\n" + block, "My run"},
+		"idempotent":  {Merge("hello", block), "hello"},
+	} {
+		if got := Strip(tc.in); got != tc.want {
+			t.Errorf("%s: Strip = %q, want %q", name, got, tc.want)
+		}
+	}
+}
