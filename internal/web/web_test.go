@@ -18,6 +18,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/bus"
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/migrations"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -623,5 +624,37 @@ func TestLoginLimitPerClientBehindTrustedProxy(t *testing.T) {
 	}
 	if code := loginAttempt(e, "10.0.0.1:1", "198.51.100.2"); code == http.StatusTooManyRequests {
 		t.Error("other client behind the same proxy was locked out")
+	}
+}
+
+func TestLogoutInvalidatesTheTokenServerSide(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	if w := e.get(t, "/", c); w.Code != http.StatusOK {
+		t.Fatalf("before logout = %d", w.Code)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	r.Header.Set("Origin", origin)
+	r.AddCookie(c)
+	if w := e.do(r); w.Code != http.StatusSeeOther {
+		t.Fatalf("logout = %d", w.Code)
+	}
+	// A copy of the cookie taken before logout must no longer work.
+	if w := e.get(t, "/", c); w.Code == http.StatusOK {
+		t.Error("token still valid after logout")
+	}
+}
+
+func TestSessionLifetime(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	if c.MaxAge != migrations.SessionSeconds {
+		t.Errorf("cookie MaxAge = %d", c.MaxAge)
+	}
+	users, _ := e.srv.App.FindCollectionByNameOrId("users")
+	if got := users.AuthToken.Duration; got != migrations.SessionSeconds {
+		t.Errorf("token duration = %d", got)
 	}
 }

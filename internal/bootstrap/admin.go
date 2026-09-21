@@ -2,6 +2,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"log"
 	"os"
 
@@ -20,6 +21,9 @@ func EnsureAdminUser(app core.App) error {
 	n, err := app.CountRecords("users")
 	if err != nil || n > 0 {
 		return err
+	}
+	if len(password) < 12 {
+		return errors.New("bootstrap: GLUCAVA_ADMIN_PASSWORD must be at least 12 characters")
 	}
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {

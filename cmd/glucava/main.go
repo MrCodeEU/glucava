@@ -43,7 +43,7 @@ func main() {
 	signal := trigger.NewSignal()
 	demoMode := os.Getenv("GLUCAVA_DEMO") == "1"
 
-	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app))
+	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if demoMode {
@@ -65,6 +65,9 @@ func main() {
 		vault, err := openVault(app)
 		if err != nil {
 			return err
+		}
+		if !secrets.KeyFromEnv() {
+			log.Printf("encryption key is stored in %s; keep it out of backups of the data dir, or set GLUCAVA_SECRET_KEY", secrets.KeyFilePath(app.DataDir()))
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())

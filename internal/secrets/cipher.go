@@ -12,6 +12,12 @@ import (
 	"path/filepath"
 )
 
+var randRead = rand.Read
+
+func encodeKey(key []byte) string       { return base64.StdEncoding.EncodeToString(key) }
+func keyFilePath(dataDir string) string { return filepath.Join(dataDir, keyFile) }
+func keyFromEnv() bool                  { return os.Getenv(keyEnv) != "" }
+
 const (
 	keyEnv   = "GLUCAVA_SECRET_KEY"
 	keyFile  = "secret.key"

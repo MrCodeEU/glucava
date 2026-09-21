@@ -1,10 +1,13 @@
 package web
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+
+	"github.com/MrCodeEU/glucava/internal/migrations"
 )
 
 const (
@@ -63,7 +66,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: authCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: s.Proxies.Secure(r), MaxAge: int((7 * 24 * time.Hour).Seconds()),
+		Secure: s.Proxies.Secure(r), MaxAge: migrations.SessionSeconds,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -72,6 +75,15 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
 		http.Error(w, "cross-site request refused", http.StatusForbidden)
 		return
+	}
+	// Rotating the token key makes the old token invalid everywhere, not just in this browser.
+	if c, err := r.Cookie(authCookie); err == nil {
+		if rec, err := s.App.FindAuthRecordByToken(c.Value, core.TokenTypeAuth); err == nil {
+			rec.RefreshTokenKey()
+			if err := s.App.Save(rec); err != nil {
+				log.Printf("web: revoke session: %v", err)
+			}
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: authCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
