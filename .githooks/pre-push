@@ -1,0 +1,8 @@
+#!/bin/sh
+# Slower checks before a push: the race-enabled test suite and govulncheck.
+# Skip in an emergency with `git push --no-verify`; CI runs the same checks.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+go test -race ./...
+go run golang.org/x/vuln/cmd/govulncheck@latest ./...

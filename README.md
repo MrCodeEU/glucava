@@ -52,6 +52,6 @@ Put a TLS reverse proxy in front. Then:
 
 ## Development
 
-`make check` runs vet, tests, lint and govulncheck. See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.
+Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre-push: tests, govulncheck). `make check` runs everything CI runs. See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.
 
 License: AGPL-3.0.

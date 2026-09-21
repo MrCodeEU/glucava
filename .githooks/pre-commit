@@ -1,0 +1,18 @@
+#!/bin/sh
+# Fast checks on every commit: formatting, vet, lint. Enable with `make hooks`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+unformatted=$(gofmt -l . 2>/dev/null || true)
+if [ -n "$unformatted" ]; then
+	echo "gofmt needed on:" >&2
+	echo "$unformatted" >&2
+	echo "run: make fmt" >&2
+	exit 1
+fi
+go vet ./...
+if command -v golangci-lint >/dev/null 2>&1; then
+	golangci-lint run
+else
+	echo "golangci-lint not installed, skipping lint (CI still runs it)" >&2
+fi
