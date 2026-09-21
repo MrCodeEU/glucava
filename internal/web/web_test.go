@@ -63,7 +63,7 @@ func newEnv(t *testing.T) *env {
 	if err := app.RunAllMigrations(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = app.ResetBootstrapState() })
+	t.Cleanup(func() { _ = app.ClearBootstrap() })
 
 	users, _ := app.FindCollectionByNameOrId("users")
 	u := core.NewRecord(users)
