@@ -3,3 +3,5 @@ pb_data/
 *.log
 .demo_data/
 shots/
+.data/
+.env

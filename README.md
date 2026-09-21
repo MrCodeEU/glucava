@@ -12,7 +12,7 @@ Strava's API is paywalled, so Glucava edits the description through a headless C
 ## Quick start
 
 ```sh
-make demo          # fake Strava + Dexcom data, http://127.0.0.1:8090
+make mock          # fake Strava + Dexcom data, http://127.0.0.1:8090 (make help lists all targets)
 ```
 
 Real use, with Docker:
