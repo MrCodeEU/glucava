@@ -59,7 +59,9 @@ func ntfyTag(sev string) string {
 // do sends req and turns a non-2xx status into an error.
 func do(c *http.Client, req *http.Request, name string) error {
 	if c == nil {
-		c = &http.Client{Timeout: 15 * time.Second}
+		// Never follow redirects: they could carry the bearer token or webhook
+		// body to a host the user did not configure.
+		c = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	resp, err := c.Do(req)
 	if err != nil {

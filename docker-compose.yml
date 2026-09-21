@@ -1,0 +1,25 @@
+# Hardened example. Put a TLS reverse proxy in front and set GLUCAVA_TRUSTED_PROXIES to its address.
+services:
+  glucava:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - data:/data
+    environment:
+      GLUCAVA_ADMIN_EMAIL: you@example.com
+      GLUCAVA_ADMIN_PASSWORD: change-me-to-a-long-password
+      GLUCAVA_SECRET_KEY: ${GLUCAVA_SECRET_KEY:?generate one with: openssl rand -base64 32}
+      GLUCAVA_TRUSTED_PROXIES: 172.16.0.0/12
+      HOME: /tmp
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+volumes:
+  data:

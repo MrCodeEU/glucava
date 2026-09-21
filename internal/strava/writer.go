@@ -283,8 +283,16 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 	ctx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
 	defer cancel()
 
+	// The profile holds the session cookies while Chrome runs. Keep it in a
+	// private directory of our own and delete it afterwards.
+	profile, err := os.MkdirTemp("", "glucava-chrome-*")
+	if err != nil {
+		return fmt.Errorf("strava: create browser profile: %w", err)
+	}
+	defer removeDir(profile)
+
 	opts := append([]chromedp.ExecAllocatorOption(nil), chromedp.DefaultExecAllocatorOptions[:]...)
-	opts = append(opts, chromedp.ExecPath(path), chromedp.UserAgent(w.cfg.UserAgent))
+	opts = append(opts, chromedp.ExecPath(path), chromedp.UserAgent(w.cfg.UserAgent), chromedp.UserDataDir(profile))
 	if w.cfg.NoSandbox {
 		opts = append(opts, chromedp.Flag("no-sandbox", true), chromedp.Flag("disable-dev-shm-usage", true))
 	}
@@ -293,7 +301,10 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancelAlloc()
 	bctx, cancelBrowser := chromedp.NewContext(allocCtx)
-	defer cancelBrowser()
+	defer func() {
+		cancelBrowser()
+		_ = chromedp.Cancel(bctx) // waits for Chrome to exit before the profile is deleted
+	}()
 
 	if err := chromedp.Run(bctx, w.setCookies(cookies)); err != nil {
 		if out := strings.TrimSpace(chromeOut.String()); out != "" {
@@ -450,4 +461,16 @@ func (l *limitedWriter) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.String()
+}
+
+// removeDir deletes dir. Chrome helper processes can still write for a moment
+// after the main process exits, so it retries until the directory is gone.
+func removeDir(dir string) {
+	for range 20 {
+		_ = os.RemoveAll(dir)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
