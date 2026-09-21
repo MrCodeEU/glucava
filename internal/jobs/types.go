@@ -16,6 +16,7 @@ const (
 	StatusProcessing = "processing"
 	StatusDone       = "done"
 	StatusFailed     = "failed"
+	StatusSkipped    = "skipped"
 )
 
 // Event types, matching the select values in the events collection.
@@ -30,6 +31,8 @@ var (
 	ErrNoData = errors.New("jobs: no glucose data for the activity window")
 	// ErrSessionExpired is returned by a Writer when the Strava session is invalid.
 	ErrSessionExpired = errors.New("jobs: strava session expired")
+	// ErrNoOriginal means no pre-edit description was stored for the activity.
+	ErrNoOriginal = errors.New("jobs: no original description stored")
 	// ErrQueueFull is returned by Enqueue when the queue cannot take more work.
 	ErrQueueFull = errors.New("jobs: queue full")
 )
@@ -46,6 +49,11 @@ type Activity struct {
 	Error    string
 	Attempts int
 	Summary  *stats.Summary
+
+	// Original is the description before the first edit, without any Glucava
+	// block. Nil means it has not been captured yet; an empty string is a valid
+	// value for an activity that had no description.
+	Original *string
 }
 
 // End returns the activity end time.

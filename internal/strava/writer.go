@@ -135,6 +135,13 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 		if err != nil {
 			return err
 		}
+		if existing == "" {
+			// The page may fill the field after load. Read again before treating it as empty.
+			w.pause()
+			if existing, err = evalString(ctx, `document.querySelector(`+jsStr(sel)+`).value`); err != nil {
+				return err
+			}
+		}
 		want := merge(existing)
 		if normalize(want) == normalize(existing) {
 			return nil // already up to date

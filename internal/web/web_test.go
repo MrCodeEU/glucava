@@ -550,3 +550,24 @@ func TestTokenNameCannotBreakOutOfScript(t *testing.T) {
 		t.Errorf("raw quote in handler: %s", body)
 	}
 }
+
+func TestRestoreNeedsStoredOriginal(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	if err := e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "88", Status: jobs.StatusDone}); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.action("/actions/restore/88", "{}", c, nil); !strings.Contains(w.Body.String(), "No original description") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if w := e.action("/actions/restore/x'1", "{}", c, nil); !strings.Contains(w.Body.String(), "not an activity id") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	orig := "my text"
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "88", Status: jobs.StatusDone, Original: &orig})
+	e.action("/actions/restore/88", "{}", c, nil)
+	if len(e.jobs.got) != 1 || !e.jobs.got[0].Restore {
+		t.Errorf("jobs = %+v", e.jobs.got)
+	}
+}

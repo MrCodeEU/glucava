@@ -59,6 +59,24 @@ func Value(v float64, u Unit) string {
 
 func num(v float64, u Unit) string { return Value(v, u) }
 
+// Strip removes a Glucava block from existing and keeps the other text.
+func Strip(existing string) string {
+	existing = strings.ReplaceAll(existing, "\r\n", "\n")
+	lines := strings.Split(existing, "\n")
+	for i, l := range lines {
+		if !strings.HasPrefix(l, Prefix) {
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
+			end++
+		}
+		out := append(append([]string(nil), lines[:i]...), lines[end:]...)
+		return strings.Trim(strings.Join(out, "\n"), "\n \t")
+	}
+	return strings.TrimRight(existing, " \n\t")
+}
+
 // Merge puts block into existing. An earlier block, recognised by Prefix at the
 // start of a line and running to the next blank line or the end, is replaced in
 // place. Otherwise block is appended after a blank line. Other text is kept.

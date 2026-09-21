@@ -28,6 +28,7 @@ type Queue struct {
 type Job struct {
 	Activity Activity
 	Force    bool
+	Restore  bool // put the original description back instead of annotating
 }
 
 // NewQueue returns a Queue with room for size waiting jobs.
@@ -68,6 +69,10 @@ func (q *Queue) Run(ctx context.Context) {
 
 func (q *Queue) handle(ctx context.Context, j Job) {
 	a := j.Activity
+	if j.Restore {
+		q.restore(ctx, a)
+		return
+	}
 	if !j.Force {
 		// Check before marking the activity as processing, which would hide a done state.
 		if prev, err := q.P.Store.Activity(ctx, a.StravaID); err == nil && prev != nil && prev.Status == StatusDone {
@@ -104,6 +109,20 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 	}
 	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
 		Message: fmt.Sprintf("activity %s: %v", a.StravaID, err)}
+	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
+		log.Printf("jobs: record event: %v", rerr)
+	}
+}
+
+// restore undoes the edit once. It does not retry, and reports a failure as an event.
+func (q *Queue) restore(ctx context.Context, a Activity) {
+	err := q.P.Restore(ctx, &a)
+	if err == nil {
+		return
+	}
+	typ, sev := classify(err)
+	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
+		Message: fmt.Sprintf("restore activity %s: %v", a.StravaID, err)}
 	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
 		log.Printf("jobs: record event: %v", rerr)
 	}
