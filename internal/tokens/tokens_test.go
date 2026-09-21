@@ -19,7 +19,7 @@ func newManager(t *testing.T) (*Manager, core.App) {
 	if err := app.RunAllMigrations(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = app.ResetBootstrapState() })
+	t.Cleanup(func() { _ = app.ClearBootstrap() })
 	return &Manager{App: app}, app
 }
 
