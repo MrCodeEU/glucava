@@ -1,0 +1,5 @@
+pb_data/
+/glucava
+*.log
+.demo_data/
+shots/
