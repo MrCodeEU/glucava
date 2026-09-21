@@ -18,6 +18,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/bootstrap"
 	"github.com/MrCodeEU/glucava/internal/bus"
+	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/demo"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/jobs"
@@ -34,8 +35,6 @@ import (
 
 var buildID = "dev"
 
-type ipKey struct{}
-
 func main() {
 	app := pocketbase.New()
 	changes := &bus.Bus{}
@@ -49,6 +48,10 @@ func main() {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if demoMode {
 			demoDefaults()
+		}
+		proxies, err := clientip.Parse(os.Getenv("GLUCAVA_TRUSTED_PROXIES"))
+		if err != nil {
+			return err
 		}
 		if err := os.Chmod(app.DataDir(), 0o700); err != nil {
 			log.Printf("chmod data dir: %v", err)
@@ -116,23 +119,13 @@ func main() {
 
 		h := &trigger.Handler{
 			Tokens: toks, Signal: signal, Events: st,
-			ClientIP: func(r *http.Request) string {
-				if ip, ok := r.Context().Value(ipKey{}).(string); ok {
-					return ip
-				}
-				return r.RemoteAddr
-			},
+			ClientIP: proxies.IP,
 		}
-		e.Router.POST("/api/trigger", func(re *core.RequestEvent) error {
-			// RealIP honours the trusted proxy headers configured in PocketBase.
-			ctx := context.WithValue(re.Request.Context(), ipKey{}, re.RealIP())
-			re.Request = re.Request.WithContext(ctx)
-			return apis.WrapStdHandler(h)(re)
-		})
+		e.Router.POST("/api/trigger", apis.WrapStdHandler(h))
 
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
-			Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
+			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
 			SendTest: func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
 		}
 		uiHandler := apis.WrapStdHandler(ui.Handler())

@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"io/fs"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	g "maragu.dev/gomponents"
 
 	"github.com/MrCodeEU/glucava/internal/bus"
+	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -46,6 +46,10 @@ type Server struct {
 	Jobs   Enqueuer
 	Signal *trigger.Signal
 	Bus    *bus.Bus
+
+	// Proxies names the reverse proxies whose X-Forwarded-* headers are believed.
+	// Nil trusts none, so limits and cookies use the direct peer.
+	Proxies *clientip.Resolver
 
 	Session    SessionChecker                  // optional
 	SendTest   func(ctx context.Context) error // sends a test notification; optional
@@ -196,19 +200,12 @@ func sameOrigin(r *http.Request) bool {
 }
 
 // baseURL is the address the browser used, for the trigger examples.
-func baseURL(r *http.Request) string {
+func (s *Server) baseURL(r *http.Request) string {
 	scheme := "http"
-	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+	if s.Proxies.Secure(r) {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
-}
-
-func clientIP(r *http.Request) string {
-	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return h
-	}
-	return r.RemoteAddr
 }
 
 func renderString(n g.Node) string {
