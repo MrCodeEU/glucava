@@ -1,0 +1,57 @@
+# Development
+
+## Setup
+
+Requires Go (version in `go.mod`), and optionally Chrome/Chromium plus `golangci-lint`.
+
+```sh
+make hooks     # pre-commit: gofmt, vet, lint. pre-push: race tests, govulncheck
+make demo      # fake Strava and Dexcom data on http://127.0.0.1:8090 (login: demo@example.test / demo-password-123)
+make check     # everything CI runs
+```
+
+Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. `make shot` (needs `CHROME_PATH` and a running demo) writes screenshots, and `go run ./tools/shot -flow` clicks through the main UI paths.
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `cmd/glucava` | wiring, CLI commands (`token`, `strava`, `dexcom`, `user`, `secrets`) |
+| `internal/jobs` | pipeline (`Processor`), single-worker `Queue` with retry, interfaces (`Store`, `Writer`) |
+| `internal/glucose` | `Source` interface, Dexcom Share client |
+| `internal/stats`, `internal/render` | TIR/min/max/avg, sparkline, description block and merge/strip |
+| `internal/strava` | chromedp writer, cookie handling, activity listing, dry run |
+| `internal/poll` | finds new activities from the web session |
+| `internal/trigger`, `internal/tokens` | `POST /api/trigger` and `gst_` bearer tokens |
+| `internal/notify` | ntfy/webhook channels and the outbox dispatcher |
+| `internal/secrets` | AES-256-GCM vault, key loading and rotation |
+| `internal/store` | PocketBase implementations of the interfaces |
+| `internal/migrations` | PocketBase collections and schema changes |
+| `internal/web` | gomponents pages, Datastar SSE handlers, auth, CSP |
+| `internal/clientip` | trusted-proxy aware client address |
+| `internal/demo` | fake sources for demo mode |
+
+## Data flow
+
+1. The poller or `POST /api/trigger` enqueues an activity (deduped by Strava id).
+2. `Processor` loads glucose for the activity window (stored samples are the fallback when the source has aged out), computes stats, and renders a block.
+3. The Strava writer opens the edit page with the stored cookies. The merge callback first saves the original description, then replaces only the `🩸` block. The writer verifies the saved text by reloading the page.
+4. Failures become `events`; the dispatcher sends them to ntfy/webhook (outbox pattern, cooldown, max age).
+
+## Conventions
+
+- Interfaces live next to their consumer (`jobs.Store`, `jobs.Writer`), so tests use small fakes.
+- The UI is server-rendered. Interactivity is Datastar (`data-on:click="@post(...)"`), with SSE responses. Anything put inside an inline JS string goes through `jsQuote`. Activity ids must match `^\d+$` before use.
+- Styling is hand-written CSS in `internal/web/static/app.css` using `data-component` / `data-variant` attributes. No inline scripts (the CSP forbids them).
+- PocketBase collections have nil API rules; only server code touches them.
+- Schema changes are new numbered files in `internal/migrations`. Never edit an applied migration.
+- Tests that need a PocketBase app import `github.com/pocketbase/pocketbase/migrations` and call `app.RunAllMigrations()` (see `internal/store/pb_test.go`).
+- Commits: conventional style (`feat:`, `fix:`, `chore:`). `main` is protected: open a PR; the `check` job must pass.
+
+## Unverified against the real services
+
+Strava selectors, the `/athlete/training_activities` JSON shape and the Dexcom endpoints were written from memory and tested only against mocks. Verify them first with a real session: `glucava strava check`, `strava list --raw`, `dexcom set`. Selector candidates live in `internal/strava/writer.go` (`DefaultSelectors`).
+
+## Releasing
+
+Not automated yet. Build with `make build` or `docker build .`. Base images and GitHub Actions are pinned by digest/SHA; Dependabot proposes updates.

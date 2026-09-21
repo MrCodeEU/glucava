@@ -12,3 +12,7 @@ Glucava handles glucose data, Strava session cookies and Dexcom credentials. Ple
 - Forwarding headers are ignored unless the direct peer is listed in `GLUCAVA_TRUSTED_PROXIES`. Set it to your proxy address, otherwise all clients share the proxy's rate-limit bucket.
 - Run behind a TLS reverse proxy. Do not expose the port directly.
 - The Strava session is your own logged-in browser session. Automating the web UI may breach Strava's terms; use at your own risk.
+- Notification requests never follow redirects. Webhook and ntfy URLs may point at private addresses on purpose (self-hosted ntfy); only the signed-in admin can set them.
+- The job queue is in memory. A restart drops queued trigger jobs; the poller finds those activities again.
+- The browser profile (which holds session cookies while Chrome runs) is a private temp directory deleted after every run.
+- Base images and CI actions are pinned by digest/SHA. `docker-compose.yml` shows a hardened setup (read-only root, no capabilities, no-new-privileges).

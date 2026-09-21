@@ -197,3 +197,19 @@ func TestOldEventsDropped(t *testing.T) {
 		t.Errorf("sent=%d notified=%v", len(ch.sent), ob.notified)
 	}
 }
+
+func TestNoRedirectsFollowed(t *testing.T) {
+	hit := false
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit = true }))
+	defer other.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	n := &Ntfy{URL: srv.URL, Token: "secret"}
+	err := n.Send(context.Background(), Message{Title: "t", Body: "b"})
+	if err == nil || hit {
+		t.Errorf("err = %v, redirect target hit = %v", err, hit)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -275,5 +276,19 @@ func TestListRecentSessionExpired(t *testing.T) {
 	w := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil)
 	if _, err := w.ListRecent(context.Background(), 5); !errors.Is(err, ErrSessionExpired) {
 		t.Errorf("err = %v, want ErrSessionExpired", err)
+	}
+}
+
+func TestBrowserProfileIsRemoved(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	m := &mock{description: "My run"}
+	w := newWriter(t, m, goodCookies, nil)
+	if err := w.CheckSession(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	left, _ := filepath.Glob(filepath.Join(tmp, "glucava-chrome-*"))
+	if len(left) != 0 {
+		t.Errorf("browser profile left behind: %v", left)
 	}
 }
