@@ -222,6 +222,7 @@ func TestListActivitiesAndEventsOrderAndChangedHook(t *testing.T) {
 	}
 
 	_ = s.RecordEvent(ctx, jobs.Event{Type: jobs.EventStravaFailed, Severity: "error", Message: "first"})
+	time.Sleep(5 * time.Millisecond) // created has millisecond resolution
 	_ = s.RecordEvent(ctx, jobs.Event{Type: jobs.EventSessionExpired, Severity: "error", Message: "second"})
 	evs, err := s.ListEvents(ctx, 10)
 	if err != nil || len(evs) != 2 || evs[0].Message != "second" || evs[0].Notified {
