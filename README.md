@@ -51,6 +51,12 @@ Put a TLS reverse proxy in front. Then:
 | `GLUCAVA_NO_SANDBOX=1` | Chrome `--no-sandbox` (set in the Docker image) |
 | `CHROME_PATH` | Chrome binary |
 
+## Maintenance
+
+- `glucava user set-password <email>` reads the new password (12+ characters) from stdin and signs out every session. Logout also invalidates the session server-side. Logins last 3 days.
+- `glucava secrets rotate-key` re-encrypts stored secrets with a fresh key. Stop the server and back up the data dir first.
+- Back up the data dir and the encryption key separately; a backup holding both exposes your credentials.
+
 ## Development
 
 Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre-push: tests, govulncheck). `make check` runs everything CI runs. See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.
