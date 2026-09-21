@@ -43,7 +43,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cross-site request refused", http.StatusForbidden)
 		return
 	}
-	ip := clientIP(r)
+	ip := s.Proxies.IP(r)
 	if s.tooManyLogins(ip) {
 		w.Header().Set("Retry-After", "60")
 		s.html(w, http.StatusTooManyRequests, LoginPage(s.Build, "Too many attempts. Wait a minute and try again."))
@@ -63,7 +63,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: authCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: baseURL(r)[:5] == "https", MaxAge: int((7 * 24 * time.Hour).Seconds()),
+		Secure: s.Proxies.Secure(r), MaxAge: int((7 * 24 * time.Hour).Seconds()),
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

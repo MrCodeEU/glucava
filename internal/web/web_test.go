@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	_ "github.com/pocketbase/pocketbase/migrations" // registers the system migrations
 
 	"github.com/MrCodeEU/glucava/internal/bus"
+	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/secrets"
@@ -185,10 +187,24 @@ func TestLogin(t *testing.T) {
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Origin", origin)
 	r.Header.Set("X-Forwarded-Proto", "https")
+	r.RemoteAddr = "10.0.0.1:1"
 	for _, ck := range e.do(r).Result().Cookies() {
-		if ck.Name == authCookie && !ck.Secure {
-			t.Error("cookie not Secure behind https")
+		if ck.Name == authCookie && ck.Secure {
+			t.Error("header from an untrusted peer made the cookie Secure")
 		}
+	}
+	e.srv.Proxies, _ = clientip.Parse("10.0.0.1")
+	sawCookie := false
+	for _, ck := range e.do(r).Result().Cookies() {
+		if ck.Name == authCookie {
+			sawCookie = true
+			if !ck.Secure {
+				t.Error("cookie not Secure behind a trusted https proxy")
+			}
+		}
+	}
+	if !sawCookie {
+		t.Error("no auth cookie set")
 	}
 }
 
@@ -569,5 +585,43 @@ func TestRestoreNeedsStoredOriginal(t *testing.T) {
 	e.action("/actions/restore/88", "{}", c, nil)
 	if len(e.jobs.got) != 1 || !e.jobs.got[0].Restore {
 		t.Errorf("jobs = %+v", e.jobs.got)
+	}
+}
+
+func loginAttempt(e *env, remote, xff string) int {
+	form := url.Values{"email": {testEmail}, "password": {"wrong"}}
+	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", origin)
+	if xff != "" {
+		r.Header.Set("X-Forwarded-For", xff)
+	}
+	r.RemoteAddr = remote
+	return e.do(r).Code
+}
+
+func TestLoginLimitIgnoresSpoofedForwardedFor(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t) // no trusted proxies
+	for i := range maxLoginFailures {
+		loginAttempt(e, "203.0.113.9:1", fmt.Sprintf("198.51.100.%d", i))
+	}
+	if code := loginAttempt(e, "203.0.113.9:1", "198.51.100.99"); code != http.StatusTooManyRequests {
+		t.Errorf("rotating X-Forwarded-For dodged the limit: %d", code)
+	}
+}
+
+func TestLoginLimitPerClientBehindTrustedProxy(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.srv.Proxies, _ = clientip.Parse("10.0.0.1")
+	for range maxLoginFailures {
+		loginAttempt(e, "10.0.0.1:1", "198.51.100.1")
+	}
+	if code := loginAttempt(e, "10.0.0.1:1", "198.51.100.1"); code != http.StatusTooManyRequests {
+		t.Errorf("abusive client not limited: %d", code)
+	}
+	if code := loginAttempt(e, "10.0.0.1:1", "198.51.100.2"); code == http.StatusTooManyRequests {
+		t.Error("other client behind the same proxy was locked out")
 	}
 }

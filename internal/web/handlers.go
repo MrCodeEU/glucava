@@ -153,7 +153,7 @@ func (s *Server) tokensPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	s.html(w, http.StatusOK, TokensPage(s.page(r, "Triggers", "tokens"), list, baseURL(r), s.loc()))
+	s.html(w, http.StatusOK, TokensPage(s.page(r, "Triggers", "tokens"), list, s.baseURL(r), s.loc()))
 }
 
 func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {

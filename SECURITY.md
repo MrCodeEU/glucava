@@ -9,5 +9,6 @@ Glucava handles glucose data, Strava session cookies and Dexcom credentials. Ple
 - PocketBase's admin UI and REST API are blocked. Set `GLUCAVA_ADMIN_UI=1` to expose them.
 - `POST /api/trigger` needs a `gst_` bearer token. Tokens are stored as SHA-256 hashes and failures are rate limited per IP.
 - State-changing requests must be same-origin. Pages send a strict CSP.
+- Forwarding headers are ignored unless the direct peer is listed in `GLUCAVA_TRUSTED_PROXIES`. Set it to your proxy address, otherwise all clients share the proxy's rate-limit bucket.
 - Run behind a TLS reverse proxy. Do not expose the port directly.
 - The Strava session is your own logged-in browser session. Automating the web UI may breach Strava's terms; use at your own risk.
