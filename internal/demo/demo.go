@@ -25,7 +25,7 @@ func Curve(t, start time.Time, seed uint32) float64 {
 	base := 112 + 14*math.Sin(float64(seed%97)/97*2*math.Pi+h*0.9)
 	meal := 0.0
 	if h < -0.3 { // a meal before the run gives a small hump
-		meal = 38 * math.Exp(-math.Pow((h+1.1)/0.5, 2))
+		meal = 38 * math.Exp(-sq((h+1.1)/0.5))
 	}
 	exercise := 0.0
 	if h >= 0 && h <= 1.1 { // glucose falls during the run, then rebounds
@@ -39,9 +39,9 @@ func Curve(t, start time.Time, seed uint32) float64 {
 	extra := 0.0
 	switch seed % 5 {
 	case 1:
-		extra = -22 * math.Exp(-math.Pow((h-0.8)/0.3, 2))
+		extra = -22 * math.Exp(-sq((h-0.8)/0.3))
 	case 3:
-		extra = 55 * math.Exp(-math.Pow((h+0.2)/0.35, 2))
+		extra = 55 * math.Exp(-sq((h+0.2)/0.35))
 	}
 	return math.Max(48, base+meal+exercise+noise+extra)
 }
@@ -254,3 +254,5 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 	}
 	return nil
 }
+
+func sq(x float64) float64 { return x * x }

@@ -3,6 +3,7 @@
 package strava
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -280,12 +281,17 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 	if w.cfg.NoSandbox {
 		opts = append(opts, chromedp.Flag("no-sandbox", true), chromedp.Flag("disable-dev-shm-usage", true))
 	}
+	chromeOut := &limitedWriter{max: 4096}
+	opts = append(opts, chromedp.ModifyCmdFunc(func(c *exec.Cmd) { c.Stderr = chromeOut }))
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancelAlloc()
 	bctx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
 
 	if err := chromedp.Run(bctx, w.setCookies(cookies)); err != nil {
+		if out := strings.TrimSpace(chromeOut.String()); out != "" {
+			err = fmt.Errorf("%w (chrome: %s)", err, out)
+		}
 		return fmt.Errorf("strava: start browser: %w", err)
 	}
 	return fn(bctx)
@@ -415,4 +421,26 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+// limitedWriter keeps the first max bytes of Chrome's stderr for error messages.
+type limitedWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+	max int
+}
+
+func (l *limitedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if room := l.max - l.buf.Len(); room > 0 {
+		l.buf.Write(p[:min(room, len(p))])
+	}
+	return len(p), nil
+}
+
+func (l *limitedWriter) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }

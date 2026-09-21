@@ -261,7 +261,7 @@ func eventList(evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
 // StravaStatusCard is patched after imports and tests.
 func StravaStatusCard(s SessionInfo) g.Node {
 	value, sub := s.headline()
-	var list g.Node = P(Class("muted"), g.Text("No cookies stored."))
+	list := g.Node(P(Class("muted"), g.Text("No cookies stored.")))
 	if len(s.Cookies) > 0 {
 		rows := make([]g.Node, 0, len(s.Cookies))
 		for _, c := range s.Cookies {
@@ -399,7 +399,7 @@ func TokenList(list []tokens.Info, loc *time.Location) g.Node {
 			used = t.LastUsed.In(loc).Format("2 Jan 2006, 15:04")
 		}
 		state := Badge("ok", "Active")
-		var action g.Node = revokeButton(t.Name)
+		action := g.Node(revokeButton(t.Name))
 		if t.Revoked {
 			state, action = Badge("", "Revoked"), Span()
 		}
@@ -452,7 +452,7 @@ func TokensPage(pd PageData, list []tokens.Info, baseURL string, loc *time.Locat
 
 // EventsPage lists notifications.
 func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
-	var body g.Node = Div(append(comp("empty"), g.Text("Nothing has gone wrong. Notifications appear here when something fails."))...)
+	body := g.Node(Div(append(comp("empty"), g.Text("Nothing has gone wrong. Notifications appear here when something fails."))...))
 	if len(evs) > 0 {
 		rows := make([]g.Node, 0, len(evs))
 		for _, e := range evs {

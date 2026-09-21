@@ -1,0 +1,10 @@
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      checks: ["all", "-ST1001"] # gomponents is designed for dot imports
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
