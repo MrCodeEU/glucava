@@ -37,47 +37,98 @@ func TestBlockMmol(t *testing.T) {
 }
 
 func TestMergeAppend(t *testing.T) {
-	got := Merge("Nice morning run\n", "🩸 A\n▁")
-	if got != "Nice morning run\n\n🩸 A\n▁" {
+	got := Merge("Nice morning run\n", "🩸 TIR 100% | min 1 | max 1 | avg 1 mg/dL\n▁")
+	if got != "Nice morning run\n\n🩸 TIR 100% | min 1 | max 1 | avg 1 mg/dL\n▁" {
 		t.Errorf("got %q", got)
 	}
-	if got := Merge("", "🩸 A"); got != "🩸 A" {
+	if got := Merge("", "🩸 TIR 100% | min 1 | max 1 | avg 1 mg/dL"); got != "🩸 TIR 100% | min 1 | max 1 | avg 1 mg/dL" {
 		t.Errorf("empty existing: got %q", got)
 	}
 }
 
 func TestMergeReplaceKeepsOtherText(t *testing.T) {
-	existing := "Before\n\n🩸 old\n▂▂\n\nAfter my text"
-	got := Merge(existing, "🩸 new\n▁█")
-	want := "Before\n\n🩸 new\n▁█\n\nAfter my text"
+	existing := "Before\n\n🩸 TIR 1% | min 1 | max 1 | avg 1 mg/dL\n▂▂\n\nAfter my text"
+	got := Merge(existing, "🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL\n▁█")
+	want := "Before\n\n🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL\n▁█\n\nAfter my text"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestMergeReplaceAtEnd(t *testing.T) {
-	got := Merge("Run\n\n🩸 old\n▂", "🩸 new")
-	if got != "Run\n\n🩸 new" {
+	got := Merge("Run\n\n🩸 TIR 1% | min 1 | max 1 | avg 1 mg/dL\n▂", "🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL")
+	if got != "Run\n\n🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL" {
 		t.Errorf("got %q", got)
 	}
 }
 
 func TestMergeIdempotent(t *testing.T) {
-	block := "🩸 x\n▁▂"
+	block := "🩸 TIR 1% | min 1 | max 1 | avg 1 mg/dL\n▁▂"
 	once := Merge("Notes", block)
 	twice := Merge(once, block)
 	if once != twice {
 		t.Errorf("not idempotent:\n%q\n%q", once, twice)
 	}
-	if strings.Count(twice, Prefix) != 1 {
+	if strings.Count(twice, blockMarker) != 1 {
 		t.Errorf("block duplicated: %q", twice)
 	}
 }
 
 func TestMergeCRLF(t *testing.T) {
-	got := Merge("Run\r\n\r\n🩸 old\r\n▂\r\n", "🩸 new")
-	if got != "Run\n\n🩸 new\n" {
+	got := Merge("Run\r\n\r\n🩸 TIR 1% | min 1 | max 1 | avg 1 mg/dL\r\n▂\r\n", "🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL")
+	if got != "Run\n\n🩸 TIR 2% | min 2 | max 2 | avg 2 mg/dL\n" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// TestMergeDoesNotCollideWithAnotherAppsSameEmoji is a regression test: a
+// real-world case (Ando, another Strava/Dexcom integration) writes its own
+// summary starting with the same 🩸 emoji ("🩸 Avg : ..."). Merge must never
+// mistake that for a previous Glucava block, or repeated runs either eat
+// someone else's text or, worse, never find their own block to replace and
+// pile up a fresh copy every time instead.
+func TestMergeDoesNotCollideWithAnotherAppsSameEmoji(t *testing.T) {
+	foreign := "🎯 75% in Range\n🩸 Avg : 156 - Min : 124 - Max : 201 (mg/dL)\n🔗 https://app.ando.care/activity/1"
+	block := "🩸 TIR 78% | min 122 | max 202 | avg 153 mg/dL\n▅▇███"
+
+	once := Merge(foreign, block)
+	if !strings.Contains(once, "Avg : 156") || !strings.Contains(once, "ando.care") {
+		t.Fatalf("foreign block was eaten: %q", once)
+	}
+	if strings.Count(once, blockMarker) != 1 {
+		t.Fatalf("own block not inserted exactly once: %q", once)
+	}
+
+	twice := Merge(once, block)
+	if once != twice {
+		t.Errorf("not idempotent alongside foreign text:\n%q\n%q", once, twice)
+	}
+	if strings.Count(twice, blockMarker) != 1 {
+		t.Errorf("reprocessing duplicated the block: %q", twice)
+	}
+	if !strings.Contains(twice, "ando.care") {
+		t.Errorf("foreign block lost on the second merge: %q", twice)
+	}
+}
+
+// TestMergeSelfHealsWhenSavedWithoutBlankLines replicates what was actually
+// observed on strava.com: after a save, re-fetching the description came
+// back with the blank line between the old block and the rest collapsed to a
+// single newline. A boundary based on "next blank line" then never finds the
+// end of its own block, and every reprocess just appends another copy nothing
+// ever replaces. Merge must bound its own block by shape (its known line
+// count), not by a blank line, so this converges instead of accumulating.
+func TestMergeSelfHealsWhenSavedWithoutBlankLines(t *testing.T) {
+	block := "🩸 TIR 78% | min 122 | max 202 | avg 153 mg/dL\n▅▇███"
+	// Three copies of the same block already glued together with single
+	// newlines (no blank line anywhere), as found on a real account.
+	corrupted := block + "\n" + block + "\n" + block
+	got := Merge(corrupted, block)
+	if strings.Count(got, blockMarker) != 1 {
+		t.Errorf("did not collapse duplicates: %q", got)
+	}
+	if got != block {
+		t.Errorf("got %q, want just one block %q", got, block)
 	}
 }
 

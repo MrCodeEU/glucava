@@ -4,6 +4,7 @@ package stats
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -110,4 +111,22 @@ func Sparkline(samples []Sample, width int) string {
 		out[i] = sparkRunes[idx]
 	}
 	return string(out)
+}
+
+// LooksLikeSparkline reports whether s is non-empty and made up only of the
+// block characters Sparkline can produce. render.Merge uses it to recognise
+// its own sparkline line by shape, without depending on the line after it
+// being blank: some hosts (Strava's own description editor, observed 2026-09)
+// collapse blank lines between saves, which makes a blank-line boundary
+// unreliable.
+func LooksLikeSparkline(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune(string(sparkRunes), r) {
+			return false
+		}
+	}
+	return true
 }

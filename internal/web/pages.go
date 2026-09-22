@@ -210,6 +210,8 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 	return Page(pd,
 		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhen(a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
 			A(append(comp("button"), Href("/"), g.Text("Back"))...),
+			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
+				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
 			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing")),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
