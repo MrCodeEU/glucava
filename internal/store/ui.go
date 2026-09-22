@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/MrCodeEU/glucava/internal/jobs"
@@ -97,6 +98,17 @@ type EventRow struct {
 	Repaired bool
 	Notified bool
 	Created  time.Time
+}
+
+// CountRecentErrors counts error-severity events created at or after since.
+// It backs the nav badge, so newer problems are not missed just because
+// nobody opened the Notifications page.
+func (s *PB) CountRecentErrors(_ context.Context, since time.Time) (int, error) {
+	recs, err := s.App.FindRecordsByFilter("events", "severity = 'error' && created >= {:t}", "", 0, 0, dbx.Params{"t": pbTime(since)})
+	if err != nil {
+		return 0, err
+	}
+	return len(recs), nil
 }
 
 // ListEvents returns events newest first.

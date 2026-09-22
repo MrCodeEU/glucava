@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -84,7 +85,11 @@ func (s *Server) now() time.Time {
 
 func (s *Server) page(r *http.Request, title, active string) PageData {
 	email, _ := s.user(r)
-	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo}
+	n, err := s.Store.CountRecentErrors(r.Context(), s.now().Add(-24*time.Hour))
+	if err != nil {
+		log.Printf("web: count recent errors: %v", err)
+	}
+	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n}
 }
 
 // Handler returns the UI routes. Mount it on the paths in Paths.

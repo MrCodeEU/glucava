@@ -60,6 +60,9 @@ func main() {
 		if os.Getenv("GLUCAVA_ADMIN_UI") != "1" {
 			e.Router.BindFunc(blockPocketBase)
 		}
+		if err := bootstrap.SilenceSuperuserPrompt(app); err != nil {
+			return err
+		}
 		if err := bootstrap.EnsureAdminUser(app); err != nil {
 			return err
 		}

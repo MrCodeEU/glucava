@@ -219,12 +219,18 @@ func TestLoginFailureGivesNoHint(t *testing.T) {
 		r.Header.Set("Origin", origin)
 		return e.do(r)
 	}
-	a, b := post(testEmail, "wrong"), post("nobody@example.test", "wrong")
+	// Same typed email in both cases: only whether the account exists differs,
+	// which must not be observable beyond the email echoed back verbatim.
+	a, b := post(testEmail, "wrong"), post(testEmail, "also-wrong")
 	if a.Code != http.StatusUnauthorized || b.Code != http.StatusUnauthorized {
 		t.Fatalf("codes = %d, %d", a.Code, b.Code)
 	}
 	if a.Body.String() != b.Body.String() {
-		t.Error("unknown email and wrong password give different responses")
+		t.Error("two wrong passwords for the same email gave different responses")
+	}
+	c := post("nobody@example.test", "wrong")
+	if strings.ReplaceAll(a.Body.String(), testEmail, "X") != strings.ReplaceAll(c.Body.String(), "nobody@example.test", "X") {
+		t.Error("unknown email and wrong password give different responses beyond the echoed email")
 	}
 	if len(a.Result().Cookies()) != 0 {
 		t.Error("cookie set on failed login")
@@ -706,5 +712,38 @@ func TestRetentionValidation(t *testing.T) {
 	v.RetentionDays = 0
 	if msg := v.validate(); msg != "" {
 		t.Errorf("0 rejected: %s", msg)
+	}
+}
+
+func TestLoginFailureKeepsEmail(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	form := url.Values{"email": {testEmail}, "password": {"wrong"}}
+	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", origin)
+	w := e.do(r)
+	if !strings.Contains(w.Body.String(), `value="`+testEmail+`"`) {
+		t.Errorf("email not redisplayed:\n%s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), `value="wrong"`) {
+		t.Error("password redisplayed")
+	}
+}
+
+func TestNavBadgeShowsRecentErrors(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	w := e.get(t, "/", c)
+	if strings.Contains(w.Body.String(), `data-variant="error"`) {
+		t.Error("badge shown with no events")
+	}
+	ctx := context.Background()
+	_ = e.srv.Store.RecordEvent(ctx, jobs.Event{Type: jobs.EventSessionExpired, Severity: "error", Message: "x"})
+	_ = e.srv.Store.RecordEvent(ctx, jobs.Event{Type: jobs.EventGlucoseUnavailable, Severity: "warning", Message: "y"})
+	w = e.get(t, "/settings", c)
+	if !strings.Contains(w.Body.String(), `data-variant="error">1<`) {
+		t.Errorf("badge missing or wrong count:\n%s", w.Body.String())
 	}
 }
