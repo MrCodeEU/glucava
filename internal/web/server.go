@@ -53,13 +53,14 @@ type Server struct {
 	// Nil trusts none, so limits and cookies use the direct peer.
 	Proxies *clientip.Resolver
 
-	Session       SessionChecker                                          // optional
-	StravaLogin   func(ctx context.Context, email, password string) error // optional; experimental
-	GlucoseTest   func(ctx context.Context) error                         // optional
-	Poll          func(ctx context.Context) (int, error)                  // runs a Strava check inline; optional
-	LatestGlucose func(ctx context.Context) (*stats.Sample, error)        // optional
-	SendTest      func(ctx context.Context) error                         // sends a test notification; optional
-	SourceName    string                                                  // key of stored glucose samples, e.g. "dexcom"
+	Session       SessionChecker                                                     // optional
+	StravaLogin   func(ctx context.Context, email, password string) error            // optional; experimental
+	GlucoseTest   func(ctx context.Context) error                                    // optional
+	Poll          func(ctx context.Context) (int, error)                             // runs a Strava check inline; optional
+	LatestGlucose func(ctx context.Context) (*stats.Sample, error)                   // optional
+	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error) // looks up an activity the poller never queued; optional
+	SendTest      func(ctx context.Context) error                                    // sends a test notification; optional
+	SourceName    string                                                             // key of stored glucose samples, e.g. "dexcom"
 	Build         string
 	Demo          bool
 	Loc           *time.Location // display zone; default time.Local
@@ -121,6 +122,7 @@ func (s *Server) Handler() http.Handler {
 
 	page("POST /actions/poll", s.actionPoll)
 	page("POST /actions/reprocess/{id}", s.actionReprocess)
+	page("POST /actions/process", s.actionProcessActivity)
 	page("POST /actions/restore/{id}", s.actionRestore)
 	page("POST /actions/settings", s.actionSettings)
 	page("POST /actions/notify/test", s.actionNotifyTest)
