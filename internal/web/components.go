@@ -49,6 +49,24 @@ func BtnSized(variant, size, label string, attrs ...g.Node) g.Node {
 	return g.El("button", n...)
 }
 
+// IndicatorBtn is Btn for an action that drives a headless browser (Strava
+// login, session test, Dexcom test, a poll), which can take several seconds
+// with no other feedback. It disables itself and shows a spinner while the
+// request is in flight. key is the Datastar indicator signal name and must
+// be unique on the page.
+func IndicatorBtn(variant, label, action, key string) g.Node {
+	n := comp("button",
+		g.If(variant != "", g.Attr("data-variant", variant)),
+		Type("button"),
+		post(action),
+		g.Attr("data-indicator:"+key, ""),
+		g.Attr("data-attr:disabled", "$"+key),
+		g.Attr("data-attr:aria-busy", "$"+key),
+	)
+	n = append(n, Span(Class("spinner"), g.Attr("data-show", "$"+key)), g.Text(label))
+	return g.El("button", n...)
+}
+
 // SubmitBtn is a submit button for plain forms.
 func SubmitBtn(variant, size, label string) g.Node {
 	n := comp("button",

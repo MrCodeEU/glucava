@@ -176,7 +176,7 @@ func tirBar(s stats.Summary) g.Node {
 func DashboardPage(pd PageData, d DashData) g.Node {
 	return Page(pd,
 		PageHead("Activities", "Strava activities and the glucose data added to them.",
-			Btn("primary", "Check Strava now", post("/actions/poll"))),
+			IndicatorBtn("primary", "Check Strava now", "/actions/poll", "polling")),
 		Div(g.Attr("data-init", "@get('/stream/live')"), LiveDash(d)),
 	)
 }
@@ -206,7 +206,7 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhen(a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
 			A(append(comp("button"), Href("/"), g.Text("Back"))...),
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
-			Btn("primary", "Reprocess", post("/actions/reprocess/"+a.StravaID))),
+			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing")),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
 }
@@ -293,7 +293,7 @@ func StravaStatusCard(s SessionInfo) g.Node {
 		g.If(s.Configured && !s.HasSession, Notice("warning", g.Text("The session cookie (_strava4_session) is missing, so Strava will probably reject these cookies."))),
 		g.If(s.CheckErr != "", Notice("error", g.Text(s.CheckErr))),
 		list,
-		Div(append(comp("actions"), Btn("", "Test session", post("/actions/strava/test"), g.Attr("data-indicator:testing", "")))...),
+		Div(append(comp("actions"), IndicatorBtn("", "Test session", "/actions/strava/test", "testing"))...),
 	)
 }
 
@@ -308,7 +308,7 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 			Field("loginEmail", "Strava email", "", Input(ID("loginEmail"), Type("email"), AutoComplete("off"), g.Attr("data-bind", "loginEmail"))),
 			Field("loginPassword", "Strava password", "Never stored; only the resulting session cookies are, exactly like cookie import.",
 				Input(ID("loginPassword"), Type("password"), AutoComplete("off"), g.Attr("data-bind", "loginPassword"))),
-			Btn("", "Try automatic sign-in", post("/actions/strava/login"), g.Attr("data-indicator:signingin", "")),
+			IndicatorBtn("", "Try automatic sign-in", "/actions/strava/login", "signingin"),
 		),
 		Card(g.Attr("data-signals", `{"cookies":""}`),
 			H2(g.Text("Import cookies")),
@@ -356,7 +356,7 @@ func DexcomSecretStatus(has bool) g.Node {
 	return Div(ID("dexcom-secret-status"),
 		Div(Class("help"), g.Text(secretHelp(has, "A password"))),
 		g.If(has, Div(append(comp("actions"),
-			Btn("", "Test connection", post("/actions/dexcom/test"), g.Attr("data-indicator:dxtest", "")))...)),
+			IndicatorBtn("", "Test connection", "/actions/dexcom/test", "dxtest"))...)),
 	)
 }
 
