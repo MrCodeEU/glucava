@@ -13,6 +13,11 @@ type Sample struct {
 	Value float64
 }
 
+// MmolFactor converts mg/dL to mmol/L (divide) or back (multiply). Shared by
+// the render package (display) and glucose importers (parsing readings that
+// arrive in mmol/L), so there is exactly one place this ever changes.
+const MmolFactor = 18.016
+
 // Range is an inclusive target range in mg/dL.
 type Range struct {
 	Low, High float64

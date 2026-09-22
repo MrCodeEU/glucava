@@ -337,6 +337,8 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 type SettingsData struct {
 	Cfg                                               store.Config
 	HasDexcomPassword, HasNtfyToken, HasWebhookSecret bool
+	ImportFormats                                     []string // importers.Names(); empty hides the import card
+	ImportOK, ImportErr                               string   // one-shot flash after /actions/glucose/import redirects back
 }
 
 // secretHelp describes whether a secret field has a stored value.
@@ -368,6 +370,14 @@ func NtfySecretStatus(has bool) g.Node {
 func WebhookSecretStatus(has bool) g.Node {
 	return Div(ID("webhook-secret-status"), Class("help"),
 		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
+}
+
+func importFormatOptions(names []string) g.Node {
+	opts := make([]g.Node, len(names))
+	for i, n := range names {
+		opts[i] = Option(Value(n), g.Text(n))
+	}
+	return g.Group(opts)
 }
 
 // SettingsPage is the settings form. Its values live in Datastar signals.
@@ -423,6 +433,19 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					),
 				),
 			),
+			g.If(len(d.ImportFormats) > 0, Card(
+				H2(g.Text("Import glucose readings")),
+				P(Class("muted"), g.Text("Backfill readings from an export file, e.g. switching from another app or restoring a period the live source no longer serves. This adds to what is already stored; nothing existing is touched.")),
+				g.If(d.ImportOK != "", Notice("ok", g.Text(d.ImportOK))),
+				g.If(d.ImportErr != "", Notice("error", g.Text(d.ImportErr))),
+				Form(Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
+					Field("glucoseFormat", "Format", "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
+					Field("glucoseSource", "Label (optional)", "Distinguishes these readings from the live source; defaults to the format name.",
+						Input(Type("text"), Name("source"), AutoComplete("off"))),
+					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt"), Required())),
+					SubmitBtn("primary", "", "Import"),
+				),
+			)),
 			Card(H2(g.Text("Your data")),
 				P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),
 				Field("retentionDays", "Keep readings and events for (days)", "", Input(ID("retentionDays"), Type("number"), Min("0"), Max("3650"), bind("retentionDays"))),

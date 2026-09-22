@@ -46,7 +46,7 @@ func main() {
 	demoMode := os.Getenv("GLUCAVA_DEMO") == "1"
 
 	bootstrap.EnforceSingleUser(app)
-	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st))
+	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st), glucoseCommand(app, st))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if demoMode {

@@ -16,6 +16,7 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 	g "maragu.dev/gomponents"
 
+	"github.com/MrCodeEU/glucava/internal/glucose/importers"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
@@ -155,9 +156,11 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
+	q := r.URL.Query()
 	s.html(w, http.StatusOK, SettingsPage(s.page(r, "Settings", "settings"), SettingsData{
 		Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret),
+		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
 	}))
 }
 
@@ -484,6 +487,59 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
 	s.toast(sse, "ok", fmt.Sprintf("Stored %d cookies.", len(list)))
 	s.Bus.Publish()
+}
+
+// actionGlucoseImport is a plain HTML form post (not a Datastar action):
+// file uploads are a poor fit for the JSON-signal request/SSE-response
+// pattern the rest of the UI uses, and an ordinary multipart form needs no
+// JavaScript. It redirects back to Settings with a one-shot flash message in
+// the query string, the same way the plain login form reports its error.
+func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
+	fail := func(msg string) {
+		http.Redirect(w, r, "/settings?importErr="+url.QueryEscape(msg), http.StatusSeeOther)
+	}
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		fail("Could not read the upload: " + err.Error())
+		return
+	}
+	format := r.FormValue("format")
+	imp, ok := importers.Get(format)
+	if !ok {
+		fail(fmt.Sprintf("Unknown format %q.", format))
+		return
+	}
+	source := r.FormValue("source")
+	if source == "" {
+		source = format
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		fail("Choose a file to import.")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	samples, skipped, err := imp.Parse(file)
+	if err != nil {
+		fail("Could not read the file: " + err.Error())
+		return
+	}
+	if len(samples) == 0 {
+		fail("No readings found in that file. Wrong format, or an empty export?")
+		return
+	}
+	if err := s.Store.SaveSamples(r.Context(), source, samples); err != nil {
+		log.Printf("web: glucose import: store: %v", err)
+		fail("Could not store the readings.")
+		return
+	}
+	log.Printf("web: glucose import: stored %d readings (%d skipped) as source %q", len(samples), skipped, source)
+
+	msg := fmt.Sprintf("Stored %d readings as %q.", len(samples), source)
+	if skipped > 0 {
+		msg += fmt.Sprintf(" %d rows were skipped (not a glucose reading, or unparseable).", skipped)
+	}
+	http.Redirect(w, r, "/settings?importOK="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (s *Server) actionStravaTest(w http.ResponseWriter, r *http.Request) {

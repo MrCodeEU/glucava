@@ -61,6 +61,10 @@ strava-check: build ## dry run against Strava: make strava-check [ID=12345]  (ne
 strava-list: build ## raw recent-activities JSON: make strava-list
 	./$(BIN) strava list --raw --dir $(REAL_DIR)
 
+glucose-import: build ## import a CGM export: make glucose-import FILE=export.csv FORMAT=libre [SOURCE=libre]
+	@test -n "$(FILE)" -a -n "$(FORMAT)" || { echo "usage: make glucose-import FILE=<path> FORMAT=libre|nightscout [SOURCE=label]"; exit 1; }
+	./$(BIN) glucose import $(FILE) --format $(FORMAT) --source "$(if $(SOURCE),$(SOURCE),$(FORMAT))" --dir $(REAL_DIR)
+
 shot: ## screenshots of a running mock into ./shots (needs CHROME_PATH)
 	go run ./tools/shot -url http://$(ADDR) -out shots -password $(DEMO_PW)
 

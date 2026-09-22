@@ -131,6 +131,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/tokens/create", s.actionTokenCreate)
 	page("POST /actions/tokens/revoke/{name}", s.actionTokenRevoke)
 	page("POST /actions/data/purge", s.actionPurge)
+	page("POST "+importRoute, s.actionGlucoseImport)
 	page("GET /export/samples.csv", s.exportSamples)
 	page("GET /export/activities.csv", s.exportActivities)
 
@@ -144,8 +145,16 @@ var Routes = []string{
 	"/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 
-// maxBody caps request bodies. The largest legitimate one is a pasted cookie export.
+// maxBody caps most request bodies. The largest legitimate one otherwise is a
+// pasted cookie export.
 const maxBody = 1 << 20
+
+// maxImportBody is the cap for the glucose import route only: a CGM export
+// covering months or years of readings is legitimately much larger than
+// anything else this UI accepts.
+const maxImportBody = 32 << 20
+
+const importRoute = "/actions/glucose/import"
 
 // csp restricts what pages may load. Datastar evaluates expressions with the
 // Function constructor, which needs 'unsafe-eval'; styles need 'unsafe-inline'
@@ -163,7 +172,11 @@ func secure(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", csp)
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+			limit := int64(maxBody)
+			if r.URL.Path == importRoute {
+				limit = maxImportBody
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)
 	})
