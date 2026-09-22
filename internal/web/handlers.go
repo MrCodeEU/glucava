@@ -69,7 +69,19 @@ func (s *Server) dashData(ctx context.Context) (DashData, error) {
 	if err != nil {
 		return DashData{}, err
 	}
-	return DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo()}, nil
+	d := DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo()}
+	if s.LatestGlucose != nil {
+		// Short timeout: a slow or unreachable source must not hold up the
+		// whole page. A nil result just leaves the tile showing "-".
+		gctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sample, err := s.LatestGlucose(gctx)
+		cancel()
+		if err != nil {
+			log.Printf("web: latest glucose: %v", err)
+		}
+		d.Latest = sample
+	}
+	return d, nil
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -227,11 +239,46 @@ func (s *Server) toast(sse *datastar.ServerSentEventGenerator, variant, msg stri
 
 func (s *Server) actionPoll(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
-	if s.Signal.Kick() {
-		s.toast(sse, "ok", "Checking Strava now.")
+	if s.Poll == nil {
+		// No way to run it inline (e.g. demo mode); fall back to nudging the
+		// background loop, with no result to report back.
+		if s.Signal.Kick() {
+			s.toast(sse, "ok", "Checking Strava now.")
+			return
+		}
+		s.toast(sse, "", "A check is already waiting to run.")
 		return
 	}
-	s.toast(sse, "", "A check is already waiting to run.")
+
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	n, err := s.Poll(ctx)
+
+	if n, cerr := s.Store.CountRecentErrors(r.Context(), s.now().Add(-24*time.Hour)); cerr == nil {
+		_ = sse.PatchElements(renderString(navAlertsBadge(n)))
+	}
+
+	if err != nil {
+		log.Printf("web: check strava now: %v", err)
+		msg := err.Error()
+		if errors.Is(err, jobs.ErrSessionExpired) {
+			msg = "the Strava session has expired; import fresh cookies."
+		}
+		s.toast(sse, "error", "Check failed: "+msg)
+		return
+	}
+	if n > 0 {
+		s.toast(sse, "ok", fmt.Sprintf("Checked. Queued %d new activit%s.", n, plural(n)))
+	} else {
+		s.toast(sse, "ok", "Checked. Nothing new.")
+	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
@@ -383,6 +430,10 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = sse.PatchSignals([]byte(`{"dexcomPassword":"","ntfyToken":"","webhookSecret":""}`))
+	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
+	_ = sse.PatchElements(renderString(DexcomSecretStatus(has(secrets.NameDexcomPassword))))
+	_ = sse.PatchElements(renderString(NtfySecretStatus(has(secrets.NameNtfyToken))))
+	_ = sse.PatchElements(renderString(WebhookSecretStatus(has(secrets.NameWebhookSecret))))
 	s.toast(sse, "ok", "Settings saved.")
 	s.Bus.Publish()
 }
@@ -525,9 +576,11 @@ func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
 
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
 	if err != nil {
+		log.Printf("web: strava automatic sign-in for %s: %v", v.Email, err)
 		s.toast(sse, "error", "Automatic sign-in stopped: "+strava.ExplainLoginError(err))
 		return
 	}
+	log.Printf("web: strava automatic sign-in for %s: succeeded", v.Email)
 	s.toast(sse, "ok", "Signed in and stored the session.")
 }
 
@@ -540,9 +593,11 @@ func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.GlucoseTest(ctx); err != nil {
+		log.Printf("web: dexcom test connection: %v", err)
 		s.toast(sse, "error", "Dexcom check failed: "+err.Error())
 		return
 	}
+	log.Printf("web: dexcom test connection: accepted")
 	s.toast(sse, "ok", "Dexcom accepted the stored credentials.")
 }
 

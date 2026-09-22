@@ -61,6 +61,10 @@ type DashData struct {
 	Loc     *time.Location
 	Now     time.Time
 	Session SessionInfo
+
+	// Latest is the most recent glucose reading, if the source made one
+	// available quickly. Nil means unknown, not necessarily unavailable.
+	Latest *stats.Sample
 }
 
 // LiveDash is the part of the dashboard that updates without a reload.
@@ -89,9 +93,17 @@ func LiveDash(d DashData) g.Node {
 	if failed > 0 {
 		attention = "Open an activity to reprocess"
 	}
+	glucoseVal, glucoseSub := "-", "no recent reading"
+	if d.Latest != nil {
+		glucoseVal = render.Value(d.Latest.Value, d.Unit)
+		if age := d.Now.Sub(d.Latest.Time); age >= 0 {
+			glucoseSub = fmt.Sprintf("%s · %s ago", d.Latest.Time.In(d.Loc).Format("15:04"), fmtDuration(age))
+		}
+	}
 
 	return Div(ID("live"),
 		Grid("",
+			Tile("Current glucose", glucoseVal, glucoseSub),
 			Tile("Annotated, 14 days", fmt.Sprint(done), "activities with a glucose block"),
 			Tile("Average time in range", tir, "across those activities"),
 			Tile("Failed", fmt.Sprint(failed), attention),
@@ -327,6 +339,37 @@ type SettingsData struct {
 	HasDexcomPassword, HasNtfyToken, HasWebhookSecret bool
 }
 
+// secretHelp describes whether a secret field has a stored value.
+func secretHelp(set bool, what string) string {
+	if set {
+		return what + " is stored. Leave empty to keep it, or type a new one to replace it."
+	}
+	return what + " is not set."
+}
+
+// DexcomSecretStatus renders the part of the settings page that depends on
+// whether the Dexcom password is stored: the help text under the field, plus
+// the Test connection button. NtfySecretStatus and WebhookSecretStatus below
+// do the same for their own secrets. Each has a stable ID so actionSettings
+// can patch it in place after a save, without a full page reload.
+func DexcomSecretStatus(has bool) g.Node {
+	return Div(ID("dexcom-secret-status"),
+		Div(Class("help"), g.Text(secretHelp(has, "A password"))),
+		g.If(has, Div(append(comp("actions"),
+			Btn("", "Test connection", post("/actions/dexcom/test"), g.Attr("data-indicator:dxtest", "")))...)),
+	)
+}
+
+func NtfySecretStatus(has bool) g.Node {
+	return Div(ID("ntfy-secret-status"), Class("help"),
+		g.Text(secretHelp(has, "A token")+" Only needed for protected topics."))
+}
+
+func WebhookSecretStatus(has bool) g.Node {
+	return Div(ID("webhook-secret-status"), Class("help"),
+		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
+}
+
 // SettingsPage is the settings form. Its values live in Datastar signals.
 func SettingsPage(pd PageData, d SettingsData) g.Node {
 	c := d.Cfg
@@ -336,12 +379,6 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "", "retentionDays": c.RetentionDays, "purgeConfirm": "",
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
-	secretHelp := func(set bool, what string) string {
-		if set {
-			return what + " is stored. Leave empty to keep it, or type a new one to replace it."
-		}
-		return what + " is not set."
-	}
 
 	return Page(pd,
 		PageHead("Settings", "Changes apply to the next poll; no restart needed."),
@@ -367,10 +404,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Field("dexcomRegion", "Region", "", Select(ID("dexcomRegion"), bind("dexcomRegion"),
 						Option(Value("ous"), g.Text("Outside the US")), Option(Value("us"), g.Text("United States")), Option(Value("jp"), g.Text("Japan")))),
 					Field("dexcomUsername", "Username, email or phone", "", Input(ID("dexcomUsername"), Type("text"), AutoComplete("off"), bind("dexcomUsername"))),
-					Field("dexcomPassword", "Password", secretHelp(d.HasDexcomPassword, "A password"),
-						Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
-					g.If(d.HasDexcomPassword, Div(append(comp("actions"),
-						Btn("", "Test connection", post("/actions/dexcom/test"), g.Attr("data-indicator:dxtest", "")))...)),
+					Field("dexcomPassword", "Password", "", Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
+					DexcomSecretStatus(d.HasDexcomPassword),
 				),
 			),
 			Card(H2(g.Text("Notifications")),
@@ -378,13 +413,13 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				Grid("2",
 					Div(
 						Field("ntfyURL", "ntfy topic URL", "For example https://ntfy.sh/my-topic. Leave empty to turn off.", Input(ID("ntfyURL"), Type("url"), bind("ntfyURL"))),
-						Field("ntfyToken", "ntfy access token", secretHelp(d.HasNtfyToken, "A token")+" Only needed for protected topics.",
-							Input(ID("ntfyToken"), Type("password"), AutoComplete("new-password"), bind("ntfyToken"))),
+						Field("ntfyToken", "ntfy access token", "", Input(ID("ntfyToken"), Type("password"), AutoComplete("new-password"), bind("ntfyToken"))),
+						NtfySecretStatus(d.HasNtfyToken),
 					),
 					Div(
 						Field("webhookURL", "Webhook URL", "Receives each event as JSON. Leave empty to turn off.", Input(ID("webhookURL"), Type("url"), bind("webhookURL"))),
-						Field("webhookSecret", "Webhook signing secret", secretHelp(d.HasWebhookSecret, "A secret")+" Used for the X-Glucava-Signature header.",
-							Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
+						Field("webhookSecret", "Webhook signing secret", "", Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
+						WebhookSecretStatus(d.HasWebhookSecret),
 					),
 				),
 			),

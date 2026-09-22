@@ -26,6 +26,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/poll"
 	"github.com/MrCodeEU/glucava/internal/secrets"
+	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
 	"github.com/MrCodeEU/glucava/internal/tokens"
@@ -158,6 +159,21 @@ func main() {
 					return nil
 				}
 				return err
+			},
+			Poll: poller.Once,
+			LatestGlucose: func(ctx context.Context) (*stats.Sample, error) {
+				s, err := source.Samples(ctx, time.Now().Add(-30*time.Minute), time.Now())
+				if errors.Is(err, glucose.ErrTooOld) {
+					return nil, nil
+				}
+				if err != nil {
+					return nil, err
+				}
+				if len(s) == 0 {
+					return nil, nil
+				}
+				last := s[len(s)-1]
+				return &last, nil
 			},
 		}
 		uiHandler := apis.WrapStdHandler(ui.Handler())

@@ -18,6 +18,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/secrets"
+	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 	"github.com/MrCodeEU/glucava/internal/trigger"
@@ -52,15 +53,17 @@ type Server struct {
 	// Nil trusts none, so limits and cookies use the direct peer.
 	Proxies *clientip.Resolver
 
-	Session     SessionChecker                                          // optional
-	StravaLogin func(ctx context.Context, email, password string) error // optional; experimental
-	GlucoseTest func(ctx context.Context) error                         // optional
-	SendTest    func(ctx context.Context) error                         // sends a test notification; optional
-	SourceName  string                                                  // key of stored glucose samples, e.g. "dexcom"
-	Build       string
-	Demo        bool
-	Loc         *time.Location // display zone; default time.Local
-	Now         func() time.Time
+	Session       SessionChecker                                          // optional
+	StravaLogin   func(ctx context.Context, email, password string) error // optional; experimental
+	GlucoseTest   func(ctx context.Context) error                         // optional
+	Poll          func(ctx context.Context) (int, error)                  // runs a Strava check inline; optional
+	LatestGlucose func(ctx context.Context) (*stats.Sample, error)        // optional
+	SendTest      func(ctx context.Context) error                         // sends a test notification; optional
+	SourceName    string                                                  // key of stored glucose samples, e.g. "dexcom"
+	Build         string
+	Demo          bool
+	Loc           *time.Location // display zone; default time.Local
+	Now           func() time.Time
 
 	mu        sync.Mutex
 	lastCheck struct {
