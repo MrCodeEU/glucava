@@ -27,8 +27,8 @@ docker run -d --name glucava -p 127.0.0.1:8090:8090 -v glucava:/data \
 
 Put a TLS reverse proxy in front. Then:
 
-1. Sign in, open **Settings**, enter Dexcom Share credentials (or `glucava dexcom set <user> --region us|ous|jp`). Enable Share in the Dexcom app.
-2. Open **Strava**, paste your strava.com cookie export (or `glucava strava cookies import file.json`).
+1. Sign in, open **Settings**, enter Dexcom Share credentials (or `glucava dexcom set <user> --region us|ous|jp`). Enable Share in the Dexcom app. "Test connection" checks the login.
+2. Open **Strava**. Paste your strava.com cookie export (or `glucava strava cookies import file.json`); this is the supported path. "Sign in automatically" is an **experimental** alternative that fills Strava's login form for you and stores the resulting cookies; it gives up at the first CAPTCHA, verification code or wrong-password message rather than guess, and never stores the password. It has not been verified against the real Strava login page.
 3. Run `glucava strava check` to verify the session and edit-page selectors without saving.
 
 ## Usage

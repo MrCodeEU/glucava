@@ -52,13 +52,15 @@ type Server struct {
 	// Nil trusts none, so limits and cookies use the direct peer.
 	Proxies *clientip.Resolver
 
-	Session    SessionChecker                  // optional
-	SendTest   func(ctx context.Context) error // sends a test notification; optional
-	SourceName string                          // key of stored glucose samples, e.g. "dexcom"
-	Build      string
-	Demo       bool
-	Loc        *time.Location // display zone; default time.Local
-	Now        func() time.Time
+	Session     SessionChecker                                          // optional
+	StravaLogin func(ctx context.Context, email, password string) error // optional; experimental
+	GlucoseTest func(ctx context.Context) error                         // optional
+	SendTest    func(ctx context.Context) error                         // sends a test notification; optional
+	SourceName  string                                                  // key of stored glucose samples, e.g. "dexcom"
+	Build       string
+	Demo        bool
+	Loc         *time.Location // display zone; default time.Local
+	Now         func() time.Time
 
 	mu        sync.Mutex
 	lastCheck struct {
@@ -121,6 +123,8 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/notify/test", s.actionNotifyTest)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
 	page("POST /actions/strava/test", s.actionStravaTest)
+	page("POST /actions/strava/login", s.actionStravaLogin)
+	page("POST /actions/dexcom/test", s.actionDexcomTest)
 	page("POST /actions/tokens/create", s.actionTokenCreate)
 	page("POST /actions/tokens/revoke/{name}", s.actionTokenRevoke)
 	page("POST /actions/data/purge", s.actionPurge)

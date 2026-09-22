@@ -747,3 +747,58 @@ func TestNavBadgeShowsRecentErrors(t *testing.T) {
 		t.Errorf("badge missing or wrong count:\n%s", w.Body.String())
 	}
 }
+
+func TestActionDexcomTestUnavailableByDefault(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	w := e.action("/actions/dexcom/test", "{}", c, nil)
+	if !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionDexcomTest(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	e.srv.GlucoseTest = func(context.Context) error { return errors.New("bad login") }
+	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "bad login") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	e.srv.GlucoseTest = func(context.Context) error { return nil }
+	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "accepted") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionStravaLoginValidatesAndReportsBlocked(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	if w := e.action("/actions/strava/login", `{"loginEmail":"","loginPassword":""}`, c, nil); !strings.Contains(w.Body.String(), "Enter an email") {
+		t.Errorf("empty form: %s", w.Body.String())
+	}
+	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"x"}`, c, nil); !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("no StravaLogin wired: %s", w.Body.String())
+	}
+
+	var gotEmail, gotPassword string
+	e.srv.StravaLogin = func(_ context.Context, email, password string) error {
+		gotEmail, gotPassword = email, password
+		return &strava.LoginError{Reason: strava.BlockedChallenge, Detail: "needs a code"}
+	}
+	w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil)
+	if !strings.Contains(w.Body.String(), "needs a code") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if gotEmail != "a@example.test" || gotPassword != "hunter2" {
+		t.Errorf("got %q %q", gotEmail, gotPassword)
+	}
+
+	e.srv.StravaLogin = func(context.Context, string, string) error { return nil }
+	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil); !strings.Contains(w.Body.String(), "Signed in") {
+		t.Errorf("success body = %s", w.Body.String())
+	}
+}

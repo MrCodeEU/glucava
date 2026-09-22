@@ -82,11 +82,12 @@ func main() {
 
 		// The pipeline uses real Strava and Dexcom, or stand-ins in demo mode.
 		var (
-			writer     jobs.Writer
-			source     glucose.Source
-			lister     poll.Lister
-			session    web.SessionChecker
-			sourceName = "dexcom"
+			writer      jobs.Writer
+			source      glucose.Source
+			lister      poll.Lister
+			session     web.SessionChecker
+			sourceName  = "dexcom"
+			stravaLogin func(ctx context.Context, email, password string) error
 		)
 		if demoMode {
 			if err := demo.Seed(ctx, st, time.Now()); err != nil {
@@ -100,6 +101,7 @@ func main() {
 		} else {
 			sw := newStravaWriter(vault)
 			writer, source, lister, session = sw, &dexcomSource{st: st, vault: vault}, sw, sw
+			stravaLogin = sw.Login
 		}
 
 		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
@@ -148,7 +150,15 @@ func main() {
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
-			SendTest: func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
+			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
+			StravaLogin: stravaLogin,
+			GlucoseTest: func(ctx context.Context) error {
+				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
+				if errors.Is(err, glucose.ErrTooOld) {
+					return nil
+				}
+				return err
+			},
 		}
 		uiHandler := apis.WrapStdHandler(ui.Handler())
 		for _, pattern := range web.Routes {
