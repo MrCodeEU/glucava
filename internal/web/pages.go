@@ -442,7 +442,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Field("glucoseFormat", "Format", "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
 					Field("glucoseSource", "Label (optional)", "Distinguishes these readings from the live source; defaults to the format name.",
 						Input(Type("text"), Name("source"), AutoComplete("off"))),
-					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt"), Required())),
+					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt,.zip"), Required())),
 					SubmitBtn("primary", "", "Import"),
 				),
 			)),

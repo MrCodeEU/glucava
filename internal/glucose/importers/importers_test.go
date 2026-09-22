@@ -4,7 +4,7 @@ import "testing"
 
 func TestNamesListsBuiltins(t *testing.T) {
 	names := Names()
-	want := map[string]bool{"libre": true, "nightscout": true}
+	want := map[string]bool{"libre": true, "nightscout": true, "glooko": true}
 	for _, n := range names {
 		delete(want, n)
 	}
