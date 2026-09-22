@@ -90,12 +90,13 @@ func main() {
 
 		// The pipeline uses real Strava and Dexcom, or stand-ins in demo mode.
 		var (
-			writer      jobs.Writer
-			source      glucose.Source
-			lister      poll.Lister
-			session     web.SessionChecker
-			sourceName  = "dexcom"
-			stravaLogin func(ctx context.Context, email, password string) error
+			writer       jobs.Writer
+			source       glucose.Source
+			lister       poll.Lister
+			session      web.SessionChecker
+			sourceName   = "dexcom"
+			stravaLogin  func(ctx context.Context, email, password string) error
+			findActivity func(ctx context.Context, stravaID string) (*jobs.Activity, error)
 		)
 		if demoMode {
 			if err := demo.Seed(ctx, st, time.Now()); err != nil {
@@ -110,6 +111,7 @@ func main() {
 			sw := newStravaWriter(vault)
 			writer, source, lister, session = sw, &dexcomSource{st: st, vault: vault}, sw, sw
 			stravaLogin = sw.Login
+			findActivity = sw.FindActivity
 		}
 
 		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
@@ -172,7 +174,8 @@ func main() {
 				}
 				return err
 			},
-			Poll: poller.Once,
+			Poll:         poller.Once,
+			FindActivity: findActivity,
 			LatestGlucose: func(ctx context.Context) (*stats.Sample, error) {
 				s, err := source.Samples(ctx, time.Now().Add(-30*time.Minute), time.Now())
 				if errors.Is(err, glucose.ErrTooOld) {

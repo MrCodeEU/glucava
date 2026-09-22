@@ -42,35 +42,92 @@ func (w *Writer) FetchRecentRaw(ctx context.Context, limit int) ([]byte, error) 
 		if isLoginURL(loc) {
 			return ErrSessionExpired
 		}
-
-		js := `fetch(` + jsStr(fmt.Sprintf("%s?per_page=%d&page=1", listPath, limit)) + `,{credentials:'include',redirect:'manual',
-		  headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}})
-		  .then(r=>r.text().then(t=>JSON.stringify({type:r.type,status:r.status,body:t})))`
-		var res string
-		err = chromedp.Run(ctx, chromedp.Evaluate(js, &res, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
-			return p.WithAwaitPromise(true)
-		}))
+		b, err := w.fetchActivitiesJSON(ctx, limit, 1)
 		if err != nil {
-			return fmt.Errorf("strava: fetch activity list: %w", err)
+			return err
 		}
-		var r struct {
-			Type   string `json:"type"`
-			Status int    `json:"status"`
-			Body   string `json:"body"`
-		}
-		if err := json.Unmarshal([]byte(res), &r); err != nil {
-			return fmt.Errorf("strava: fetch activity list: %w", err)
-		}
-		switch {
-		case r.Type == "opaqueredirect", r.Status == 401, r.Status == 403:
-			return ErrSessionExpired
-		case r.Status != 200:
-			return fmt.Errorf("strava: activity list: HTTP %d", r.Status)
-		}
-		body = []byte(r.Body)
+		body = b
 		return w.exportCookies(ctx)
 	})
 	return body, err
+}
+
+// maxFindPages bounds how many pages FindActivity will page through before
+// giving up, so a bad id can't turn into an unbounded fetch loop.
+const maxFindPages = 10
+
+// findPageSize is per_page for FindActivity's paging; smaller than the
+// default fetch limit so it costs less per page while still covering
+// months of activity history within maxFindPages.
+const findPageSize = 30
+
+// FindActivity looks up a single activity by Strava id, paging through the
+// training log (newest first) until it is found or maxFindPages is
+// exhausted. Unlike ListRecent, this can find an activity the poller never
+// queued, e.g. because it predates this app or is older than its MaxAge, so
+// it can be processed by hand from the web UI.
+func (w *Writer) FindActivity(ctx context.Context, stravaID string) (*jobs.Activity, error) {
+	var found *jobs.Activity
+	err := w.withBrowser(ctx, func(ctx context.Context) error {
+		loc, err := w.navigate(ctx, w.cfg.BaseURL+"/dashboard")
+		if err != nil {
+			return err
+		}
+		if isLoginURL(loc) {
+			return ErrSessionExpired
+		}
+		for page := 1; page <= maxFindPages; page++ {
+			raw, err := w.fetchActivitiesJSON(ctx, findPageSize, page)
+			if err != nil {
+				return err
+			}
+			acts, err := ParseTrainingActivities(raw, w.cfg.Location)
+			if err != nil {
+				return err
+			}
+			if len(acts) == 0 {
+				break // no more pages
+			}
+			for i := range acts {
+				if acts[i].StravaID == stravaID {
+					found = &acts[i]
+					return w.exportCookies(ctx)
+				}
+			}
+		}
+		return w.exportCookies(ctx)
+	})
+	return found, err
+}
+
+// fetchActivitiesJSON fetches one page of the training log. It assumes the
+// browser is already on a Strava page with a valid session (see navigate).
+func (w *Writer) fetchActivitiesJSON(ctx context.Context, limit, page int) ([]byte, error) {
+	js := `fetch(` + jsStr(fmt.Sprintf("%s?per_page=%d&page=%d", listPath, limit, page)) + `,{credentials:'include',redirect:'manual',
+	  headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}})
+	  .then(r=>r.text().then(t=>JSON.stringify({type:r.type,status:r.status,body:t})))`
+	var res string
+	err := chromedp.Run(ctx, chromedp.Evaluate(js, &res, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
+		return p.WithAwaitPromise(true)
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("strava: fetch activity list: %w", err)
+	}
+	var r struct {
+		Type   string `json:"type"`
+		Status int    `json:"status"`
+		Body   string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(res), &r); err != nil {
+		return nil, fmt.Errorf("strava: fetch activity list: %w", err)
+	}
+	switch {
+	case r.Type == "opaqueredirect", r.Status == 401, r.Status == 403:
+		return nil, ErrSessionExpired
+	case r.Status != 200:
+		return nil, fmt.Errorf("strava: activity list: HTTP %d", r.Status)
+	}
+	return []byte(r.Body), nil
 }
 
 // ParseTrainingActivities reads the training log JSON. Times given without a zone
@@ -96,7 +153,11 @@ func ParseTrainingActivities(raw []byte, loc *time.Location) ([]jobs.Activity, e
 		if !ok {
 			continue
 		}
-		secs := firstNumber(m, "elapsed_time", "moving_time")
+		// The real training-log response (checked 2026-09) gives elapsed_time
+		// and moving_time as formatted strings like "46:50", not numbers; the
+		// numeric seconds are in the _raw variants. Both plain names are kept
+		// as a fallback in case an older or different shape sends numbers directly.
+		secs := firstNumber(m, "elapsed_time_raw", "moving_time_raw", "elapsed_time", "moving_time")
 		if secs <= 0 {
 			continue
 		}

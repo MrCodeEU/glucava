@@ -32,6 +32,11 @@ type SessionInfo struct {
 	CheckedAt  time.Time
 	CheckOK    bool
 	CheckErr   string
+
+	// CanFindActivity gates the "process a specific activity" card: whether
+	// looking an activity id up on Strava is wired up at all (it isn't in demo
+	// mode, or in any deployment that hasn't set web.Server.FindActivity).
+	CanFindActivity bool
 }
 
 // CookieInfo is a cookie name and expiry, never its value.
@@ -322,6 +327,16 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 				Textarea(ID("cookies"), g.Attr("data-bind", "cookies"), Placeholder("Paste cookies here"), g.Attr("spellcheck", "false"), g.Attr("autocomplete", "off"))),
 			Btn("primary", "Import cookies", post("/actions/strava/cookies")),
 		),
+		g.If(s.CanFindActivity, Card(g.Attr("data-signals", `{"processActivityId":""}`),
+			H2(g.Text("Process a specific activity")),
+			P(Class("muted"), g.Text("Write the glucose description onto an activity that was never auto-detected, for "+
+				"example one from before glucava was running, or older than the polling window. It is looked up in your "+
+				"Strava training log if it isn't already known here.")),
+			Field("processActivityId", "Strava activity id", "The number at the end of the activity's URL on strava.com.",
+				Input(ID("processActivityId"), Type("text"), g.Attr("inputmode", "numeric"), Placeholder("1234567890"),
+					AutoComplete("off"), g.Attr("data-bind", "processActivityId"))),
+			IndicatorBtn("primary", "Process activity", "/actions/process", "processing"),
+		)),
 		Card(H2(g.Text("Good to know")),
 			Ul(
 				Li(g.Text("Automating the Strava website goes against Strava's terms of service. glucava uses one browser, one account and a few page loads per activity. Use it at your own risk.")),

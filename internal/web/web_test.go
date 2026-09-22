@@ -500,6 +500,91 @@ func TestPollAndReprocess(t *testing.T) {
 	}
 }
 
+func TestProcessActivityUnavailableWithoutFindActivity(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	if w := e.action("/actions/process", `{"processActivityId":"55"}`, c, nil); !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("no FindActivity: %s", w.Body)
+	}
+}
+
+func TestProcessActivityRejectsNonNumericID(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	e.srv.FindActivity = func(context.Context, string) (*jobs.Activity, error) {
+		t.Fatal("FindActivity should not be called for a bad id")
+		return nil, nil
+	}
+	if w := e.action("/actions/process", `{"processActivityId":"not-a-number"}`, c, nil); !strings.Contains(w.Body.String(), "numeric") {
+		t.Errorf("bad id: %s", w.Body)
+	}
+}
+
+func TestProcessActivityLooksUpAndQueuesUnknownID(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	start := time.Now().Add(-48 * time.Hour)
+	e.srv.FindActivity = func(_ context.Context, id string) (*jobs.Activity, error) {
+		if id != "42" {
+			t.Fatalf("FindActivity called with %q", id)
+		}
+		return &jobs.Activity{StravaID: "42", Name: "Old run", Start: start, Duration: time.Hour, Status: jobs.StatusPending}, nil
+	}
+	w := e.action("/actions/process", `{"processActivityId":"42"}`, c, nil)
+	if !strings.Contains(w.Body.String(), "Queued") {
+		t.Errorf("body = %s", w.Body)
+	}
+	if len(e.jobs.got) != 1 || !e.jobs.got[0].Force || e.jobs.got[0].Activity.StravaID != "42" {
+		t.Fatalf("jobs = %+v", e.jobs.got)
+	}
+	ctx := context.Background()
+	if a, _ := e.srv.Store.Activity(ctx, "42"); a == nil || a.Status != jobs.StatusPending {
+		t.Errorf("activity not saved: %+v", a)
+	}
+}
+
+func TestProcessActivityReusesExistingRowWithoutLookup(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	ctx := context.Background()
+	_ = e.srv.Store.SaveActivity(ctx, &jobs.Activity{StravaID: "77", Name: "Run", Start: time.Now().Add(-3 * time.Hour), Duration: time.Hour, Status: jobs.StatusFailed, Error: "boom"})
+	e.srv.FindActivity = func(context.Context, string) (*jobs.Activity, error) {
+		t.Fatal("FindActivity should not be called for an id already in the store")
+		return nil, nil
+	}
+	e.action("/actions/process", `{"processActivityId":"77"}`, c, nil)
+	if len(e.jobs.got) != 1 || e.jobs.got[0].Activity.StravaID != "77" {
+		t.Fatalf("jobs = %+v", e.jobs.got)
+	}
+}
+
+func TestProcessActivityNotFound(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	e.srv.FindActivity = func(context.Context, string) (*jobs.Activity, error) { return nil, nil }
+	if w := e.action("/actions/process", `{"processActivityId":"9999"}`, c, nil); !strings.Contains(w.Body.String(), "No activity with that id") {
+		t.Errorf("not found: %s", w.Body)
+	}
+	if len(e.jobs.got) != 0 {
+		t.Errorf("jobs = %+v", e.jobs.got)
+	}
+}
+
+func TestProcessActivitySessionExpired(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	e.srv.FindActivity = func(context.Context, string) (*jobs.Activity, error) { return nil, jobs.ErrSessionExpired }
+	if w := e.action("/actions/process", `{"processActivityId":"9999"}`, c, nil); !strings.Contains(w.Body.String(), "expired") {
+		t.Errorf("expired: %s", w.Body)
+	}
+}
+
 func TestUserTextIsEscaped(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
@@ -40,7 +41,7 @@ func (s *Server) serverError(w http.ResponseWriter, err error) {
 // ------------------------------------------------------------------- pages
 
 func (s *Server) sessionInfo() SessionInfo {
-	info := SessionInfo{}
+	info := SessionInfo{CanFindActivity: s.FindActivity != nil}
 	raw, ok, err := s.Vault.Get(secrets.NameStravaCookies)
 	if err == nil && ok {
 		if list, derr := strava.DecodeCookies(raw); derr == nil && len(list) > 0 {
@@ -308,6 +309,67 @@ func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
 		s.toast(sse, "", "This activity is already queued.")
 	default:
 		s.toast(sse, "ok", "Queued for reprocessing.")
+	}
+}
+
+// actionProcessActivity looks up an arbitrary Strava activity id (one the
+// poller never queued, e.g. it predates this app or is older than its
+// MaxAge) and queues it for processing, same as reprocessing an existing
+// one. If the id is already in the store, it just reprocesses that row
+// instead of looking it up on Strava again.
+func (s *Server) actionProcessActivity(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		ActivityID string `json:"processActivityId"`
+	}
+	readErr := datastar.ReadSignals(r, &v)
+	sse := datastar.NewSSE(w, r)
+	id := strings.TrimSpace(v.ActivityID)
+	if readErr != nil || !digits.MatchString(id) {
+		s.toast(sse, "error", "Enter a numeric Strava activity id.")
+		return
+	}
+	if s.FindActivity == nil {
+		s.toast(sse, "error", "Looking up an activity by id is not available here.")
+		return
+	}
+
+	act, err := s.Store.Activity(r.Context(), id)
+	if err != nil {
+		s.toast(sse, "error", "Could not look up that activity: "+err.Error())
+		return
+	}
+	if act == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		found, ferr := s.FindActivity(ctx, id)
+		switch {
+		case errors.Is(ferr, jobs.ErrSessionExpired):
+			s.toast(sse, "error", "The Strava session has expired; import fresh cookies.")
+			return
+		case ferr != nil:
+			log.Printf("web: find activity %s: %v", id, ferr)
+			s.toast(sse, "error", "Could not look it up: "+ferr.Error())
+			return
+		case found == nil:
+			s.toast(sse, "error", "No activity with that id was found in your Strava training log.")
+			return
+		}
+		act = found
+	}
+	act.Status, act.Error = jobs.StatusPending, ""
+	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
+		s.toast(sse, "error", "Could not save the activity: "+err.Error())
+		return
+	}
+	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true})
+	switch {
+	case err != nil:
+		s.toast(sse, "error", "Could not queue it: "+err.Error())
+	case !queued:
+		s.toast(sse, "", "This activity is already queued.")
+	default:
+		_ = sse.PatchSignals([]byte(`{"processActivityId":""}`))
+		s.toast(sse, "ok", `Queued "`+act.Name+`" for processing.`)
 	}
 }
 
