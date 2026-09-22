@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -85,6 +86,37 @@ func EnsureDexcomCredential(app core.App, vault Vault, dexcomPasswordName string
 		return err
 	}
 	log.Printf("bootstrap: stored Dexcom credentials for %s (region %s) from the environment", user, region)
+	return nil
+}
+
+// ApplyRetentionOverride sets retention_days from GLUCAVA_RETENTION_DAYS
+// when it is set, every start. Unlike EnsureDexcomCredential this is not a
+// one-time seed: retention has no "unconfigured" value to detect (0 and any
+// positive number of days are both meaningful settings a person may have
+// chosen in the UI), so there is no way to tell "still the default" apart
+// from "deliberately set back to it". An env var that always wins is the
+// honest behaviour; remove it from .env to let the UI value stick again.
+func ApplyRetentionOverride(app core.App) error {
+	raw := os.Getenv("GLUCAVA_RETENTION_DAYS")
+	if raw == "" {
+		return nil
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil || days < 0 {
+		return fmt.Errorf("bootstrap: GLUCAVA_RETENTION_DAYS must be a non-negative integer, got %q", raw)
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		return fmt.Errorf("bootstrap: settings row not found: %w", err)
+	}
+	if recs[0].GetInt("retention_days") == days {
+		return nil
+	}
+	recs[0].Set("retention_days", days)
+	if err := app.Save(recs[0]); err != nil {
+		return err
+	}
+	log.Printf("bootstrap: retention set to %d days from the environment", days)
 	return nil
 }
 

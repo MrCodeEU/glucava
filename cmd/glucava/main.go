@@ -78,6 +78,9 @@ func main() {
 		if err := bootstrap.EnsureDexcomCredential(app, vault, secrets.NameDexcomPassword); err != nil {
 			return err
 		}
+		if err := bootstrap.ApplyRetentionOverride(app); err != nil {
+			return err
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		app.OnTerminate().BindFunc(func(te *core.TerminateEvent) error {
