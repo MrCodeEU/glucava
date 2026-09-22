@@ -98,6 +98,27 @@ func TestSamplesDedupeAndRange(t *testing.T) {
 	}
 }
 
+// TestLoadSamplesAnyCrossesSources is a regression test: an activity's
+// window may be covered by the live source, a backfilled import under a
+// different source label, or both, and all of it must be usable.
+func TestLoadSamplesAnyCrossesSources(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	if err := s.SaveSamples(ctx, "dexcom", []stats.Sample{{Time: t0, Value: 100}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveSamples(ctx, "glooko", []stats.Sample{{Time: t0.Add(5 * time.Minute), Value: 110}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadSamplesAny(ctx, t0, t0.Add(10*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Value != 100 || got[1].Value != 110 {
+		t.Errorf("got %+v", got)
+	}
+}
+
 func TestRecordEvent(t *testing.T) {
 	app := newApp(t)
 	s := &PB{App: app}

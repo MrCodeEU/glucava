@@ -105,7 +105,9 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 		return nil, err
 	}
 	pre, post := time.Duration(cfg.PreMin)*time.Minute, time.Duration(cfg.PostMin)*time.Minute
-	samples, err := s.Store.LoadSamples(ctx, s.SourceName, act.Start.Add(-pre), act.End().Add(post))
+	// Any source: an activity's window may be covered by the live source, a
+	// backfilled import, or both, depending on how old it is.
+	samples, err := s.Store.LoadSamplesAny(ctx, act.Start.Add(-pre), act.End().Add(post))
 	if err != nil {
 		return nil, err
 	}

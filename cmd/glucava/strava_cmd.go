@@ -94,6 +94,7 @@ func stravaCommand(app core.App) *cobra.Command {
 	)
 
 	var htmlFile string
+	var fullDesc bool
 	check := &cobra.Command{
 		Use:   "check [activity-id]",
 		Short: "Dry run: test the session, or inspect an activity's edit page without saving",
@@ -116,6 +117,9 @@ func stravaCommand(app core.App) *cobra.Command {
 				return err
 			}
 			fmt.Print(rep)
+			if fullDesc {
+				fmt.Printf("\nfull description (%d bytes):\n%q\n", len(rep.Description), rep.Description)
+			}
 			if htmlFile != "" && rep.HTML != "" {
 				if err := os.WriteFile(htmlFile, []byte(rep.HTML), 0o600); err != nil {
 					return err
@@ -129,6 +133,7 @@ func stravaCommand(app core.App) *cobra.Command {
 		},
 	}
 	check.Flags().StringVar(&htmlFile, "html", "", "write the edit page source to this file")
+	check.Flags().BoolVar(&fullDesc, "full", false, "print the whole description text, quoted, not just its length")
 
 	var raw bool
 	list := &cobra.Command{

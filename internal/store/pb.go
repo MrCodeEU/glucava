@@ -182,6 +182,24 @@ func (s *PB) LoadSamples(_ context.Context, source string, from, to time.Time) (
 	return out, nil
 }
 
+// LoadSamplesAny is like LoadSamples but across every source, live or
+// imported. The source column is provenance for debugging and CSV export,
+// not a partition of who a reading belongs to, so annotating an activity or
+// falling back for a reprocess must see all of it.
+func (s *PB) LoadSamplesAny(_ context.Context, from, to time.Time) ([]stats.Sample, error) {
+	recs, err := s.App.FindRecordsByFilter("glucose_samples",
+		"ts >= {:from} && ts <= {:to}", "ts", 0, 0,
+		dbx.Params{"from": pbTime(from), "to": pbTime(to)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]stats.Sample, len(recs))
+	for i, r := range recs {
+		out[i] = stats.Sample{Time: r.GetDateTime("ts").Time(), Value: r.GetFloat("value")}
+	}
+	return out, nil
+}
+
 // RecordEvent adds an entry to the notification outbox (notified=false).
 func (s *PB) RecordEvent(_ context.Context, e jobs.Event) error {
 	col, err := s.App.FindCollectionByNameOrId("events")

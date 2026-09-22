@@ -603,6 +603,19 @@ func TestUserTextIsEscaped(t *testing.T) {
 	}
 }
 
+func TestActivityPageLinksToStrava(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	ctx := context.Background()
+	_ = e.srv.Store.SaveActivity(ctx, &jobs.Activity{StravaID: "20156391590", Name: "Run",
+		Start: time.Now().Add(-3 * time.Hour), Duration: time.Hour, Status: jobs.StatusDone})
+	body := e.get(t, "/activity/20156391590", c).Body.String()
+	if !strings.Contains(body, `href="https://www.strava.com/activities/20156391590"`) {
+		t.Errorf("no Strava link: %s", body)
+	}
+}
+
 func TestNotifyTest(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

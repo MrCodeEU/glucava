@@ -48,6 +48,9 @@ func (s *fakeStore) SaveSamples(context.Context, string, []stats.Sample) error {
 func (s *fakeStore) LoadSamples(context.Context, string, time.Time, time.Time) ([]stats.Sample, error) {
 	return nil, nil
 }
+func (s *fakeStore) LoadSamplesAny(context.Context, time.Time, time.Time) ([]stats.Sample, error) {
+	return nil, nil
+}
 func (s *fakeStore) RecordEvent(_ context.Context, e jobs.Event) error {
 	s.events = append(s.events, e)
 	return nil

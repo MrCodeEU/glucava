@@ -82,7 +82,9 @@ func (p *Processor) samples(ctx context.Context, from, to time.Time) ([]stats.Sa
 		}
 		return got, nil
 	case errors.Is(err, glucose.ErrTooOld):
-		stored, lerr := p.Store.LoadSamples(ctx, p.SourceName, from, to)
+		// Any source: a backfilled import (e.g. from another CGM app) is just
+		// as usable here as the live source's own history.
+		stored, lerr := p.Store.LoadSamplesAny(ctx, from, to)
 		if lerr != nil {
 			return nil, lerr
 		}
