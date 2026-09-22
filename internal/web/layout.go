@@ -25,6 +25,14 @@ var navItems = []struct{ key, href, label string }{
 	{"events", "/events", "Notifications"},
 }
 
+// navAlertsBadge is the Notifications nav link's error-count badge. It
+// always renders the same wrapper element, present or empty, so an action
+// handler can patch it in place after something that might change the count
+// (see actionPoll) without needing a full page reload.
+func navAlertsBadge(count int) g.Node {
+	return Span(ID("nav-alerts"), g.If(count > 0, Badge("error", fmt.Sprint(count))))
+}
+
 // themeToggle is a Datastar expression; the initial mode is applied by /static/theme.js.
 const themeToggle = `const d=document.documentElement,c=d.dataset.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),m=c==='dark'?'light':'dark';d.dataset.mode=m;try{localStorage.setItem('gv-mode',m)}catch(e){}`
 
@@ -47,8 +55,8 @@ func Page(pd PageData, body ...g.Node) g.Node {
 	links := make([]g.Node, 0, len(navItems))
 	for _, it := range navItems {
 		label := []g.Node{g.Text(it.label)}
-		if it.key == "events" && pd.Alerts > 0 {
-			label = append(label, g.Text(" "), Badge("error", fmt.Sprint(pd.Alerts)))
+		if it.key == "events" {
+			label = append(label, g.Text(" "), navAlertsBadge(pd.Alerts))
 		}
 		links = append(links, A(append(comp("navlink"),
 			Href(it.href), g.Group(label),

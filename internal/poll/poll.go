@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/jobs"
@@ -39,6 +40,8 @@ type Poller struct {
 	Now      func() time.Time
 
 	sessionReported bool // an expired session was reported and no poll has succeeded since
+
+	mu sync.Mutex // serializes Once against the background loop and manual triggers
 }
 
 func (p *Poller) now() time.Time {
@@ -48,8 +51,12 @@ func (p *Poller) now() time.Time {
 	return time.Now()
 }
 
-// Once runs one poll and returns how many activities it queued.
+// Once runs one poll and returns how many activities it queued. Safe to call
+// from multiple goroutines (e.g. the background loop and a manual "check
+// now"); calls serialize rather than race on sessionReported.
 func (p *Poller) Once(ctx context.Context) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	limit, maxAge := p.Limit, p.MaxAge
 	if limit <= 0 {
 		limit = 20

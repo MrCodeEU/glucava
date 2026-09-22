@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -65,7 +66,12 @@ func EnforceSingleUser(app core.App) {
 // only to stop PocketBase's installer banner, which otherwise prints a
 // working one-time setup link to the log on every start.
 func SilenceSuperuserPrompt(app core.App) error {
-	n, err := app.CountRecords(core.CollectionNameSuperusers)
+	// Match PocketBase's own installer check (apis.needInstallerSuperuser):
+	// it excludes core.DefaultInstallerEmail, the record it creates for
+	// itself to mint the one-time setup link. Counting all superusers here
+	// would see that record and skip creating a real one, and the banner
+	// would keep coming back forever.
+	n, err := app.CountRecords(core.CollectionNameSuperusers, dbx.Not(dbx.HashExp{"email": core.DefaultInstallerEmail}))
 	if err != nil || n > 0 {
 		return err
 	}

@@ -73,3 +73,33 @@ func TestSilenceSuperuserPromptIsIdempotentAndOnlyOnce(t *testing.T) {
 		t.Errorf("superusers after second call = %d", n)
 	}
 }
+
+func TestSilenceSuperuserPromptIgnoresTheInstallerAccount(t *testing.T) {
+	// Reproduces an existing data dir where only PocketBase's own one-time
+	// installer superuser exists (core.DefaultInstallerEmail): counting all
+	// superusers would see it and wrongly skip creating a real one.
+	app := newApp(t)
+	col, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := core.NewRecord(col)
+	rec.SetEmail(core.DefaultInstallerEmail)
+	rec.SetPassword("a-long-enough-password")
+	if err := app.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SilenceSuperuserPrompt(app); err != nil {
+		t.Fatal(err)
+	}
+	// PocketBase deletes its own installer placeholder as soon as a real
+	// superuser exists (core/record_model_superusers.go), so only ours remains.
+	n, err := app.CountRecords(core.CollectionNameSuperusers)
+	if err != nil || n != 1 {
+		t.Fatalf("superusers = %d, %v, want 1", n, err)
+	}
+	if rec, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, core.DefaultInstallerEmail); err == nil {
+		t.Errorf("installer placeholder still present: %s", rec.Id)
+	}
+}
