@@ -38,7 +38,7 @@ Put a TLS reverse proxy in front. Then:
   `curl -X POST -H "Authorization: Bearer gst_..." https://host/api/trigger`
 - **Manual:** open an activity for a preview, then Process or Reprocess. Existing text is kept; only the 🩸 block is replaced.
 - **Notifications:** ntfy or webhook (HMAC-signed) on failures and expired sessions.
-- Dexcom Share keeps only 24 h of data, so activities older than that cannot be processed.
+- Dexcom Share itself only serves ~24 h of history, but a background job stores every reading it sees into glucava's own database as it arrives, so an activity can still be reprocessed later as long as its window is within Settings → **Your data** → retention (default 365 days). An activity missed entirely while it was still fresh (e.g. glucava was not running, or the reading never got ingested) cannot be recovered after the fact.
 
 ## Configuration
 
@@ -46,6 +46,7 @@ Put a TLS reverse proxy in front. Then:
 |---|---|
 | `GLUCAVA_ADMIN_EMAIL`, `GLUCAVA_ADMIN_PASSWORD` | first user, created on start |
 | `GLUCAVA_DEXCOM_USERNAME`, `GLUCAVA_DEXCOM_PASSWORD`, `GLUCAVA_DEXCOM_REGION` | Dexcom Share login, stored on first start if no credential is stored yet (alternative to `make dexcom`); safe to remove afterwards |
+| `GLUCAVA_RETENTION_DAYS` | readings/events retention in days (0 = forever); overrides the UI setting on every start, not just the first |
 | `GLUCAVA_SECRET_KEY` | encryption key for stored secrets (default: `<data dir>/secret.key`) |
 | `GLUCAVA_TRUSTED_PROXIES` | comma-separated IPs/CIDRs of your reverse proxy. Only then are `X-Forwarded-For`/`-Proto` believed (per-client rate limits, Secure cookie). Unset = direct peer only |
 | `GLUCAVA_ADMIN_UI=1` | expose PocketBase admin UI and API (off by default) |
@@ -63,5 +64,15 @@ Put a TLS reverse proxy in front. Then:
 ## Development
 
 Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre-push: tests, govulncheck). `make check` runs everything CI runs. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.
+
+**Adding a glucose source.** Dexcom Share (`internal/glucose/dexcom.go`) is the only built-in source, but the pipeline (background ingestion, activity processing, live dashboard reading) only depends on the small `glucose.Source` interface:
+
+```go
+type Source interface {
+    Samples(ctx context.Context, from, to time.Time) ([]stats.Sample, error)
+}
+```
+
+A Libre, Tandem, Medtronic, or file-import source is a new type implementing that one method, wired in `cmd/glucava/main.go` next to `dexcomSource`. No changes needed elsewhere. Contributed sources for hardware the maintainer doesn't own are welcome but untested by CI; say so plainly in the code and docs, the same way the experimental Strava auto-login is marked.
 
 License: AGPL-3.0.

@@ -132,6 +132,52 @@ func TestEnsureDexcomCredentialRejectsBadRegion(t *testing.T) {
 	}
 }
 
+func TestApplyRetentionOverrideSetsFromEnv(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_RETENTION_DAYS", "30")
+	if err := ApplyRetentionOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 || recs[0].GetInt("retention_days") != 30 {
+		t.Fatalf("retention_days: %v, %v", recs, err)
+	}
+
+	// It applies every start, including changing an already-set value, unlike
+	// EnsureDexcomCredential's seed-once behaviour.
+	t.Setenv("GLUCAVA_RETENTION_DAYS", "0")
+	if err := ApplyRetentionOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	recs, err = app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 || recs[0].GetInt("retention_days") != 0 {
+		t.Fatalf("retention_days after second call: %v, %v", recs, err)
+	}
+}
+
+func TestApplyRetentionOverrideUnsetDoesNothing(t *testing.T) {
+	app := newApp(t)
+	if err := ApplyRetentionOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 || recs[0].GetInt("retention_days") == 0 {
+		t.Fatalf("retention_days changed with no env set: %v, %v", recs, err)
+	}
+}
+
+func TestApplyRetentionOverrideRejectsBadValue(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_RETENTION_DAYS", "-5")
+	if err := ApplyRetentionOverride(app); err == nil {
+		t.Error("negative value accepted")
+	}
+	t.Setenv("GLUCAVA_RETENTION_DAYS", "not-a-number")
+	if err := ApplyRetentionOverride(app); err == nil {
+		t.Error("non-numeric value accepted")
+	}
+}
+
 func TestSilenceSuperuserPromptIgnoresTheInstallerAccount(t *testing.T) {
 	// Reproduces an existing data dir where only PocketBase's own one-time
 	// installer superuser exists (core.DefaultInstallerEmail): counting all
