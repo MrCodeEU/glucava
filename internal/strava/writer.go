@@ -53,6 +53,14 @@ var DefaultSelectors = Selectors{
 		`#activity_description`,
 		`textarea[name*="description" i]`,
 		`textarea[aria-label*="escription" i]`,
+		// Strava's edit page (checked 2026-09) renders the description
+		// textarea with no id or name at all, and its aria-label is
+		// localized (e.g. German "Wie ist es gelaufen?"), so none of the
+		// selectors above match on a non-English account. The one other
+		// textarea on the page is the private note, which does keep a
+		// stable id; picking "the textarea that isn't that one" works
+		// regardless of locale, as long as the page has exactly these two.
+		`textarea:not(#activity_private_note)`,
 	},
 	Save: []string{
 		`form button[type="submit"]`,
