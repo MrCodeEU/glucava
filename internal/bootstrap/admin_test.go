@@ -74,6 +74,64 @@ func TestSilenceSuperuserPromptIsIdempotentAndOnlyOnce(t *testing.T) {
 	}
 }
 
+// fakeVault is an in-memory stand-in for *secrets.Vault, just enough to
+// exercise EnsureDexcomCredential without a real encryption key.
+type fakeVault map[string]string
+
+func (v fakeVault) Get(name string) (string, bool, error) {
+	val, ok := v[name]
+	return val, ok, nil
+}
+
+func (v fakeVault) Set(name, value string) error {
+	v[name] = value
+	return nil
+}
+
+func TestEnsureDexcomCredentialSeedsFromEnvOnce(t *testing.T) {
+	app := newApp(t)
+	v := fakeVault{}
+	t.Setenv("GLUCAVA_DEXCOM_USERNAME", "me@example.test")
+	t.Setenv("GLUCAVA_DEXCOM_PASSWORD", "s3cret-dexcom")
+	t.Setenv("GLUCAVA_DEXCOM_REGION", "ous")
+
+	if err := EnsureDexcomCredential(app, v, "dexcom_password"); err != nil {
+		t.Fatal(err)
+	}
+	if v["dexcom_password"] != "s3cret-dexcom" {
+		t.Fatalf("vault password = %q", v["dexcom_password"])
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		t.Fatalf("settings row: %v", err)
+	}
+	if recs[0].GetString("dexcom_username") != "me@example.test" || recs[0].GetString("dexcom_region") != "ous" {
+		t.Errorf("settings not updated: %v", recs[0].PublicExport())
+	}
+
+	// A second start, even with different env values, must not overwrite
+	// an already-stored credential.
+	t.Setenv("GLUCAVA_DEXCOM_PASSWORD", "different-password")
+	if err := EnsureDexcomCredential(app, v, "dexcom_password"); err != nil {
+		t.Fatal(err)
+	}
+	if v["dexcom_password"] != "s3cret-dexcom" {
+		t.Errorf("password was overwritten: %q", v["dexcom_password"])
+	}
+}
+
+func TestEnsureDexcomCredentialRejectsBadRegion(t *testing.T) {
+	app := newApp(t)
+	v := fakeVault{}
+	t.Setenv("GLUCAVA_DEXCOM_USERNAME", "me@example.test")
+	t.Setenv("GLUCAVA_DEXCOM_PASSWORD", "s3cret-dexcom")
+	t.Setenv("GLUCAVA_DEXCOM_REGION", "atlantis")
+
+	if err := EnsureDexcomCredential(app, v, "dexcom_password"); err == nil {
+		t.Error("bad region accepted")
+	}
+}
+
 func TestSilenceSuperuserPromptIgnoresTheInstallerAccount(t *testing.T) {
 	// Reproduces an existing data dir where only PocketBase's own one-time
 	// installer superuser exists (core.DefaultInstallerEmail): counting all

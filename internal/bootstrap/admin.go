@@ -44,6 +44,50 @@ func EnsureAdminUser(app core.App) error {
 	return nil
 }
 
+// Vault is the subset of *secrets.Vault that EnsureDexcomCredential needs.
+type Vault interface {
+	Get(name string) (string, bool, error)
+	Set(name, value string) error
+}
+
+// EnsureDexcomCredential stores Dexcom Share credentials from
+// GLUCAVA_DEXCOM_USERNAME, GLUCAVA_DEXCOM_PASSWORD and GLUCAVA_DEXCOM_REGION
+// when none are stored yet. Like EnsureAdminUser, this only ever seeds a
+// first value; once a credential exists (by any means: env, CLI, or the web
+// UI) the env vars are ignored on every later start, so the password can be
+// removed from .env again after the first run.
+func EnsureDexcomCredential(app core.App, vault Vault, dexcomPasswordName string) error {
+	user := os.Getenv("GLUCAVA_DEXCOM_USERNAME")
+	password := os.Getenv("GLUCAVA_DEXCOM_PASSWORD")
+	region := os.Getenv("GLUCAVA_DEXCOM_REGION")
+	if user == "" || password == "" {
+		return nil
+	}
+	if region != "us" && region != "ous" && region != "jp" {
+		return fmt.Errorf(`bootstrap: GLUCAVA_DEXCOM_REGION must be "us", "ous" or "jp", got %q`, region)
+	}
+	if _, ok, err := vault.Get(dexcomPasswordName); err != nil || ok {
+		return err
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		return fmt.Errorf("bootstrap: settings row not found: %w", err)
+	}
+	if recs[0].GetString("dexcom_username") != "" {
+		return nil // already configured through the UI/CLI, just not the vault we checked
+	}
+	recs[0].Set("dexcom_username", user)
+	recs[0].Set("dexcom_region", region)
+	if err := app.Save(recs[0]); err != nil {
+		return err
+	}
+	if err := vault.Set(dexcomPasswordName, password); err != nil {
+		return err
+	}
+	log.Printf("bootstrap: stored Dexcom credentials for %s (region %s) from the environment", user, region)
+	return nil
+}
+
 // EnforceSingleUser rejects creating a second user. Glucava keeps one person's
 // medical data, and every account sees all of it.
 func EnforceSingleUser(app core.App) {

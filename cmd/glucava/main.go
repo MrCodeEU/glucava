@@ -74,6 +74,9 @@ func main() {
 		if !secrets.KeyFromEnv() {
 			log.Printf("encryption key is stored in %s; keep it out of backups of the data dir, or set GLUCAVA_SECRET_KEY", secrets.KeyFilePath(app.DataDir()))
 		}
+		if err := bootstrap.EnsureDexcomCredential(app, vault, secrets.NameDexcomPassword); err != nil {
+			return err
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		app.OnTerminate().BindFunc(func(te *core.TerminateEvent) error {
