@@ -38,7 +38,7 @@ Put a TLS reverse proxy in front. Then:
   `curl -X POST -H "Authorization: Bearer gst_..." https://host/api/trigger`
 - **Manual:** open an activity for a preview, then Process or Reprocess. Existing text is kept; only the 🩸 block is replaced.
 - **Notifications:** ntfy or webhook (HMAC-signed) on failures and expired sessions.
-- Dexcom Share itself only serves ~24 h of history, but a background job stores every reading it sees into glucava's own database as it arrives, so an activity can still be reprocessed later as long as its window is within Settings → **Your data** → retention (default 365 days). An activity missed entirely while it was still fresh (e.g. glucava was not running, or the reading never got ingested) cannot be recovered after the fact.
+- Dexcom Share itself only serves ~24 h of history, but a background job stores every reading it sees into glucava's own database as it arrives, so an activity can still be reprocessed later as long as its window is within Settings → **Your data** → retention (default 365 days). An activity missed entirely while it was still fresh (e.g. glucava was not running, or the reading never got ingested) cannot be recovered after the fact — unless you can still get that period as an export file: `make glucose-import FILE=export.csv FORMAT=libre` backfills readings from another app's export directly into the same database, so an older activity can be reprocessed against them. `glucava glucose import --format` currently understands `libre` (a LibreView CSV export; unverified against a real file — see the code comment) and `nightscout` (an `entries.json` export). Adding another format is one function; see the extension point below.
 
 ## Configuration
 
@@ -73,6 +73,18 @@ type Source interface {
 }
 ```
 
-A Libre, Tandem, Medtronic, or file-import source is a new type implementing that one method, wired in `cmd/glucava/main.go` next to `dexcomSource`. No changes needed elsewhere. Contributed sources for hardware the maintainer doesn't own are welcome but untested by CI; say so plainly in the code and docs, the same way the experimental Strava auto-login is marked.
+A Libre, Tandem or Medtronic **live API** source is a new type implementing that one method, wired in `cmd/glucava/main.go` next to `dexcomSource`. No changes needed elsewhere.
+
+**Adding a file importer** (a one-shot export, not a live API) is a separate, smaller interface in `internal/glucose/importers`:
+
+```go
+type Importer interface {
+    Parse(r io.Reader) (samples []stats.Sample, skipped int, err error)
+}
+```
+
+Register it by name in an `init()` func (see `libre.go`) and it is immediately available to `glucava glucose import --format <name>`; no other wiring needed.
+
+Either kind of contributed source, for hardware or an account type the maintainer doesn't have, is welcome but untested by CI; say so plainly in the code and docs, the same way the experimental Strava auto-login and the Libre importer are marked.
 
 License: AGPL-3.0.

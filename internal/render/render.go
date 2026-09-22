@@ -11,8 +11,6 @@ import (
 // Prefix starts the first line of the block. Merge uses it to find a previous block.
 const Prefix = "🩸 "
 
-const mmolFactor = 18.016
-
 // Unit is the glucose display unit.
 type Unit string
 
@@ -52,7 +50,7 @@ func Block(sum stats.Summary, samples []stats.Sample, opt Options) string {
 // Value formats a glucose value given in mg/dL for display in unit u.
 func Value(v float64, u Unit) string {
 	if u == MmolL {
-		return fmt.Sprintf("%.1f", v/mmolFactor)
+		return fmt.Sprintf("%.1f", v/stats.MmolFactor)
 	}
 	return fmt.Sprintf("%.0f", v)
 }
