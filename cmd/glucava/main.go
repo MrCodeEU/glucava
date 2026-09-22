@@ -21,6 +21,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/demo"
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/notify"
@@ -122,6 +123,11 @@ func main() {
 			},
 		}
 		go poller.Run(ctx)
+
+		if !demoMode { // demo's Source is fake data with no history worth storing
+			in := &ingest.Ingestor{Source: source, Store: st, SourceName: sourceName}
+			go in.Run(ctx)
+		}
 
 		go func() { // apply the retention setting at start and every few hours
 			for {
