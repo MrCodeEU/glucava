@@ -12,6 +12,7 @@
 package importers
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sort"
@@ -55,4 +56,31 @@ func Names() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ZipAware is implemented by an Importer that understands being handed a zip
+// archive directly (see glookoImporter). CheckZipSupport uses it to give a
+// clear error instead of a confusing low-level parse failure (e.g. a JSON or
+// CSV parser choking on the zip's binary header) when a zip is handed to a
+// format that expects a plain file.
+type ZipAware interface {
+	AcceptsZip() bool
+}
+
+// CheckZipSupport peeks the start of r, rewinding afterwards, and returns a
+// clear error if it looks like a zip archive but imp does not accept one.
+// Call it before imp.Parse(r).
+func CheckZipSupport(imp Importer, r io.ReadSeeker, formatName string) error {
+	magic := make([]byte, 4)
+	n, _ := io.ReadFull(r, magic)
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("importers: rewind after peek: %w", err)
+	}
+	if n < 4 || !bytes.Equal(magic, zipMagic) {
+		return nil
+	}
+	if za, ok := imp.(ZipAware); ok && za.AcceptsZip() {
+		return nil
+	}
+	return fmt.Errorf("this file looks like a zip archive, but %q does not read zip files directly; extract it and point the import at the file inside, or pick a format that supports zip", formatName)
 }

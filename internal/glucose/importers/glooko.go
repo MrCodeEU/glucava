@@ -33,6 +33,10 @@ func init() {
 // construction rather than by filtering.
 type glookoImporter struct{}
 
+// AcceptsZip marks glookoImporter as understanding a zip directly (see
+// importers.ZipAware).
+func (glookoImporter) AcceptsZip() bool { return true }
+
 var glookoTimeLayouts = []string{
 	"02.01.2006 15:04",
 	"01/02/2006 15:04",

@@ -38,6 +38,9 @@ func glucoseCommand(app core.App, st *store.PB) *cobra.Command {
 			}
 			defer func() { _ = f.Close() }()
 
+			if err := importers.CheckZipSupport(importer, f, format); err != nil {
+				return err
+			}
 			samples, skipped, err := importer.Parse(f)
 			if err != nil {
 				return fmt.Errorf("parse %s as %s: %w", args[0], format, err)

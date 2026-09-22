@@ -495,7 +495,19 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 // JavaScript. It redirects back to Settings with a one-shot flash message in
 // the query string, the same way the plain login form reports its error.
 func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
+	// importFetch marks the request as coming from the progressive-enhancement
+	// script (static/glucose-import.js), which submits via fetch so it can
+	// swap in the result in place instead of a full page reload that leaves
+	// you back at the top of Settings, scrolled away from what you just did.
+	// A plain form post (no JS) instead redirects back with a flash message,
+	// same as the login page's error handling.
+	ajax := r.Header.Get("X-Glucava-Fetch") == "1"
 	fail := func(msg string) {
+		if ajax {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, renderString(GlucoseImportStatus("", msg)))
+			return
+		}
 		http.Redirect(w, r, "/settings?importErr="+url.QueryEscape(msg), http.StatusSeeOther)
 	}
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -519,6 +531,10 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = file.Close() }()
 
+	if err := importers.CheckZipSupport(imp, file, format); err != nil {
+		fail(err.Error())
+		return
+	}
 	samples, skipped, err := imp.Parse(file)
 	if err != nil {
 		fail("Could not read the file: " + err.Error())
@@ -538,6 +554,11 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("Stored %d readings as %q.", len(samples), source)
 	if skipped > 0 {
 		msg += fmt.Sprintf(" %d rows were skipped (not a glucose reading, or unparseable).", skipped)
+	}
+	if ajax {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, renderString(GlucoseImportStatus(msg, "")))
+		return
 	}
 	http.Redirect(w, r, "/settings?importOK="+url.QueryEscape(msg), http.StatusSeeOther)
 }
