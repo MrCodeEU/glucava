@@ -372,6 +372,18 @@ func WebhookSecretStatus(has bool) g.Node {
 		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
 }
 
+// GlucoseImportStatus renders the outcome of a glucose import: exactly one
+// of ok/errMsg is non-empty, or both empty for the initial page render. It
+// has a stable ID so both the plain-form flash render and the progressive-
+// enhancement fetch response (static/glucose-import.js) use the same markup,
+// letting the script swap it in without a page reload.
+func GlucoseImportStatus(ok, errMsg string) g.Node {
+	return Div(ID("glucose-import-status"),
+		g.If(ok != "", Notice("ok", g.Text(ok))),
+		g.If(errMsg != "", Notice("error", g.Text(errMsg))),
+	)
+}
+
 func importFormatOptions(names []string) g.Node {
 	opts := make([]g.Node, len(names))
 	for i, n := range names {
@@ -436,15 +448,15 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 			g.If(len(d.ImportFormats) > 0, Card(
 				H2(g.Text("Import glucose readings")),
 				P(Class("muted"), g.Text("Backfill readings from an export file, e.g. switching from another app or restoring a period the live source no longer serves. This adds to what is already stored; nothing existing is touched.")),
-				g.If(d.ImportOK != "", Notice("ok", g.Text(d.ImportOK))),
-				g.If(d.ImportErr != "", Notice("error", g.Text(d.ImportErr))),
-				Form(Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
+				GlucoseImportStatus(d.ImportOK, d.ImportErr),
+				Form(ID("glucose-import-form"), Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
 					Field("glucoseFormat", "Format", "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
 					Field("glucoseSource", "Label (optional)", "Distinguishes these readings from the live source; defaults to the format name.",
 						Input(Type("text"), Name("source"), AutoComplete("off"))),
 					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt,.zip"), Required())),
 					SubmitBtn("primary", "", "Import"),
 				),
+				Script(Src("/static/glucose-import.js")),
 			)),
 			Card(H2(g.Text("Your data")),
 				P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),
