@@ -1,6 +1,8 @@
 package web
 
 import (
+	"fmt"
+
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 )
@@ -12,6 +14,7 @@ type PageData struct {
 	User   string
 	Build  string
 	Demo   bool
+	Alerts int // recent error events, shown as a badge on Notifications
 }
 
 var navItems = []struct{ key, href, label string }{
@@ -43,8 +46,12 @@ func head(title, build string) g.Node {
 func Page(pd PageData, body ...g.Node) g.Node {
 	links := make([]g.Node, 0, len(navItems))
 	for _, it := range navItems {
+		label := []g.Node{g.Text(it.label)}
+		if it.key == "events" && pd.Alerts > 0 {
+			label = append(label, g.Text(" "), Badge("error", fmt.Sprint(pd.Alerts)))
+		}
 		links = append(links, A(append(comp("navlink"),
-			Href(it.href), g.Text(it.label),
+			Href(it.href), g.Group(label),
 			g.If(it.key == pd.Active, g.Attr("aria-current", "page")))...))
 	}
 
@@ -72,7 +79,9 @@ func Page(pd PageData, body ...g.Node) g.Node {
 }
 
 // LoginPage is the sign-in form. It is a plain HTML form, so it works without JavaScript.
-func LoginPage(build, errMsg string) g.Node {
+// email is redisplayed after a failed attempt so a mistyped password does not
+// also cost the address; the password field is always left blank.
+func LoginPage(build, errMsg, email string) g.Node {
 	return g.Group([]g.Node{
 		g.Raw("<!doctype html>"),
 		HTML(Lang("en"),
@@ -83,7 +92,7 @@ func LoginPage(build, errMsg string) g.Node {
 					P(Class("muted"), g.Text("Sign in to continue.")),
 					g.If(errMsg != "", Notice("error", g.Text(errMsg))),
 					Form(Method("post"), Action("/login"),
-						Field("email", "Email", "", Input(ID("email"), Name("email"), Type("email"), Required(), AutoComplete("username"), AutoFocus())),
+						Field("email", "Email", "", Input(ID("email"), Name("email"), Type("email"), Value(email), Required(), AutoComplete("username"), AutoFocus())),
 						Field("password", "Password", "", Input(ID("password"), Name("password"), Type("password"), Required(), AutoComplete("current-password"))),
 						SubmitBtn("primary", "", "Sign in"),
 					),

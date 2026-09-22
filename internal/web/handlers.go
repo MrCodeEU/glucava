@@ -496,6 +496,56 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	s.toast(sse, "ok", "Token revoked.")
 }
 
+func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		Email    string `json:"loginEmail"`
+		Password string `json:"loginPassword"`
+	}
+	readErr := datastar.ReadSignals(r, &v)
+	sse := datastar.NewSSE(w, r)
+	if readErr != nil || v.Email == "" || v.Password == "" {
+		s.toast(sse, "error", "Enter an email and password.")
+		return
+	}
+	if s.StravaLogin == nil {
+		s.toast(sse, "error", "Automatic sign-in is not available here.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	err := s.StravaLogin(ctx, v.Email, v.Password)
+	v.Password = "" // best effort; the value also never leaves this function on our end
+
+	s.mu.Lock()
+	s.lastCheck.at, s.lastCheck.ok, s.lastCheck.err = s.now(), err == nil, ""
+	if err != nil {
+		s.lastCheck.err = strava.ExplainLoginError(err)
+	}
+	s.mu.Unlock()
+
+	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
+	if err != nil {
+		s.toast(sse, "error", "Automatic sign-in stopped: "+strava.ExplainLoginError(err))
+		return
+	}
+	s.toast(sse, "ok", "Signed in and stored the session.")
+}
+
+func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	if s.GlucoseTest == nil {
+		s.toast(sse, "error", "Dexcom testing is not available here.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.GlucoseTest(ctx); err != nil {
+		s.toast(sse, "error", "Dexcom check failed: "+err.Error())
+		return
+	}
+	s.toast(sse, "ok", "Dexcom accepted the stored credentials.")
+}
+
 func (s *Server) actionPurge(w http.ResponseWriter, r *http.Request) {
 	var v struct {
 		Confirm string `json:"purgeConfirm"`

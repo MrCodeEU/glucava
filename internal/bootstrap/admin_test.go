@@ -56,3 +56,20 @@ func TestEnsureAdminUserRejectsShortPassword(t *testing.T) {
 		t.Errorf("users = %d", n)
 	}
 }
+
+func TestSilenceSuperuserPromptIsIdempotentAndOnlyOnce(t *testing.T) {
+	app := newApp(t)
+	if err := SilenceSuperuserPrompt(app); err != nil {
+		t.Fatal(err)
+	}
+	n, err := app.CountRecords(core.CollectionNameSuperusers)
+	if err != nil || n != 1 {
+		t.Fatalf("superusers = %d, %v", n, err)
+	}
+	if err := SilenceSuperuserPrompt(app); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := app.CountRecords(core.CollectionNameSuperusers); n != 1 {
+		t.Errorf("superusers after second call = %d", n)
+	}
+}

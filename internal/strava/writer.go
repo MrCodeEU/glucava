@@ -74,11 +74,12 @@ type Config struct {
 	// so a session that Strava rotates stays valid.
 	SaveCookies func([]Cookie) error
 
-	Selectors     Selectors
-	Pause         func()        // called between steps to look less robotic; nil means no pause
-	Timeout       time.Duration // whole run; default 2 minutes
-	LocateTimeout time.Duration // wait for an element; default 15 seconds
-	SaveTimeout   time.Duration // wait for the page to leave /edit after saving; default 15 seconds
+	Selectors      Selectors
+	LoginSelectors LoginSelectors // unverified guesses at the login form; see DefaultLoginSelectors
+	Pause          func()         // called between steps to look less robotic; nil means no pause
+	Timeout        time.Duration  // whole run; default 2 minutes
+	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
+	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
 }
 
 // Writer implements jobs.Writer with chromedp.
@@ -172,6 +173,143 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 	})
 }
 
+// LoginSelectors are unverified guesses at Strava's login form.
+type LoginSelectors struct {
+	Email    []string
+	Password []string
+	Submit   []string
+}
+
+// DefaultLoginSelectors are the built-in candidates.
+var DefaultLoginSelectors = LoginSelectors{
+	Email:    []string{`input[name="email"]`, `#email`, `input[type="email"]`},
+	Password: []string{`input[name="password"]`, `#password`, `input[type="password"]`},
+	Submit:   []string{`#login-button`, `button[type="submit"]`, `input[type="submit"]`},
+}
+
+// LoginBlocked explains why an automatic sign-in stopped instead of guessing.
+type LoginBlocked string
+
+const (
+	// BlockedCredentials means Strava rejected the email or password.
+	BlockedCredentials LoginBlocked = "invalid_credentials"
+	// BlockedChallenge means Strava asked for something Glucava will not attempt:
+	// a CAPTCHA, an SMS/email code, or a "verify this device" step.
+	BlockedChallenge LoginBlocked = "challenge"
+	// BlockedUnknown means the page did not reach the dashboard and matched
+	// nothing recognised within the timeout.
+	BlockedUnknown LoginBlocked = "unknown"
+)
+
+// LoginError is returned by Login when it stops instead of writing cookies.
+type LoginError struct {
+	Reason LoginBlocked
+	Detail string
+}
+
+func (e *LoginError) Error() string {
+	if e.Detail != "" {
+		return fmt.Sprintf("strava: sign-in stopped (%s): %s", e.Reason, e.Detail)
+	}
+	return fmt.Sprintf("strava: sign-in stopped (%s)", e.Reason)
+}
+
+// challengeMarkers are page fragments that mean "do not proceed automatically".
+// Unverified: Strava's actual DOM for these flows has not been observed.
+var challengeMarkers = []string{
+	"captcha", "recaptcha", "hcaptcha", "verify it's you", "verification code",
+	"check your email", "check your phone", "enter the code", "two-factor", "2fa",
+}
+
+// Login is EXPERIMENTAL and unverified against the real strava.com login form.
+// It fills the login form and submits it once. It never guesses past a
+// CAPTCHA, a verification code, or a wrong-credentials message — those stop
+// with a LoginError so the caller can fall back to cookie import. On success
+// it hands the resulting session cookies to SaveCookies; nothing is persisted
+// on failure, and the password is never written anywhere by this function.
+func (w *Writer) Login(ctx context.Context, email, password string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	sel := w.cfg.LoginSelectors
+	if len(sel.Email) == 0 {
+		sel = DefaultLoginSelectors
+	}
+
+	return w.withFreshBrowser(ctx, func(ctx context.Context) error {
+		if err := chromedp.Run(ctx, chromedp.Navigate(w.cfg.BaseURL+"/login")); err != nil {
+			return fmt.Errorf("strava: open login page: %w", err)
+		}
+
+		emailSel, err := w.locate(ctx, "login-email", w.cfg.BaseURL+"/login", sel.Email)
+		if err != nil {
+			return err
+		}
+		pwSel, err := w.locate(ctx, "login-password", w.cfg.BaseURL+"/login", sel.Password)
+		if err != nil {
+			return err
+		}
+		if _, err := evalString(ctx, setValueJS(emailSel, email)); err != nil {
+			return err
+		}
+		if _, err := evalString(ctx, setValueJS(pwSel, password)); err != nil {
+			return err
+		}
+		w.pause()
+
+		submit := sel.Submit
+		if len(submit) == 0 {
+			submit = DefaultLoginSelectors.Submit
+		}
+		clickJS := `(function(cands){for(const s of cands){const b=document.querySelector(s);if(b){b.click();return 'true'}}return ''})(` + jsJSON(submit) + `)`
+		clicked, err := evalString(ctx, clickJS)
+		if err != nil {
+			return err
+		}
+		if clicked != "true" {
+			return &SelectorError{Key: "login-submit", Tried: submit, URL: w.cfg.BaseURL + "/login"}
+		}
+
+		deadline := time.Now().Add(w.cfg.LocateTimeout)
+		for {
+			var loc string
+			if err := chromedp.Run(ctx, chromedp.Location(&loc)); err == nil && !isLoginURL(loc) {
+				return w.exportCookies(ctx)
+			}
+			body, err := evalString(ctx, `document.body ? document.body.innerText.slice(0,4000).toLowerCase() : ""`)
+			if err == nil {
+				for _, m := range challengeMarkers {
+					if strings.Contains(body, m) {
+						return &LoginError{Reason: BlockedChallenge, Detail: "Strava is asking for something beyond email and password (CAPTCHA, code or device check). Use cookie import instead."}
+					}
+				}
+				if strings.Contains(body, "incorrect") || strings.Contains(body, "wrong") || strings.Contains(body, "invalid") {
+					return &LoginError{Reason: BlockedCredentials, Detail: "Strava reported a problem with the email or password."}
+				}
+			}
+			if time.Now().After(deadline) {
+				return &LoginError{Reason: BlockedUnknown, Detail: "the page never left the login screen"}
+			}
+			if err := sleep(ctx, 300*time.Millisecond); err != nil {
+				return err
+			}
+		}
+	})
+}
+
+// ExplainLoginError turns the result of Login into a message for the UI.
+func ExplainLoginError(err error) string {
+	var le *LoginError
+	if errors.As(err, &le) {
+		return le.Detail
+	}
+	var se *SelectorError
+	if errors.As(err, &se) {
+		return "the login form did not look as expected; use cookie import instead."
+	}
+	return err.Error()
+}
+
 // CheckSession reports ErrSessionExpired when the stored cookies no longer log in.
 func (w *Writer) CheckSession(ctx context.Context) error {
 	return w.withBrowser(ctx, func(ctx context.Context) error {
@@ -263,7 +401,7 @@ func (w *Writer) save(ctx context.Context, descSel, editURL string) error {
 	return nil
 }
 
-// withBrowser starts Chrome, sets the cookies, and runs fn.
+// withBrowser starts Chrome, sets the stored cookies, and runs fn.
 func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -275,6 +413,18 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 	if len(cookies) == 0 {
 		return ErrSessionExpired
 	}
+	return w.withFreshBrowser(ctx, func(ctx context.Context) error {
+		if err := chromedp.Run(ctx, w.setCookies(cookies)); err != nil {
+			return fmt.Errorf("strava: set cookies: %w", err)
+		}
+		return fn(ctx)
+	})
+}
+
+// withFreshBrowser starts Chrome with no cookies of its own and runs fn.
+// Callers that need the stored session use withBrowser instead; this is for
+// Login, which has no session yet.
+func (w *Writer) withFreshBrowser(ctx context.Context, fn func(context.Context) error) error {
 	path, err := w.chromePath()
 	if err != nil {
 		return err
@@ -283,8 +433,8 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 	ctx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
 	defer cancel()
 
-	// The profile holds the session cookies while Chrome runs. Keep it in a
-	// private directory of our own and delete it afterwards.
+	// The profile holds cookies while Chrome runs. Keep it in a private
+	// directory of our own and delete it afterwards.
 	profile, err := os.MkdirTemp("", "glucava-chrome-*")
 	if err != nil {
 		return fmt.Errorf("strava: create browser profile: %w", err)
@@ -306,7 +456,7 @@ func (w *Writer) withBrowser(ctx context.Context, fn func(context.Context) error
 		_ = chromedp.Cancel(bctx) // waits for Chrome to exit before the profile is deleted
 	}()
 
-	if err := chromedp.Run(bctx, w.setCookies(cookies)); err != nil {
+	if err := chromedp.Run(bctx, chromedp.Navigate("about:blank")); err != nil {
 		if out := strings.TrimSpace(chromeOut.String()); out != "" {
 			err = fmt.Errorf("%w (chrome: %s)", err, out)
 		}

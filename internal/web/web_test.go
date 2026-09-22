@@ -219,12 +219,18 @@ func TestLoginFailureGivesNoHint(t *testing.T) {
 		r.Header.Set("Origin", origin)
 		return e.do(r)
 	}
-	a, b := post(testEmail, "wrong"), post("nobody@example.test", "wrong")
+	// Same typed email in both cases: only whether the account exists differs,
+	// which must not be observable beyond the email echoed back verbatim.
+	a, b := post(testEmail, "wrong"), post(testEmail, "also-wrong")
 	if a.Code != http.StatusUnauthorized || b.Code != http.StatusUnauthorized {
 		t.Fatalf("codes = %d, %d", a.Code, b.Code)
 	}
 	if a.Body.String() != b.Body.String() {
-		t.Error("unknown email and wrong password give different responses")
+		t.Error("two wrong passwords for the same email gave different responses")
+	}
+	c := post("nobody@example.test", "wrong")
+	if strings.ReplaceAll(a.Body.String(), testEmail, "X") != strings.ReplaceAll(c.Body.String(), "nobody@example.test", "X") {
+		t.Error("unknown email and wrong password give different responses beyond the echoed email")
 	}
 	if len(a.Result().Cookies()) != 0 {
 		t.Error("cookie set on failed login")
@@ -706,5 +712,93 @@ func TestRetentionValidation(t *testing.T) {
 	v.RetentionDays = 0
 	if msg := v.validate(); msg != "" {
 		t.Errorf("0 rejected: %s", msg)
+	}
+}
+
+func TestLoginFailureKeepsEmail(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	form := url.Values{"email": {testEmail}, "password": {"wrong"}}
+	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", origin)
+	w := e.do(r)
+	if !strings.Contains(w.Body.String(), `value="`+testEmail+`"`) {
+		t.Errorf("email not redisplayed:\n%s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), `value="wrong"`) {
+		t.Error("password redisplayed")
+	}
+}
+
+func TestNavBadgeShowsRecentErrors(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	w := e.get(t, "/", c)
+	if strings.Contains(w.Body.String(), `data-variant="error"`) {
+		t.Error("badge shown with no events")
+	}
+	ctx := context.Background()
+	_ = e.srv.Store.RecordEvent(ctx, jobs.Event{Type: jobs.EventSessionExpired, Severity: "error", Message: "x"})
+	_ = e.srv.Store.RecordEvent(ctx, jobs.Event{Type: jobs.EventGlucoseUnavailable, Severity: "warning", Message: "y"})
+	w = e.get(t, "/settings", c)
+	if !strings.Contains(w.Body.String(), `data-variant="error">1<`) {
+		t.Errorf("badge missing or wrong count:\n%s", w.Body.String())
+	}
+}
+
+func TestActionDexcomTestUnavailableByDefault(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	w := e.action("/actions/dexcom/test", "{}", c, nil)
+	if !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionDexcomTest(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	e.srv.GlucoseTest = func(context.Context) error { return errors.New("bad login") }
+	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "bad login") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	e.srv.GlucoseTest = func(context.Context) error { return nil }
+	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "accepted") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionStravaLoginValidatesAndReportsBlocked(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	if w := e.action("/actions/strava/login", `{"loginEmail":"","loginPassword":""}`, c, nil); !strings.Contains(w.Body.String(), "Enter an email") {
+		t.Errorf("empty form: %s", w.Body.String())
+	}
+	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"x"}`, c, nil); !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("no StravaLogin wired: %s", w.Body.String())
+	}
+
+	var gotEmail, gotPassword string
+	e.srv.StravaLogin = func(_ context.Context, email, password string) error {
+		gotEmail, gotPassword = email, password
+		return &strava.LoginError{Reason: strava.BlockedChallenge, Detail: "needs a code"}
+	}
+	w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil)
+	if !strings.Contains(w.Body.String(), "needs a code") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if gotEmail != "a@example.test" || gotPassword != "hunter2" {
+		t.Errorf("got %q %q", gotEmail, gotPassword)
+	}
+
+	e.srv.StravaLogin = func(context.Context, string, string) error { return nil }
+	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil); !strings.Contains(w.Body.String(), "Signed in") {
+		t.Errorf("success body = %s", w.Body.String())
 	}
 }

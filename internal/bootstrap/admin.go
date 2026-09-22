@@ -2,7 +2,10 @@
 package bootstrap
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -53,4 +56,37 @@ func EnforceSingleUser(app core.App) {
 		}
 		return e.Next()
 	})
+}
+
+// SilenceSuperuserPrompt creates a superuser with a random, discarded password
+// if none exists. Glucava's own account is the "users" collection, not
+// PocketBase superusers, and the admin UI/API are blocked (see
+// cmd/glucava blockPocketBase), so this account is unreachable. It exists
+// only to stop PocketBase's installer banner, which otherwise prints a
+// working one-time setup link to the log on every start.
+func SilenceSuperuserPrompt(app core.App) error {
+	n, err := app.CountRecords(core.CollectionNameSuperusers)
+	if err != nil || n > 0 {
+		return err
+	}
+	col, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil {
+		return err
+	}
+	pw, err := randomPassword()
+	if err != nil {
+		return err
+	}
+	rec := core.NewRecord(col)
+	rec.SetEmail(fmt.Sprintf("glucava-internal-%d@localhost.invalid", os.Getpid()))
+	rec.SetPassword(pw)
+	return app.Save(rec)
+}
+
+func randomPassword() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
