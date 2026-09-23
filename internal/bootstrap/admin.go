@@ -120,6 +120,50 @@ func ApplyRetentionOverride(app core.App) error {
 	return nil
 }
 
+// ApplySMTPOverride configures PocketBase's own mailer from GLUCAVA_SMTP_*
+// env vars, so the email notify channel has somewhere to send through
+// without exposing the PocketBase admin UI (which is blocked by default).
+// It does nothing when GLUCAVA_SMTP_HOST is unset. Like
+// ApplyRetentionOverride, it always wins over anything saved through the
+// (normally unreachable) admin UI, applied fresh on every start.
+func ApplySMTPOverride(app core.App) error {
+	host := os.Getenv("GLUCAVA_SMTP_HOST")
+	if host == "" {
+		return nil
+	}
+	senderAddr := os.Getenv("GLUCAVA_SMTP_SENDER_ADDRESS")
+	if senderAddr == "" {
+		return fmt.Errorf("bootstrap: GLUCAVA_SMTP_SENDER_ADDRESS is required when GLUCAVA_SMTP_HOST is set")
+	}
+	port := 587
+	if raw := os.Getenv("GLUCAVA_SMTP_PORT"); raw != "" {
+		p, err := strconv.Atoi(raw)
+		if err != nil || p <= 0 {
+			return fmt.Errorf("bootstrap: GLUCAVA_SMTP_PORT must be a positive integer, got %q", raw)
+		}
+		port = p
+	}
+	senderName := os.Getenv("GLUCAVA_SMTP_SENDER_NAME")
+	if senderName == "" {
+		senderName = "glucava"
+	}
+
+	s := app.Settings()
+	s.SMTP.Enabled = true
+	s.SMTP.Host = host
+	s.SMTP.Port = port
+	s.SMTP.Username = os.Getenv("GLUCAVA_SMTP_USERNAME")
+	s.SMTP.Password = os.Getenv("GLUCAVA_SMTP_PASSWORD")
+	s.SMTP.TLS = os.Getenv("GLUCAVA_SMTP_TLS") == "1"
+	s.Meta.SenderAddress = senderAddr
+	s.Meta.SenderName = senderName
+	if err := app.Save(s); err != nil {
+		return fmt.Errorf("bootstrap: apply SMTP settings: %w", err)
+	}
+	log.Printf("bootstrap: SMTP configured from the environment (%s:%d)", host, port)
+	return nil
+}
+
 // EnforceSingleUser rejects creating a second user. Glucava keeps one person's
 // medical data, and every account sees all of it.
 func EnforceSingleUser(app core.App) {

@@ -260,12 +260,12 @@ func (s *PB) MarkNotified(_ context.Context, id string) error {
 }
 
 // NotifySettings returns the notification targets from the settings row.
-func (s *PB) NotifySettings() (ntfyURL, webhookURL string, err error) {
+func (s *PB) NotifySettings() (ntfyURL, webhookURL, emailTo string, err error) {
 	recs, err := s.App.FindRecordsByFilter("settings", "", "created", 1, 0)
 	if err != nil || len(recs) == 0 {
-		return "", "", err
+		return "", "", "", err
 	}
-	return recs[0].GetString("ntfy_url"), recs[0].GetString("webhook_url"), nil
+	return recs[0].GetString("ntfy_url"), recs[0].GetString("webhook_url"), recs[0].GetString("email_to"), nil
 }
 
 // DexcomSettings returns the Dexcom region key ("us", "ous", "jp") and username.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"sort"
@@ -416,6 +417,7 @@ type settingsSignals struct {
 	NtfyToken      string  `json:"ntfyToken"`
 	WebhookURL     string  `json:"webhookURL"`
 	WebhookSecret  string  `json:"webhookSecret"`
+	EmailTo        string  `json:"emailTo"`
 	RetentionDays  int     `json:"retentionDays"`
 }
 
@@ -442,8 +444,18 @@ func (v settingsSignals) validate() string {
 		return "The ntfy URL must start with http:// or https://."
 	case !validOptionalURL(v.WebhookURL):
 		return "The webhook URL must start with http:// or https://."
+	case !validOptionalEmail(v.EmailTo):
+		return "The notification email address is not valid."
 	}
 	return ""
+}
+
+func validOptionalEmail(s string) bool {
+	if s == "" {
+		return true
+	}
+	_, err := mail.ParseAddress(s)
+	return err == nil
 }
 
 func validOptionalURL(s string) bool {
@@ -475,7 +487,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.Unit, cfg.RangeLow, cfg.RangeHigh = v.Unit, v.RangeLow, v.RangeHigh
 	cfg.PreMin, cfg.PostMin, cfg.PollMin, cfg.Lang = v.PreMin, v.PostMin, v.PollMin, v.Lang
 	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
-	cfg.NtfyURL, cfg.WebhookURL = v.NtfyURL, v.WebhookURL
+	cfg.NtfyURL, cfg.WebhookURL, cfg.EmailTo = v.NtfyURL, v.WebhookURL, v.EmailTo
 	cfg.RetentionDays = v.RetentionDays
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
