@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
@@ -40,7 +41,7 @@ func (s *Server) serverError(w http.ResponseWriter, err error) {
 // ------------------------------------------------------------------- pages
 
 func (s *Server) sessionInfo() SessionInfo {
-	info := SessionInfo{}
+	info := SessionInfo{CanFindActivity: s.FindActivity != nil}
 	raw, ok, err := s.Vault.Get(secrets.NameStravaCookies)
 	if err == nil && ok {
 		if list, derr := strava.DecodeCookies(raw); derr == nil && len(list) > 0 {
@@ -104,7 +105,9 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 		return nil, err
 	}
 	pre, post := time.Duration(cfg.PreMin)*time.Minute, time.Duration(cfg.PostMin)*time.Minute
-	samples, err := s.Store.LoadSamples(ctx, s.SourceName, act.Start.Add(-pre), act.End().Add(post))
+	// Any source: an activity's window may be covered by the live source, a
+	// backfilled import, or both, depending on how old it is.
+	samples, err := s.Store.LoadSamplesAny(ctx, act.Start.Add(-pre), act.End().Add(post))
 	if err != nil {
 		return nil, err
 	}
@@ -311,6 +314,67 @@ func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// actionProcessActivity looks up an arbitrary Strava activity id (one the
+// poller never queued, e.g. it predates this app or is older than its
+// MaxAge) and queues it for processing, same as reprocessing an existing
+// one. If the id is already in the store, it just reprocesses that row
+// instead of looking it up on Strava again.
+func (s *Server) actionProcessActivity(w http.ResponseWriter, r *http.Request) {
+	var v struct {
+		ActivityID string `json:"processActivityId"`
+	}
+	readErr := datastar.ReadSignals(r, &v)
+	sse := datastar.NewSSE(w, r)
+	id := strings.TrimSpace(v.ActivityID)
+	if readErr != nil || !digits.MatchString(id) {
+		s.toast(sse, "error", "Enter a numeric Strava activity id.")
+		return
+	}
+	if s.FindActivity == nil {
+		s.toast(sse, "error", "Looking up an activity by id is not available here.")
+		return
+	}
+
+	act, err := s.Store.Activity(r.Context(), id)
+	if err != nil {
+		s.toast(sse, "error", "Could not look up that activity: "+err.Error())
+		return
+	}
+	if act == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		found, ferr := s.FindActivity(ctx, id)
+		switch {
+		case errors.Is(ferr, jobs.ErrSessionExpired):
+			s.toast(sse, "error", "The Strava session has expired; import fresh cookies.")
+			return
+		case ferr != nil:
+			log.Printf("web: find activity %s: %v", id, ferr)
+			s.toast(sse, "error", "Could not look it up: "+ferr.Error())
+			return
+		case found == nil:
+			s.toast(sse, "error", "No activity with that id was found in your Strava training log.")
+			return
+		}
+		act = found
+	}
+	act.Status, act.Error = jobs.StatusPending, ""
+	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
+		s.toast(sse, "error", "Could not save the activity: "+err.Error())
+		return
+	}
+	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true})
+	switch {
+	case err != nil:
+		s.toast(sse, "error", "Could not queue it: "+err.Error())
+	case !queued:
+		s.toast(sse, "", "This activity is already queued.")
+	default:
+		_ = sse.PatchSignals([]byte(`{"processActivityId":""}`))
+		s.toast(sse, "ok", `Queued "`+act.Name+`" for processing.`)
+	}
+}
+
 func (s *Server) actionRestore(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if !digits.MatchString(r.PathValue("id")) {
@@ -495,7 +559,19 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 // JavaScript. It redirects back to Settings with a one-shot flash message in
 // the query string, the same way the plain login form reports its error.
 func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
+	// importFetch marks the request as coming from the progressive-enhancement
+	// script (static/glucose-import.js), which submits via fetch so it can
+	// swap in the result in place instead of a full page reload that leaves
+	// you back at the top of Settings, scrolled away from what you just did.
+	// A plain form post (no JS) instead redirects back with a flash message,
+	// same as the login page's error handling.
+	ajax := r.Header.Get("X-Glucava-Fetch") == "1"
 	fail := func(msg string) {
+		if ajax {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, renderString(GlucoseImportStatus("", msg)))
+			return
+		}
 		http.Redirect(w, r, "/settings?importErr="+url.QueryEscape(msg), http.StatusSeeOther)
 	}
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -519,6 +595,10 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = file.Close() }()
 
+	if err := importers.CheckZipSupport(imp, file, format); err != nil {
+		fail(err.Error())
+		return
+	}
 	samples, skipped, err := imp.Parse(file)
 	if err != nil {
 		fail("Could not read the file: " + err.Error())
@@ -538,6 +618,11 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprintf("Stored %d readings as %q.", len(samples), source)
 	if skipped > 0 {
 		msg += fmt.Sprintf(" %d rows were skipped (not a glucose reading, or unparseable).", skipped)
+	}
+	if ajax {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, renderString(GlucoseImportStatus(msg, "")))
+		return
 	}
 	http.Redirect(w, r, "/settings?importOK="+url.QueryEscape(msg), http.StatusSeeOther)
 }

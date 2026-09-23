@@ -70,6 +70,9 @@ func (m *memStore) LoadSamples(_ context.Context, _ string, from, to time.Time) 
 	}
 	return out, nil
 }
+func (m *memStore) LoadSamplesAny(ctx context.Context, from, to time.Time) ([]stats.Sample, error) {
+	return m.LoadSamples(ctx, "", from, to) // memStore never partitioned by source
+}
 func (m *memStore) RecordEvent(_ context.Context, e Event) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

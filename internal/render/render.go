@@ -8,8 +8,17 @@ import (
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
-// Prefix starts the first line of the block. Merge uses it to find a previous block.
+// Prefix starts the first line of the block, shown to the reader.
 const Prefix = "🩸 "
+
+// blockMarker is what Merge and Strip actually match on to recognise a
+// previous Glucava block. It is deliberately more specific than Prefix: the
+// emoji alone collides with any other app that also starts a line with a
+// blood drop (observed in the wild — Ando's own summary starts "🩸 Avg :
+// ..."), which made Strip and Merge mistake someone else's text for ours and
+// either eat or leave duplicates of it. TIR is the fixed word Block() always
+// writes right after Prefix, so this string only ever matches our own line.
+const blockMarker = Prefix + "TIR "
 
 // Unit is the glucose display unit.
 type Unit string
@@ -57,46 +66,61 @@ func Value(v float64, u Unit) string {
 
 func num(v float64, u Unit) string { return Value(v, u) }
 
-// Strip removes a Glucava block from existing and keeps the other text.
-func Strip(existing string) string {
-	existing = strings.ReplaceAll(existing, "\r\n", "\n")
-	lines := strings.Split(existing, "\n")
-	for i, l := range lines {
-		if !strings.HasPrefix(l, Prefix) {
+// removeBlocks returns lines with every Glucava block removed, and how many
+// were found. A block is a line starting with blockMarker, plus the line
+// right after it if that line is only sparkline characters (Block's own
+// shape: one line, or that line plus a sparkline). Bounding it this way,
+// rather than to the next blank line, is deliberate: Strava's own editor has
+// been observed collapsing blank lines between saves, and looping here means
+// several duplicate blocks left over from that (already-written, before this
+// fix) are all cleaned up the next time this activity is processed, not just
+// the first one found.
+func removeBlocks(lines []string) ([]string, int) {
+	out := make([]string, 0, len(lines))
+	found := 0
+	for i := 0; i < len(lines); i++ {
+		if !strings.HasPrefix(lines[i], blockMarker) {
+			out = append(out, lines[i])
 			continue
 		}
-		end := i + 1
-		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
-			end++
+		found++
+		if i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]) {
+			i++
 		}
-		out := append(append([]string(nil), lines[:i]...), lines[end:]...)
-		return strings.Trim(strings.Join(out, "\n"), "\n \t")
 	}
-	return strings.TrimRight(existing, " \n\t")
+	return out, found
 }
 
-// Merge puts block into existing. An earlier block, recognised by Prefix at the
-// start of a line and running to the next blank line or the end, is replaced in
-// place. Otherwise block is appended after a blank line. Other text is kept.
+// Strip removes every Glucava block from existing and keeps the other text.
+func Strip(existing string) string {
+	existing = strings.ReplaceAll(existing, "\r\n", "\n")
+	lines, found := removeBlocks(strings.Split(existing, "\n"))
+	if found == 0 {
+		return strings.TrimRight(existing, " \n\t")
+	}
+	return strings.Trim(strings.Join(lines, "\n"), "\n \t")
+}
+
+// Merge puts block into existing. Any earlier Glucava block (see blockMarker)
+// is removed first, then the new one is inserted where the first one was, or
+// appended after a blank line if there wasn't one. Other text — including
+// another app's own text that happens to share the 🩸 emoji — is kept as-is.
 func Merge(existing, block string) string {
 	existing = strings.ReplaceAll(existing, "\r\n", "\n")
 	lines := strings.Split(existing, "\n")
 
 	start := -1
 	for i, l := range lines {
-		if strings.HasPrefix(l, Prefix) {
+		if strings.HasPrefix(l, blockMarker) {
 			start = i
 			break
 		}
 	}
 	if start >= 0 {
-		end := start + 1
-		for end < len(lines) && strings.TrimSpace(lines[end]) != "" {
-			end++
-		}
+		rest, _ := removeBlocks(lines[start:])
 		out := append([]string(nil), lines[:start]...)
 		out = append(out, strings.Split(block, "\n")...)
-		out = append(out, lines[end:]...)
+		out = append(out, rest...)
 		return strings.Join(out, "\n")
 	}
 

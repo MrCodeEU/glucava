@@ -32,6 +32,11 @@ type SessionInfo struct {
 	CheckedAt  time.Time
 	CheckOK    bool
 	CheckErr   string
+
+	// CanFindActivity gates the "process a specific activity" card: whether
+	// looking an activity id up on Strava is wired up at all (it isn't in demo
+	// mode, or in any deployment that hasn't set web.Server.FindActivity).
+	CanFindActivity bool
 }
 
 // CookieInfo is a cookie name and expiry, never its value.
@@ -205,6 +210,8 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 	return Page(pd,
 		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhen(a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
 			A(append(comp("button"), Href("/"), g.Text("Back"))...),
+			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
+				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
 			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing")),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
@@ -322,6 +329,16 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 				Textarea(ID("cookies"), g.Attr("data-bind", "cookies"), Placeholder("Paste cookies here"), g.Attr("spellcheck", "false"), g.Attr("autocomplete", "off"))),
 			Btn("primary", "Import cookies", post("/actions/strava/cookies")),
 		),
+		g.If(s.CanFindActivity, Card(g.Attr("data-signals", `{"processActivityId":""}`),
+			H2(g.Text("Process a specific activity")),
+			P(Class("muted"), g.Text("Write the glucose description onto an activity that was never auto-detected, for "+
+				"example one from before glucava was running, or older than the polling window. It is looked up in your "+
+				"Strava training log if it isn't already known here.")),
+			Field("processActivityId", "Strava activity id", "The number at the end of the activity's URL on strava.com.",
+				Input(ID("processActivityId"), Type("text"), g.Attr("inputmode", "numeric"), Placeholder("1234567890"),
+					AutoComplete("off"), g.Attr("data-bind", "processActivityId"))),
+			IndicatorBtn("primary", "Process activity", "/actions/process", "processing"),
+		)),
 		Card(H2(g.Text("Good to know")),
 			Ul(
 				Li(g.Text("Automating the Strava website goes against Strava's terms of service. glucava uses one browser, one account and a few page loads per activity. Use it at your own risk.")),
@@ -370,6 +387,18 @@ func NtfySecretStatus(has bool) g.Node {
 func WebhookSecretStatus(has bool) g.Node {
 	return Div(ID("webhook-secret-status"), Class("help"),
 		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
+}
+
+// GlucoseImportStatus renders the outcome of a glucose import: exactly one
+// of ok/errMsg is non-empty, or both empty for the initial page render. It
+// has a stable ID so both the plain-form flash render and the progressive-
+// enhancement fetch response (static/glucose-import.js) use the same markup,
+// letting the script swap it in without a page reload.
+func GlucoseImportStatus(ok, errMsg string) g.Node {
+	return Div(ID("glucose-import-status"),
+		g.If(ok != "", Notice("ok", g.Text(ok))),
+		g.If(errMsg != "", Notice("error", g.Text(errMsg))),
+	)
 }
 
 func importFormatOptions(names []string) g.Node {
@@ -436,15 +465,15 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 			g.If(len(d.ImportFormats) > 0, Card(
 				H2(g.Text("Import glucose readings")),
 				P(Class("muted"), g.Text("Backfill readings from an export file, e.g. switching from another app or restoring a period the live source no longer serves. This adds to what is already stored; nothing existing is touched.")),
-				g.If(d.ImportOK != "", Notice("ok", g.Text(d.ImportOK))),
-				g.If(d.ImportErr != "", Notice("error", g.Text(d.ImportErr))),
-				Form(Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
+				GlucoseImportStatus(d.ImportOK, d.ImportErr),
+				Form(ID("glucose-import-form"), Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
 					Field("glucoseFormat", "Format", "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
 					Field("glucoseSource", "Label (optional)", "Distinguishes these readings from the live source; defaults to the format name.",
 						Input(Type("text"), Name("source"), AutoComplete("off"))),
-					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt"), Required())),
+					Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt,.zip"), Required())),
 					SubmitBtn("primary", "", "Import"),
 				),
+				Script(Src("/static/glucose-import.js")),
 			)),
 			Card(H2(g.Text("Your data")),
 				P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),

@@ -86,6 +86,10 @@ type Store interface {
 	SaveActivity(ctx context.Context, a *Activity) error
 	SaveSamples(ctx context.Context, source string, samples []stats.Sample) error
 	LoadSamples(ctx context.Context, source string, from, to time.Time) ([]stats.Sample, error)
+	// LoadSamplesAny is like LoadSamples but across every source, live or
+	// imported: a reading's provenance doesn't change whether it can be used
+	// to annotate an activity.
+	LoadSamplesAny(ctx context.Context, from, to time.Time) ([]stats.Sample, error)
 	RecordEvent(ctx context.Context, e Event) error
 }
 
