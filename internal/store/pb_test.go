@@ -194,16 +194,17 @@ func TestOutbox(t *testing.T) {
 func TestNotifySettings(t *testing.T) {
 	app := newApp(t)
 	s := &PB{App: app}
-	if n, w, err := s.NotifySettings(); err != nil || n != "" || w != "" {
-		t.Fatalf("defaults = %q %q %v", n, w, err)
+	if n, w, e, err := s.NotifySettings(); err != nil || n != "" || w != "" || e != "" {
+		t.Fatalf("defaults = %q %q %q %v", n, w, e, err)
 	}
 	recs, _ := app.FindRecordsByFilter("settings", "", "", 1, 0)
 	recs[0].Set("ntfy_url", "https://ntfy.example/t")
+	recs[0].Set("email_to", "me@example.com")
 	if err := app.Save(recs[0]); err != nil {
 		t.Fatal(err)
 	}
-	if n, _, _ := s.NotifySettings(); n != "https://ntfy.example/t" {
-		t.Errorf("ntfy = %q", n)
+	if n, _, e, _ := s.NotifySettings(); n != "https://ntfy.example/t" || e != "me@example.com" {
+		t.Errorf("ntfy = %q email = %q", n, e)
 	}
 }
 

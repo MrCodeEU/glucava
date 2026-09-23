@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -82,6 +83,9 @@ func main() {
 		if err := bootstrap.ApplyRetentionOverride(app); err != nil {
 			return err
 		}
+		if err := bootstrap.ApplySMTPOverride(app); err != nil {
+			return err
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		app.OnTerminate().BindFunc(func(te *core.TerminateEvent) error {
@@ -156,7 +160,7 @@ func main() {
 			}
 		}()
 
-		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(st, vault) }}
+		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(app, st, vault) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
@@ -172,7 +176,7 @@ func main() {
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
-			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
+			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(app, st, vault)) },
 			StravaLogin: stravaLogin,
 			GlucoseTest: func(ctx context.Context) error {
 				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
@@ -243,7 +247,7 @@ func storeDemoCookies(vault *secrets.Vault) error {
 // sendTest delivers a test message to every configured channel.
 func sendTest(ctx context.Context, chans []notify.Channel) error {
 	if len(chans) == 0 {
-		return errors.New("no channel is set up; save a ntfy or webhook URL first")
+		return errors.New("no channel is set up; save a ntfy or webhook URL, or an email recipient (with SMTP configured), first")
 	}
 	msg := notify.Message{
 		Type: "test", Severity: "info", Title: "glucava test",
@@ -259,8 +263,8 @@ func sendTest(ctx context.Context, chans []notify.Channel) error {
 }
 
 // channels builds the notification channels from the current settings.
-func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
-	ntfyURL, webhookURL, err := st.NotifySettings()
+func channels(app core.App, st *store.PB, vault *secrets.Vault) []notify.Channel {
+	ntfyURL, webhookURL, emailTo, err := st.NotifySettings()
 	if err != nil {
 		log.Printf("notify: read settings: %v", err)
 		return nil
@@ -273,6 +277,14 @@ func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
 	if webhookURL != "" {
 		secret, _, _ := vault.Get(secrets.NameWebhookSecret)
 		out = append(out, &notify.Webhook{URL: webhookURL, Secret: secret})
+	}
+	if emailTo != "" && app.Settings().SMTP.Enabled {
+		meta := app.Settings().Meta
+		out = append(out, &notify.Email{
+			SendFunc: app.NewMailClient().Send,
+			From:     mail.Address{Name: meta.SenderName, Address: meta.SenderAddress},
+			To:       emailTo,
+		})
 	}
 	return out
 }

@@ -332,7 +332,7 @@ func TestLogoutClearsCookie(t *testing.T) {
 
 const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,"lang":"de",
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
-"webhookURL":"","webhookSecret":""}`
+"webhookURL":"","webhookSecret":"","emailTo":"me@example.com"}`
 
 func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	t.Parallel()
@@ -344,7 +344,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 		t.Fatalf("response = %s", w.Body)
 	}
 	cfg, _ := e.srv.Store.LoadConfig()
-	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.Lang != "de" || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" {
+	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.Lang != "de" || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" {
 		t.Errorf("config = %+v", cfg)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
@@ -388,6 +388,7 @@ func TestSettingsValidation(t *testing.T) {
 		"region":       strings.Replace(validSettings, `"dexcomRegion":"us"`, `"dexcomRegion":"mars"`, 1),
 		"ntfy scheme":  strings.Replace(validSettings, `https://ntfy.example/t`, `javascript:alert(1)`, 1),
 		"webhook file": strings.Replace(validSettings, `"webhookURL":""`, `"webhookURL":"file:///etc/passwd"`, 1),
+		"email":        strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
 		"not json":     `{"unit":`,
 	}
 	for name, body := range bad {

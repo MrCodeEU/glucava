@@ -415,7 +415,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 	sig, _ := json.Marshal(map[string]any{
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "preMin": c.PreMin, "postMin": c.PostMin,
 		"pollMin": c.PollMin, "lang": c.Lang, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
-		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "", "retentionDays": c.RetentionDays, "purgeConfirm": "",
+		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
+		"emailTo": c.EmailTo, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -459,6 +460,9 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("webhookURL", "Webhook URL", "Receives each event as JSON. Leave empty to turn off.", Input(ID("webhookURL"), Type("url"), bind("webhookURL"))),
 						Field("webhookSecret", "Webhook signing secret", "", Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
 						WebhookSecretStatus(d.HasWebhookSecret),
+					),
+					Div(
+						Field("emailTo", "Notification email", "Needs SMTP configured via GLUCAVA_SMTP_* env vars. Leave empty to turn off.", Input(ID("emailTo"), Type("email"), bind("emailTo"))),
 					),
 				),
 			),

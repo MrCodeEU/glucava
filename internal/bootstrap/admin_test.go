@@ -178,6 +178,69 @@ func TestApplyRetentionOverrideRejectsBadValue(t *testing.T) {
 	}
 }
 
+func TestApplySMTPOverrideUnsetDoesNothing(t *testing.T) {
+	app := newApp(t)
+	if err := ApplySMTPOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	if app.Settings().SMTP.Enabled {
+		t.Error("SMTP enabled with no env set")
+	}
+}
+
+func TestApplySMTPOverrideRequiresSenderAddress(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
+	if err := ApplySMTPOverride(app); err == nil {
+		t.Error("expected an error with no sender address")
+	}
+}
+
+func TestApplySMTPOverrideSetsFromEnv(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
+	t.Setenv("GLUCAVA_SMTP_PORT", "2525")
+	t.Setenv("GLUCAVA_SMTP_USERNAME", "user")
+	t.Setenv("GLUCAVA_SMTP_PASSWORD", "pass")
+	t.Setenv("GLUCAVA_SMTP_TLS", "1")
+	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
+	t.Setenv("GLUCAVA_SMTP_SENDER_NAME", "Glucava")
+	if err := ApplySMTPOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	s := app.Settings()
+	if !s.SMTP.Enabled || s.SMTP.Host != "smtp.example.com" || s.SMTP.Port != 2525 ||
+		s.SMTP.Username != "user" || s.SMTP.Password != "pass" || !s.SMTP.TLS {
+		t.Errorf("smtp = %+v", s.SMTP)
+	}
+	if s.Meta.SenderAddress != "glucava@example.com" || s.Meta.SenderName != "Glucava" {
+		t.Errorf("meta = %+v", s.Meta)
+	}
+}
+
+func TestApplySMTPOverrideDefaultsPortAndSenderName(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
+	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
+	if err := ApplySMTPOverride(app); err != nil {
+		t.Fatal(err)
+	}
+	s := app.Settings()
+	if s.SMTP.Port != 587 || s.Meta.SenderName != "glucava" {
+		t.Errorf("smtp = %+v meta = %+v", s.SMTP, s.Meta)
+	}
+}
+
+func TestApplySMTPOverrideRejectsBadPort(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
+	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
+	t.Setenv("GLUCAVA_SMTP_PORT", "not-a-number")
+	if err := ApplySMTPOverride(app); err == nil {
+		t.Error("non-numeric port accepted")
+	}
+}
+
 func TestSilenceSuperuserPromptIgnoresTheInstallerAccount(t *testing.T) {
 	// Reproduces an existing data dir where only PocketBase's own one-time
 	// installer superuser exists (core.DefaultInstallerEmail): counting all
