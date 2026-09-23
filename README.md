@@ -36,6 +36,7 @@ Put a TLS reverse proxy in front. Then:
 - **Polling:** Settings → poll interval. New activities from the last 24 h are processed once.
 - **Push trigger:** create a token on the **Tokens** page (shown once), then call it from Tasker or Apple Shortcuts when the Strava notification arrives:
   `curl -X POST -H "Authorization: Bearer gst_..." https://host/api/trigger`
+  See [docs/triggers.md](docs/triggers.md) for Tasker, HTTP Shortcuts/MacroDroid, and Apple Shortcuts setup.
 - **Manual:** open an activity for a preview, then Process or Reprocess. Existing text is kept; only the 🩸 block is replaced.
 - **By id:** the **Strava session** page has a "Process a specific activity" field for an activity the poller never saw at all (e.g. it predates glucava, or is older than the polling window). It pages through your Strava training log looking for that id, same as Reprocess otherwise.
 - **Notifications:** ntfy or webhook (HMAC-signed) on failures and expired sessions.
