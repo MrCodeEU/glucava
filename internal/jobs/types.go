@@ -24,6 +24,7 @@ const (
 	EventStravaFailed       = "strava_failed"
 	EventSessionExpired     = "session_expired"
 	EventGlucoseUnavailable = "glucose_unavailable"
+	EventCanaryFailed       = "canary_failed"
 )
 
 var (

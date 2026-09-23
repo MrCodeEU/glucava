@@ -18,6 +18,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/bootstrap"
 	"github.com/MrCodeEU/glucava/internal/bus"
+	"github.com/MrCodeEU/glucava/internal/canary"
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/demo"
 	"github.com/MrCodeEU/glucava/internal/glucose"
@@ -97,6 +98,7 @@ func main() {
 			sourceName   = "dexcom"
 			stravaLogin  func(ctx context.Context, email, password string) error
 			findActivity func(ctx context.Context, stravaID string) (*jobs.Activity, error)
+			inspector    canary.Inspector
 		)
 		if demoMode {
 			if err := demo.Seed(ctx, st, time.Now()); err != nil {
@@ -112,6 +114,7 @@ func main() {
 			writer, source, lister, session = sw, &dexcomSource{st: st, vault: vault}, sw, sw
 			stravaLogin = sw.Login
 			findActivity = sw.FindActivity
+			inspector = sw
 		}
 
 		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
@@ -132,6 +135,10 @@ func main() {
 		if !demoMode { // demo's Source is fake data with no history worth storing
 			in := &ingest.Ingestor{Source: source, Store: st, SourceName: sourceName}
 			go in.Run(ctx)
+		}
+
+		if !demoMode { // demo has no real Strava session to dry-run against
+			go (&canary.Runner{Inspector: inspector, Store: st}).Run(ctx)
 		}
 
 		go func() { // apply the retention setting at start and every few hours
