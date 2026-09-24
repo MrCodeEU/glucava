@@ -12,8 +12,6 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 		switch k {
 		case "unit":
 			v = "mmol/L"
-		case "lang":
-			v = "de"
 		case "dexcom_region":
 			v = "us"
 		case "smtp_tls":
@@ -47,7 +45,7 @@ func TestConfigSetRejectsBadInput(t *testing.T) {
 }
 
 func valid() Config {
-	return Config{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, Lang: "en", DexcomRegion: "ous"}
+	return Config{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous"}
 }
 
 func TestConfigValidate(t *testing.T) {

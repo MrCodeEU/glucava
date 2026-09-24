@@ -25,8 +25,6 @@ func (c Config) Validate() string {
 		return "The polling interval must be between 1 and 1440 minutes."
 	case c.RetentionDays < 0 || c.RetentionDays > 3650:
 		return "Retention must be between 0 and 3650 days."
-	case c.Lang != "en" && c.Lang != "de":
-		return "Language must be English or Deutsch."
 	case c.DexcomRegion != "us" && c.DexcomRegion != "ous" && c.DexcomRegion != "jp":
 		return "Choose a Dexcom region."
 	case !validOptionalURL(c.NtfyURL):
@@ -130,7 +128,6 @@ var configKeys = map[string]configKey{
 	"post_minutes":          intKey(func(c *Config) *int { return &c.PostMin }),
 	"poll_interval_minutes": intKey(func(c *Config) *int { return &c.PollMin }),
 	"retention_days":        intKey(func(c *Config) *int { return &c.RetentionDays }),
-	"lang":                  strKey(func(c *Config) *string { return &c.Lang }),
 	"dexcom_region":         strKey(func(c *Config) *string { return &c.DexcomRegion }),
 	"dexcom_username":       strKey(func(c *Config) *string { return &c.DexcomUsername }),
 	"ntfy_url":              strKey(func(c *Config) *string { return &c.NtfyURL }),

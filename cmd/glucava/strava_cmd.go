@@ -182,5 +182,9 @@ func writerFromVault(app core.App) (*strava.Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newStravaWriter(vault), nil
+	tun, err := loadTuning(os.Getenv) // so `strava check` sees the same selector overrides as the server
+	if err != nil {
+		return nil, err
+	}
+	return newStravaWriter(vault, tun), nil
 }

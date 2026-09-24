@@ -71,6 +71,10 @@ func main() {
 		if err := bootstrap.EnsureAdminUser(app); err != nil {
 			return err
 		}
+		tun, err := loadTuning(os.Getenv)
+		if err != nil {
+			return err
+		}
 		vault, err := openVault(app)
 		if err != nil {
 			return err
@@ -100,7 +104,7 @@ func main() {
 			source       glucose.Source
 			lister       poll.Lister
 			session      web.SessionChecker
-			sourceName   = "dexcom"
+			sourceName   string
 			stravaLogin  func(ctx context.Context, email, password string) error
 			findActivity func(ctx context.Context, stravaID string) (*jobs.Activity, error)
 			inspector    canary.Inspector
@@ -115,18 +119,23 @@ func main() {
 			writer, source, lister, session = &demo.Writer{Delay: 1500 * time.Millisecond}, demo.Source{}, &demo.Lister{Store: st}, demo.Session{}
 			sourceName = demo.SourceName
 		} else {
-			sw := newStravaWriter(vault)
-			writer, source, lister, session = sw, &dexcomSource{st: st, vault: vault}, sw, sw
+			sw := newStravaWriter(vault, tun)
+			src, err := newSource(os.Getenv("GLUCAVA_SOURCE"), st, vault)
+			if err != nil {
+				return err
+			}
+			sourceName = src.name
+			writer, source, lister, session = sw, src.source, sw, sw
 			stravaLogin = sw.Login
 			findActivity = sw.FindActivity
 			inspector = sw
 		}
 
 		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
-		queue := jobs.NewQueue(proc, jobs.DefaultBackoff, 64)
+		queue := jobs.NewQueue(proc, tun.RetryBackoff, 64)
 		go queue.Run(ctx)
 		poller := &poll.Poller{
-			Lister: lister, Queue: queue, Store: st, Signal: signal.C(),
+			Lister: lister, Queue: queue, Store: st, Signal: signal.C(), MaxAge: tun.PollLookback,
 			Interval: func() time.Duration {
 				set, err := st.Settings(ctx)
 				if err != nil {
@@ -142,8 +151,8 @@ func main() {
 			go in.Run(ctx)
 		}
 
-		if !demoMode { // demo has no real Strava session to dry-run against
-			go (&canary.Runner{Inspector: inspector, Store: st}).Run(ctx)
+		if !demoMode && tun.CanaryInterval > 0 { // demo has no real Strava session to dry-run against
+			go (&canary.Runner{Inspector: inspector, Store: st, Interval: func() time.Duration { return tun.CanaryInterval }}).Run(ctx)
 		}
 
 		go func() { // apply the retention setting at start and every few hours
@@ -161,7 +170,7 @@ func main() {
 			}
 		}()
 
-		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(st, vault) }}
+		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Channels: func() []notify.Channel { return channels(st, vault) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
