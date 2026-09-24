@@ -215,12 +215,13 @@ func TestEnsureSMTPSeedsOnceFromEnv(t *testing.T) {
 	t.Setenv("GLUCAVA_SMTP_TLS", "1")
 	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
 	t.Setenv("GLUCAVA_SMTP_SENDER_NAME", "Glucava")
+	t.Setenv("GLUCAVA_SMTP_TO", "me@example.com")
 	if err := EnsureSMTP(app, v, "smtp_password"); err != nil {
 		t.Fatal(err)
 	}
 	r := smtpRec(t, app)
 	if r.GetString("smtp_host") != "smtp.example.com" || r.GetInt("smtp_port") != 2525 || r.GetString("smtp_username") != "user" ||
-		!r.GetBool("smtp_tls") || r.GetString("smtp_sender_address") != "glucava@example.com" || r.GetString("smtp_sender_name") != "Glucava" {
+		!r.GetBool("smtp_tls") || r.GetString("email_to") != "me@example.com" || r.GetString("smtp_sender_address") != "glucava@example.com" || r.GetString("smtp_sender_name") != "Glucava" {
 		t.Errorf("record = %+v", r.FieldsData())
 	}
 	if pw, ok, _ := v.Get("smtp_password"); !ok || pw != "pass" {
@@ -260,5 +261,32 @@ func TestEnsureSMTPRejectsBadPort(t *testing.T) {
 	t.Setenv("GLUCAVA_SMTP_PORT", "not-a-number")
 	if err := EnsureSMTP(app, fakeVault{}, "smtp_password"); err == nil {
 		t.Error("non-numeric port accepted")
+	}
+}
+
+func TestEnsureSMTPLateEnvPasswordIsStored(t *testing.T) {
+	app := newApp(t)
+	v := fakeVault{}
+	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
+	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
+	if err := EnsureSMTP(app, v, "smtp_password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := v.Get("smtp_password"); ok {
+		t.Fatal("password stored without env")
+	}
+	// Host is saved now; a password added to .env later must still land.
+	t.Setenv("GLUCAVA_SMTP_PASSWORD", "app-pass")
+	if err := EnsureSMTP(app, v, "smtp_password"); err != nil {
+		t.Fatal(err)
+	}
+	if pw, _, _ := v.Get("smtp_password"); pw != "app-pass" {
+		t.Errorf("password = %q", pw)
+	}
+	// And it does not overwrite one that is already stored.
+	t.Setenv("GLUCAVA_SMTP_PASSWORD", "other")
+	_ = EnsureSMTP(app, v, "smtp_password")
+	if pw, _, _ := v.Get("smtp_password"); pw != "app-pass" {
+		t.Errorf("password overwritten: %q", pw)
 	}
 }

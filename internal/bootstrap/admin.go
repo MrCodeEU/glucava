@@ -125,7 +125,10 @@ func ApplyRetentionOverride(app core.App) error {
 // first value: once smtp_host is set (by env or the web UI) the variables
 // are ignored on later starts, so UI edits are not overwritten and the
 // password can be removed from .env again. GLUCAVA_SMTP_HOST and
-// GLUCAVA_SMTP_SENDER_ADDRESS are required to seed.
+// GLUCAVA_SMTP_SENDER_ADDRESS are required to seed. GLUCAVA_SMTP_TO seeds the
+// notification recipient. The password is seeded on its own: if it was left
+// out the first time, adding it to .env later still stores it (while none is
+// stored), instead of being ignored because the host is already saved.
 func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 	host := os.Getenv("GLUCAVA_SMTP_HOST")
 	if host == "" {
@@ -151,10 +154,23 @@ func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 	if err != nil || len(recs) == 0 {
 		return fmt.Errorf("bootstrap: settings row not found: %w", err)
 	}
+	if pw := os.Getenv("GLUCAVA_SMTP_PASSWORD"); pw != "" {
+		if _, ok, err := vault.Get(passwordName); err != nil {
+			return err
+		} else if !ok {
+			if err := vault.Set(passwordName, pw); err != nil {
+				return err
+			}
+			log.Printf("bootstrap: stored the SMTP password from the environment")
+		}
+	}
 	if recs[0].GetString("smtp_host") != "" {
 		return nil // already configured (env earlier, or the web UI)
 	}
 	recs[0].Set("smtp_host", host)
+	if to := os.Getenv("GLUCAVA_SMTP_TO"); to != "" && recs[0].GetString("email_to") == "" {
+		recs[0].Set("email_to", to)
+	}
 	recs[0].Set("smtp_port", port)
 	recs[0].Set("smtp_username", os.Getenv("GLUCAVA_SMTP_USERNAME"))
 	recs[0].Set("smtp_tls", os.Getenv("GLUCAVA_SMTP_TLS") == "1")
@@ -162,11 +178,6 @@ func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 	recs[0].Set("smtp_sender_name", senderName)
 	if err := app.Save(recs[0]); err != nil {
 		return err
-	}
-	if pw := os.Getenv("GLUCAVA_SMTP_PASSWORD"); pw != "" {
-		if err := vault.Set(passwordName, pw); err != nil {
-			return err
-		}
 	}
 	log.Printf("bootstrap: SMTP configured from the environment (%s:%d)", host, port)
 	return nil

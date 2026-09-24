@@ -51,12 +51,34 @@ Put a TLS reverse proxy in front. Then:
 | `GLUCAVA_DEXCOM_USERNAME`, `GLUCAVA_DEXCOM_PASSWORD`, `GLUCAVA_DEXCOM_REGION` | Dexcom Share login, stored on first start if no credential is stored yet (alternative to `make dexcom`); safe to remove afterwards |
 | `GLUCAVA_RETENTION_DAYS` | readings/events retention in days (0 = forever); overrides the UI setting on every start, not just the first |
 | `GLUCAVA_SMTP_HOST`, `GLUCAVA_SMTP_SENDER_ADDRESS` | seed the SMTP settings on first start (only while none are saved; afterwards edit them in Settings → Email) |
-| `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`) | rest of the seed; the password goes into the encrypted vault |
+| `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`), `GLUCAVA_SMTP_TO` | rest of the seed; `TO` is the recipient. The password goes into the encrypted vault, and is stored later too if you add it after the first start |
 | `GLUCAVA_SECRET_KEY` | encryption key for stored secrets (default: `<data dir>/secret.key`) |
 | `GLUCAVA_TRUSTED_PROXIES` | comma-separated IPs/CIDRs of your reverse proxy. Only then are `X-Forwarded-For`/`-Proto` believed (per-client rate limits, Secure cookie). Unset = direct peer only |
 | `GLUCAVA_ADMIN_UI=1` | expose PocketBase admin UI and API (off by default) |
 | `GLUCAVA_NO_SANDBOX=1` | Chrome `--no-sandbox` (set in the Docker image) |
 | `CHROME_PATH` | Chrome binary |
+
+## Email notifications (Gmail example)
+
+Glucava sends through any SMTP server; Gmail works well for a personal setup.
+
+1. Turn on 2-Step Verification for the Google account.
+2. Create an app password at <https://myaccount.google.com/apppasswords> (16 characters; your normal password is rejected). Type it without spaces.
+3. Either fill in **Settings → Email**, or seed it from `.env` before the first start:
+
+   ```sh
+   GLUCAVA_SMTP_HOST=smtp.gmail.com
+   GLUCAVA_SMTP_PORT=587
+   GLUCAVA_SMTP_TLS=0            # 587 uses StartTLS; for port 465 set GLUCAVA_SMTP_TLS=1
+   GLUCAVA_SMTP_USERNAME=you@gmail.com
+   GLUCAVA_SMTP_PASSWORD=your-16-char-app-password
+   GLUCAVA_SMTP_SENDER_ADDRESS=you@gmail.com   # must be the Gmail address (or one of its aliases)
+   GLUCAVA_SMTP_TO=you@gmail.com
+   ```
+
+4. Press **Send test notification** on the Settings page.
+
+The variables only seed the settings while no SMTP host is saved yet; after that the web UI is the source of truth and later edits in `.env` are ignored (except a password added while none is stored). Glucava does not expose the SMTP auth method or EHLO name, so servers that need LOGIN auth or a custom EHLO name (e.g. Gmail SMTP-relay) are not supported.
 
 ## Maintenance
 
