@@ -14,26 +14,39 @@ browser cookies, not the API. Single Go binary, PocketBase for DB/auth/UI
 backend, gomponents + Datastar for the server-rendered UI. AGPL-3.0,
 self-hosted, one account per instance.
 
-## State as of 2026-09-22
+## State as of 2026-09-24
 
-MVP is feature-complete and hardened (see the merged PRs on `main`): the
-pipeline, web UI, trigger endpoint, notifications, session lifetime,
-key rotation, data retention/export/purge, supply-chain pinning. **Nothing
-has been verified against the real Strava or Dexcom services yet** — see
-the next section. Manual testing against real accounts is in progress and
-feedback comes back in rounds; each round becomes its own PR.
+Feature-complete and hardened (see the merged PRs on `main`): pipeline, web
+UI with glucose chart, trigger endpoint (docs in `docs/triggers.md`),
+ntfy/webhook/email notifications, edit-page canary, glucose importers
+(Libre, Nightscout, Glooko), process-by-id, a pre-write safety check,
+scripted setup (`glucava config`, `glucava secrets set`), env-tunable timings
+and Strava selectors, session lifetime, key rotation, retention/export/purge,
+supply-chain pinning.
+
+Writing the description on a real Strava account (edit page, description
+textarea, save, reload check) and listing activities via
+`/athlete/training_activities` have been exercised by hand and work. Everything
+else in the next section is still unverified. A large manual test round is next
+(`docs/TESTING.md` is the checklist); feedback comes back in rounds and each
+round becomes its own PR.
+
+Not built on purpose: i18n (the language setting was removed), a Prometheus
+endpoint. Backlog: LLM selector self-repair, Strava chart-image upload
+(render exists in the UI; the Strava upload flow is unverified territory,
+decide the approach together with the maintainer first).
 
 ## Unverified against the real services — do not assume these are correct
 
-- `internal/strava/writer.go`: `DefaultSelectors` (description textarea,
-  save button), `DefaultLoginSelectors` (email/password/submit) and the
-  `/activities/{id}/edit` URL are guesses. `Login`'s challenge/wrong-password
+- `internal/strava/writer.go`: `DefaultLoginSelectors` (email/password/submit)
+  are guesses (the description textarea and edit URL are confirmed). `Login`'s challenge/wrong-password
   detection (`challengeMarkers` in the same file) is untested against a real
   login page.
-- `internal/strava/list.go`: the `/athlete/training_activities` JSON field
-  names.
 - `internal/glucose/dexcom.go`: endpoints and payloads are from memory of
   `pydexcom`, not a live account.
+- Email delivery (`internal/notify/email.go`, needs a real SMTP server), the
+  canary against a real edit page, and the Tasker/Shortcuts flows in
+  `docs/triggers.md` have only been tested against mocks.
 
 When a manual test reveals the real shape, fix the code AND delete the
 corresponding line above — an item staying here after it's confirmed is
@@ -60,6 +73,19 @@ worse than not having the list.
   in `cmd/glucava/main.go`). Don't add a route under `/_/` or `/api/` to the
   Glucava UI; it would collide with that block. `GLUCAVA_ADMIN_UI=1` is the
   documented escape hatch, not a code change.
+- **Never bypass the pre-write check.** `Processor.Process` refuses to write
+  unless `render.PreservesText(existing, merged)` holds (only glucava's own
+  block may change). It exists because a merge bug once duplicated blocks on
+  a real activity. Restore is the one deliberate exception.
+- **One rule set for settings.** A new setting needs: a migration, a
+  `store.Config` field, an entry in `configKeys` and `Validate` in
+  `internal/store/config.go` (this also makes it scriptable), and the form.
+  Never validate in the web layer only. Secrets go in the vault
+  (`internal/secrets/names.go`) and in `scriptableSecrets`, never in `Config`.
+- **No hardcoded operational values.** Timings, URLs, selectors and the like
+  belong in `cmd/glucava/tuning.go` (env, default = the old value, bad value
+  stops the start) or in a setting. A new live glucose source is a
+  `sourceBuilders` entry in `cmd/glucava/wire.go`.
 - **Single user only.** `bootstrap.EnforceSingleUser` rejects a second
   `users` record on purpose. Don't route around it to "fix" a signup flow.
 - **`main` requires a PR.** The ruleset has no admin bypass; the `check`

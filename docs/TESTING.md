@@ -1,0 +1,54 @@
+# Manual test checklist
+
+Automated tests only use mocks. Run this against your own real accounts after
+changes to the Strava, Dexcom, notification or trigger paths. Use a throwaway
+or already-processed activity, and keep the original description in mind:
+"Restore original" on the activity page puts it back.
+
+Mark each item, and turn anything surprising into an issue or a PR. If a check
+confirms something listed as "unverified" in `AGENTS.md`, delete that line.
+
+## Setup
+
+- [ ] `glucava config list --dev=false --dir <dir>` shows sane values; `glucava secrets status` shows what you expect (values never printed).
+- [ ] Fresh data dir from `.env` alone: admin user, Dexcom credential and SMTP are seeded (see the log lines `bootstrap: ...`).
+- [ ] `glucava strava check` reports a logged-in session and finds description and save selectors.
+
+## Core flow
+
+- [ ] Dashboard shows the current Dexcom reading.
+- [ ] A new activity is picked up by polling within the poll interval and its description gets exactly one block.
+- [ ] Text you wrote yourself (and any other app's lines, e.g. Ando) is byte-for-byte unchanged around the block.
+- [ ] Reprocess the same activity: still exactly one block, no duplicates.
+- [ ] Restore original puts the pre-glucava text back; reprocess adds the block again.
+- [ ] Process a specific activity by id (older than the polling window) with imported or stored readings.
+- [ ] The glucose chart on the activity page matches the block's min/max/TIR.
+
+## Triggers
+
+- [ ] `curl -X POST -H "Authorization: Bearer gst_..." https://<host>/api/trigger` returns 202; a wrong token returns 401 and produces a `trigger_rejected` event.
+- [ ] Your phone automation (see [triggers.md](triggers.md)) fires and the activity is processed sooner than the poll interval.
+
+## Failure handling
+
+- [ ] Break the Strava session (import a cookie file with a wrong session cookie): a `session_expired` notification arrives once, not on every poll.
+- [ ] Canary: point `GLUCAVA_STRAVA_URL` at a page without a textarea (or block Chrome from finding the field) and set `GLUCAVA_CANARY_INTERVAL=1m`; a `canary_failed` notification arrives once, not every minute.
+- [ ] Selector override: `GLUCAVA_STRAVA_SELECTOR_DESCRIPTION='["textarea.x"]'` is tried first and the built-ins still work as fallback (`glucava strava check`).
+- [ ] Stop Dexcom sharing / use wrong credentials: `glucose_unavailable` notification.
+- [ ] Settings → Notifications: ntfy, webhook (check the `X-Glucava-Signature`) and email each deliver "Send test notification".
+
+## Data
+
+- [ ] Import a Glooko (or Libre/Nightscout) export with `glucava glucose import`, then reprocess an old activity.
+- [ ] Settings → Your data: CSV export opens; retention setting sticks after a restart (and `GLUCAVA_RETENTION_DAYS` overrides it when set).
+
+## Scripted setup
+
+- [ ] `glucava config apply settings.conf` twice: second run prints `unchanged`. A bad value exits non-zero and changes nothing.
+- [ ] `printf '%s\n' pw | glucava secrets set smtp_password` then `secrets status` shows `smtp_password=set`.
+
+## Security spot checks
+
+- [ ] `/_/` and `/api/collections` are not reachable (PocketBase blocked).
+- [ ] Cookie is `HttpOnly`, and `Secure` behind your TLS proxy; login is rate limited after repeated failures.
+- [ ] No secret appears in the container logs (`docker logs`) after all of the above.
