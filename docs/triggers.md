@@ -15,7 +15,9 @@ curl -X POST -H "Authorization: Bearer gst_..." https://your-host/api/trigger
 Responses: `202 {"status":"queued"}` (or `"already_pending"` if one is already
 in flight), `401` for a missing/invalid token, `429` after repeated failed
 attempts from the same address (rate-limited, logged as a `trigger_rejected`
-event).
+event). While an address is blocked (10 failures in one minute) even a valid
+token from it gets `429`; this is deliberate so a brute-force guess cannot
+succeed during the block. Other methods than POST get `405`.
 
 The activity may not exist on Strava's side yet when your phone's own
 notification fires. That's fine: the trigger only kicks the poller a bit

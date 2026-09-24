@@ -49,6 +49,8 @@ func main() {
 	demoMode := os.Getenv("GLUCAVA_DEMO") == "1"
 
 	bootstrap.EnforceSingleUser(app)
+	// A failed command is not a usage error; skip the flag dump before the message.
+	app.RootCmd.SilenceUsage = true
 	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st), glucoseCommand(app, st), configCommand(app, st))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
@@ -181,7 +183,8 @@ func main() {
 			Tokens: toks, Signal: signal, Events: st,
 			ClientIP: proxies.IP,
 		}
-		e.Router.POST("/api/trigger", apis.WrapStdHandler(h))
+		// Any method reaches the handler, which answers non-POST with 405.
+		e.Router.Any("/api/trigger", apis.WrapStdHandler(h))
 
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
@@ -341,7 +344,13 @@ func tokenCommand(app core.App, m *tokens.Manager) *cobra.Command {
 		},
 		&cobra.Command{
 			Use: "revoke <name>", Short: "Revoke a token", Args: cobra.ExactArgs(1),
-			RunE: func(_ *cobra.Command, args []string) error { return m.Revoke(args[0]) },
+			RunE: func(_ *cobra.Command, args []string) error {
+				if err := m.Revoke(args[0]); err != nil {
+					return err
+				}
+				fmt.Printf("revoked %s\n", args[0])
+				return nil
+			},
 		},
 	)
 	return cmd
