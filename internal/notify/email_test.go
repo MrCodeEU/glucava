@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/mail"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/tools/mailer"
 )
@@ -62,5 +64,40 @@ func TestEmailPropagatesSendError(t *testing.T) {
 func TestEmailName(t *testing.T) {
 	if (&Email{}).Name() != "email" {
 		t.Error("Name() should be \"email\"")
+	}
+}
+
+func TestEmailHTMLEscapesAndKeepsTextFallback(t *testing.T) {
+	var got *mailer.Message
+	e := &Email{SendFunc: func(m *mailer.Message) error { got = m; return nil }, To: "me@example.com"}
+	msg := Message{
+		Type: "strava_failed", Severity: "error", Title: "Update <failed>",
+		Body: `boom <script>alert(1)</script> & "quote"`, StravaID: "140098", Repaired: true,
+		Time: time.Date(2026, 9, 24, 18, 0, 0, 0, time.UTC),
+	}
+	if err := e.Send(context.Background(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.HTML, "<script>") || !strings.Contains(got.HTML, "&lt;script&gt;") {
+		t.Errorf("HTML did not escape the body: %s", got.HTML)
+	}
+	for _, want := range []string{"Update &lt;failed&gt;", "https://www.strava.com/activities/140098", "repaired automatically", "2026-09-24 18:00"} {
+		if !strings.Contains(got.HTML, want) {
+			t.Errorf("HTML is missing %q", want)
+		}
+	}
+	for _, want := range []string{msg.Body, "https://www.strava.com/activities/140098", "repaired automatically"} {
+		if !strings.Contains(got.Text, want) {
+			t.Errorf("text part is missing %q: %s", want, got.Text)
+		}
+	}
+	if strings.Contains(got.HTML, "http://") || strings.Contains(got.HTML, "src=") {
+		t.Error("the HTML must not load remote content")
+	}
+}
+
+func TestEmailHTMLSeverityDefaultsToInfo(t *testing.T) {
+	if h := emailHTML(Message{Title: "t", Body: "b"}); !strings.Contains(h, ">info<") {
+		t.Errorf("empty severity should render as info: %s", h)
 	}
 }
