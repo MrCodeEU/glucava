@@ -148,3 +148,28 @@ func TestStrip(t *testing.T) {
 		}
 	}
 }
+
+func TestPreservesText(t *testing.T) {
+	user := "Easy 10k\n\nfelt great"
+	block := "🩸 TIR 90% | min 70 | max 150 | avg 110 mg/dL\n▁▂▃"
+	merged := Merge(user, block)
+	if !PreservesText(user, merged) {
+		t.Errorf("a normal merge must preserve the user's text: %q", merged)
+	}
+	if !PreservesText(merged, Merge(merged, "🩸 TIR 80% | min 60 | max 190 | avg 120 mg/dL")) {
+		t.Error("re-merging must preserve the user's text")
+	}
+	ando := "🩸 Avg : 5.9 mmol/L\n🩸 Time in range : 90%"
+	if !PreservesText(ando, Merge(ando, block)) {
+		t.Error("another app's 🩸 lines must be preserved, not mistaken for ours")
+	}
+	for name, bad := range map[string]string{
+		"user text lost":    block,
+		"user text changed": "Easy 5k\n\nfelt great\n\n" + block,
+		"text appended":     merged + "\nextra",
+	} {
+		if PreservesText(user, bad) {
+			t.Errorf("%s: expected the guard to fire", name)
+		}
+	}
+}

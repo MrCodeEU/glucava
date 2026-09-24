@@ -17,6 +17,15 @@ type Processor struct {
 	Source     glucose.Source
 	SourceName string // key for stored samples, e.g. "dexcom"
 	Writer     Writer
+
+	merge func(existing, block string) string // test seam; nil means render.Merge
+}
+
+func (p *Processor) mergeFunc() func(existing, block string) string {
+	if p.merge != nil {
+		return p.merge
+	}
+	return render.Merge
 }
 
 // Process annotates a and saves it as done. It does not save failure state;
@@ -43,6 +52,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 
 	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
 	var backupErr error
+	unsafe := false
 	err = p.Writer.UpdateDescription(ctx, a.StravaID, func(existing string) string {
 		// Persist the backup before anything is written. If that fails, leave
 		// the description untouched.
@@ -54,8 +64,18 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 				return existing
 			}
 		}
-		return render.Merge(existing, block)
+		merged := p.mergeFunc()(existing, block)
+		// Last line of defence: the user's own text must survive byte for
+		// byte. If it would not, leave the description as it is.
+		if !render.PreservesText(existing, merged) {
+			unsafe = true
+			return existing
+		}
+		return merged
 	})
+	if unsafe {
+		return ErrUnsafeMerge
+	}
 	if backupErr != nil {
 		return fmt.Errorf("save original description: %w", backupErr)
 	}

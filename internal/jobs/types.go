@@ -34,6 +34,9 @@ var (
 	ErrSessionExpired = errors.New("jobs: strava session expired")
 	// ErrNoOriginal means no pre-edit description was stored for the activity.
 	ErrNoOriginal = errors.New("jobs: no original description stored")
+	// ErrUnsafeMerge means the merged description would have changed text
+	// outside Glucava's own block, so nothing was written.
+	ErrUnsafeMerge = errors.New("jobs: refused to write: merge would change text outside the glucava block")
 	// ErrQueueFull is returned by Enqueue when the queue cannot take more work.
 	ErrQueueFull = errors.New("jobs: queue full")
 )

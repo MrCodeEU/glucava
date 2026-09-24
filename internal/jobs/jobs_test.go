@@ -356,3 +356,23 @@ func TestRestoreWithoutOriginalReportsEvent(t *testing.T) {
 		t.Errorf("desc=%q calls=%d events=%d", w.desc, w.calls, len(st.events))
 	}
 }
+
+// A merge that would damage the user's own text is refused before anything is
+// written, and the failure says why.
+func TestUnsafeMergeIsRefused(t *testing.T) {
+	w := &fakeWriter{desc: "My run"}
+	st := newStore()
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w,
+		merge: func(_, block string) string { return block }} // drops "My run"
+	a := activity()
+	err := p.Process(context.Background(), &a)
+	if !errors.Is(err, ErrUnsafeMerge) {
+		t.Fatalf("err = %v, want ErrUnsafeMerge", err)
+	}
+	if w.desc != "My run" {
+		t.Errorf("description was changed to %q", w.desc)
+	}
+	if got := st.acts["42"]; got.Status == StatusDone {
+		t.Errorf("activity marked done: %+v", got)
+	}
+}
