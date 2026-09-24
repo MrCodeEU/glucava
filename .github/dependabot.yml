@@ -3,6 +3,12 @@ updates:
   - package-ecosystem: gomod
     directory: /
     schedule: {interval: weekly}
+    # PocketBase checks at start that these match the versions it was tested
+    # with and warns otherwise. They move only together with PocketBase.
+    ignore:
+      - dependency-name: modernc.org/sqlite
+      - dependency-name: modernc.org/libc
+      - dependency-name: modernc.org/memory
   - package-ecosystem: github-actions
     directory: /
     schedule: {interval: weekly}

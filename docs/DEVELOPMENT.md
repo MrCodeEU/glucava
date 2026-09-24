@@ -66,3 +66,7 @@ See [TESTING.md](TESTING.md) for the checklist to run against real Strava, Dexco
 ## Releasing
 
 Not automated yet. Build with `make build` or `docker build .`. Base images and GitHub Actions are pinned by digest/SHA; Dependabot proposes updates.
+
+## Dependency pins
+
+`modernc.org/sqlite`, `modernc.org/libc` and `modernc.org/memory` are pinned to the versions PocketBase's own `go.mod` lists (see `modernc_versions_check.go` in the PocketBase module), and Dependabot ignores them. When upgrading PocketBase, copy those three versions from its `go.mod`, or the server prints a "differs from the expected and tested" warning on every start and CLI call.
