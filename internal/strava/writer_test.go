@@ -355,3 +355,15 @@ func TestLoginStopsOnWrongCredentials(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Chrome's own startup can take longer than chromedp's 20 second default on a
+// busy CI runner or a small homelab host, which showed up as flaky
+// "websocket url timeout reached" failures.
+func TestStartTimeoutDefaultsAndOverrides(t *testing.T) {
+	if got := NewWriter(Config{}).cfg.StartTimeout; got != 60*time.Second {
+		t.Errorf("default StartTimeout = %v, want 60s", got)
+	}
+	if got := NewWriter(Config{StartTimeout: 5 * time.Second}).cfg.StartTimeout; got != 5*time.Second {
+		t.Errorf("explicit StartTimeout = %v, want 5s", got)
+	}
+}
