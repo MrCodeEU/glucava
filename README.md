@@ -80,6 +80,28 @@ Glucava sends through any SMTP server; Gmail works well for a personal setup.
 
 The variables only seed the settings while no SMTP host is saved yet; after that the web UI is the source of truth and later edits in `.env` are ignored (except a password added while none is stored). Glucava does not expose the SMTP auth method or EHLO name, so servers that need LOGIN auth or a custom EHLO name (e.g. Gmail SMTP-relay) are not supported.
 
+## Scripted setup (Ansible, cloud-init, ...)
+
+Everything the web UI can change is scriptable, with the same validation:
+
+```sh
+# settings: key=value lines, comments allowed; idempotent (prints "unchanged" on a re-run)
+glucava config apply settings.conf --dev=false --dir /data
+glucava config set unit=mmol/L poll_interval_minutes=5 --dev=false --dir /data
+glucava config list --dev=false --dir /data        # all keys with current values
+glucava config get smtp_host --dev=false --dir /data
+
+# secrets: the value is read from stdin, never from argv
+printf '%s\n' "$SMTP_APP_PASSWORD" | glucava secrets set smtp_password --dev=false --dir /data
+glucava secrets status --dev=false --dir /data     # set/unset per secret, never the values
+```
+
+- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `lang`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name` (`glucava config list` is authoritative).
+- Settings you pass in one call are validated together, so related keys (`smtp_host` with `smtp_sender_address`) can come in any order. An invalid batch changes nothing and exits non-zero.
+- Secrets: `dexcom_password`, `ntfy_token`, `webhook_secret`, `smtp_password`. Strava cookies: `glucava strava cookies import`. Trigger tokens: `glucava token create <name>`.
+- `GLUCAVA_RETENTION_DAYS`, when set, still overrides `retention_days` at every server start.
+- The commands work whether or not the server runs. Pass `--dev=false` for quiet output; results go to stdout, errors to stderr.
+
 ## Maintenance
 
 - `glucava user set-password <email>` reads the new password (12+ characters) from stdin and signs out every session. Logout also invalidates the session server-side. Logins last 3 days.

@@ -52,12 +52,13 @@ func userCommand(app core.App) *cobra.Command {
 	return cmd
 }
 
-// secretsCommand adds "glucava secrets rotate-key".
+// secretsCommand adds "glucava secrets set|status|rotate-key".
 func secretsCommand(app core.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "secrets", Short: "Manage stored secrets",
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return app.RunAppMigrations() },
 	}
+	cmd.AddCommand(secretsSetCommand(app), secretsStatusCommand(app))
 	cmd.AddCommand(&cobra.Command{
 		Use: "rotate-key", Short: "Re-encrypt all stored secrets with a new random key",
 		Long: `Stop the server first. With GLUCAVA_SECRET_KEY set, the new key is printed and you
