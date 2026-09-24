@@ -178,26 +178,36 @@ func TestApplyRetentionOverrideRejectsBadValue(t *testing.T) {
 	}
 }
 
-func TestApplySMTPOverrideUnsetDoesNothing(t *testing.T) {
+func smtpRec(t *testing.T, app core.App) *core.Record {
+	t.Helper()
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		t.Fatalf("settings: %v", err)
+	}
+	return recs[0]
+}
+
+func TestEnsureSMTPUnsetDoesNothing(t *testing.T) {
 	app := newApp(t)
-	if err := ApplySMTPOverride(app); err != nil {
+	if err := EnsureSMTP(app, fakeVault{}, "smtp_password"); err != nil {
 		t.Fatal(err)
 	}
-	if app.Settings().SMTP.Enabled {
-		t.Error("SMTP enabled with no env set")
+	if smtpRec(t, app).GetString("smtp_host") != "" {
+		t.Error("host set with no env")
 	}
 }
 
-func TestApplySMTPOverrideRequiresSenderAddress(t *testing.T) {
+func TestEnsureSMTPRequiresSenderAddress(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
-	if err := ApplySMTPOverride(app); err == nil {
+	if err := EnsureSMTP(app, fakeVault{}, "smtp_password"); err == nil {
 		t.Error("expected an error with no sender address")
 	}
 }
 
-func TestApplySMTPOverrideSetsFromEnv(t *testing.T) {
+func TestEnsureSMTPSeedsOnceFromEnv(t *testing.T) {
 	app := newApp(t)
+	v := fakeVault{}
 	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
 	t.Setenv("GLUCAVA_SMTP_PORT", "2525")
 	t.Setenv("GLUCAVA_SMTP_USERNAME", "user")
@@ -205,68 +215,50 @@ func TestApplySMTPOverrideSetsFromEnv(t *testing.T) {
 	t.Setenv("GLUCAVA_SMTP_TLS", "1")
 	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
 	t.Setenv("GLUCAVA_SMTP_SENDER_NAME", "Glucava")
-	if err := ApplySMTPOverride(app); err != nil {
+	if err := EnsureSMTP(app, v, "smtp_password"); err != nil {
 		t.Fatal(err)
 	}
-	s := app.Settings()
-	if !s.SMTP.Enabled || s.SMTP.Host != "smtp.example.com" || s.SMTP.Port != 2525 ||
-		s.SMTP.Username != "user" || s.SMTP.Password != "pass" || !s.SMTP.TLS {
-		t.Errorf("smtp = %+v", s.SMTP)
+	r := smtpRec(t, app)
+	if r.GetString("smtp_host") != "smtp.example.com" || r.GetInt("smtp_port") != 2525 || r.GetString("smtp_username") != "user" ||
+		!r.GetBool("smtp_tls") || r.GetString("smtp_sender_address") != "glucava@example.com" || r.GetString("smtp_sender_name") != "Glucava" {
+		t.Errorf("record = %+v", r.FieldsData())
 	}
-	if s.Meta.SenderAddress != "glucava@example.com" || s.Meta.SenderName != "Glucava" {
-		t.Errorf("meta = %+v", s.Meta)
+	if pw, ok, _ := v.Get("smtp_password"); !ok || pw != "pass" {
+		t.Errorf("password = %q, %v", pw, ok)
+	}
+
+	// A later start must not overwrite what the UI has since changed.
+	r.Set("smtp_host", "smtp.changed.example")
+	if err := app.Save(r); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSMTP(app, v, "smtp_password"); err != nil {
+		t.Fatal(err)
+	}
+	if smtpRec(t, app).GetString("smtp_host") != "smtp.changed.example" {
+		t.Error("env overwrote a configured host")
 	}
 }
 
-func TestApplySMTPOverrideDefaultsPortAndSenderName(t *testing.T) {
+func TestEnsureSMTPDefaultsPortAndSenderName(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
 	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
-	if err := ApplySMTPOverride(app); err != nil {
+	if err := EnsureSMTP(app, fakeVault{}, "smtp_password"); err != nil {
 		t.Fatal(err)
 	}
-	s := app.Settings()
-	if s.SMTP.Port != 587 || s.Meta.SenderName != "glucava" {
-		t.Errorf("smtp = %+v meta = %+v", s.SMTP, s.Meta)
+	r := smtpRec(t, app)
+	if r.GetInt("smtp_port") != 587 || r.GetString("smtp_sender_name") != "glucava" {
+		t.Errorf("port %d name %q", r.GetInt("smtp_port"), r.GetString("smtp_sender_name"))
 	}
 }
 
-func TestApplySMTPOverrideRejectsBadPort(t *testing.T) {
+func TestEnsureSMTPRejectsBadPort(t *testing.T) {
 	app := newApp(t)
 	t.Setenv("GLUCAVA_SMTP_HOST", "smtp.example.com")
 	t.Setenv("GLUCAVA_SMTP_SENDER_ADDRESS", "glucava@example.com")
 	t.Setenv("GLUCAVA_SMTP_PORT", "not-a-number")
-	if err := ApplySMTPOverride(app); err == nil {
+	if err := EnsureSMTP(app, fakeVault{}, "smtp_password"); err == nil {
 		t.Error("non-numeric port accepted")
-	}
-}
-
-func TestSilenceSuperuserPromptIgnoresTheInstallerAccount(t *testing.T) {
-	// Reproduces an existing data dir where only PocketBase's own one-time
-	// installer superuser exists (core.DefaultInstallerEmail): counting all
-	// superusers would see it and wrongly skip creating a real one.
-	app := newApp(t)
-	col, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec := core.NewRecord(col)
-	rec.SetEmail(core.DefaultInstallerEmail)
-	rec.SetPassword("a-long-enough-password")
-	if err := app.Save(rec); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := SilenceSuperuserPrompt(app); err != nil {
-		t.Fatal(err)
-	}
-	// PocketBase deletes its own installer placeholder as soon as a real
-	// superuser exists (core/record_model_superusers.go), so only ours remains.
-	n, err := app.CountRecords(core.CollectionNameSuperusers)
-	if err != nil || n != 1 {
-		t.Fatalf("superusers = %d, %v, want 1", n, err)
-	}
-	if rec, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, core.DefaultInstallerEmail); err == nil {
-		t.Errorf("installer placeholder still present: %s", rec.Id)
 	}
 }

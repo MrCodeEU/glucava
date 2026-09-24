@@ -14,6 +14,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/spf13/cobra"
 
@@ -83,7 +84,7 @@ func main() {
 		if err := bootstrap.ApplyRetentionOverride(app); err != nil {
 			return err
 		}
-		if err := bootstrap.ApplySMTPOverride(app); err != nil {
+		if err := bootstrap.EnsureSMTP(app, vault, secrets.NameSMTPPassword); err != nil {
 			return err
 		}
 
@@ -160,7 +161,7 @@ func main() {
 			}
 		}()
 
-		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(app, st, vault) }}
+		d := &notify.Dispatcher{Outbox: st, Channels: func() []notify.Channel { return channels(st, vault) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
@@ -176,7 +177,7 @@ func main() {
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
-			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(app, st, vault)) },
+			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
 			StravaLogin: stravaLogin,
 			GlucoseTest: func(ctx context.Context) error {
 				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
@@ -263,27 +264,28 @@ func sendTest(ctx context.Context, chans []notify.Channel) error {
 }
 
 // channels builds the notification channels from the current settings.
-func channels(app core.App, st *store.PB, vault *secrets.Vault) []notify.Channel {
-	ntfyURL, webhookURL, emailTo, err := st.NotifySettings()
+func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
+	cfg, err := st.LoadConfig()
 	if err != nil {
 		log.Printf("notify: read settings: %v", err)
 		return nil
 	}
 	var out []notify.Channel
-	if ntfyURL != "" {
+	if cfg.NtfyURL != "" {
 		tok, _, _ := vault.Get(secrets.NameNtfyToken)
-		out = append(out, &notify.Ntfy{URL: ntfyURL, Token: tok})
+		out = append(out, &notify.Ntfy{URL: cfg.NtfyURL, Token: tok})
 	}
-	if webhookURL != "" {
+	if cfg.WebhookURL != "" {
 		secret, _, _ := vault.Get(secrets.NameWebhookSecret)
-		out = append(out, &notify.Webhook{URL: webhookURL, Secret: secret})
+		out = append(out, &notify.Webhook{URL: cfg.WebhookURL, Secret: secret})
 	}
-	if emailTo != "" && app.Settings().SMTP.Enabled {
-		meta := app.Settings().Meta
+	if cfg.EmailTo != "" && cfg.SMTPHost != "" && cfg.SMTPSender != "" {
+		pw, _, _ := vault.Get(secrets.NameSMTPPassword)
+		client := &mailer.SMTPClient{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: pw, TLS: cfg.SMTPTLS}
 		out = append(out, &notify.Email{
-			SendFunc: app.NewMailClient().Send,
-			From:     mail.Address{Name: meta.SenderName, Address: meta.SenderAddress},
-			To:       emailTo,
+			SendFunc: client.Send,
+			From:     mail.Address{Name: cfg.SMTPSenderName, Address: cfg.SMTPSender},
+			To:       cfg.EmailTo,
 		})
 	}
 	return out

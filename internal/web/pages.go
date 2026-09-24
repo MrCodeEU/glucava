@@ -352,10 +352,10 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 
 // SettingsData feeds the settings page.
 type SettingsData struct {
-	Cfg                                               store.Config
-	HasDexcomPassword, HasNtfyToken, HasWebhookSecret bool
-	ImportFormats                                     []string // importers.Names(); empty hides the import card
-	ImportOK, ImportErr                               string   // one-shot flash after /actions/glucose/import redirects back
+	Cfg                                                                store.Config
+	HasDexcomPassword, HasNtfyToken, HasWebhookSecret, HasSMTPPassword bool
+	ImportFormats                                                      []string // importers.Names(); empty hides the import card
+	ImportOK, ImportErr                                                string   // one-shot flash after /actions/glucose/import redirects back
 }
 
 // secretHelp describes whether a secret field has a stored value.
@@ -389,6 +389,10 @@ func WebhookSecretStatus(has bool) g.Node {
 		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
 }
 
+func SMTPSecretStatus(has bool) g.Node {
+	return Div(ID("smtp-secret-status"), Class("help"), g.Text(secretHelp(has, "A password")))
+}
+
 // GlucoseImportStatus renders the outcome of a glucose import: exactly one
 // of ok/errMsg is non-empty, or both empty for the initial page render. It
 // has a stable ID so both the plain-form flash render and the progressive-
@@ -416,7 +420,9 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "preMin": c.PreMin, "postMin": c.PostMin,
 		"pollMin": c.PollMin, "lang": c.Lang, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
 		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
-		"emailTo": c.EmailTo, "retentionDays": c.RetentionDays, "purgeConfirm": "",
+		"emailTo":  c.EmailTo,
+		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
+		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -461,9 +467,24 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("webhookSecret", "Webhook signing secret", "", Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
 						WebhookSecretStatus(d.HasWebhookSecret),
 					),
-					Div(
-						Field("emailTo", "Notification email", "Needs SMTP configured via GLUCAVA_SMTP_* env vars. Leave empty to turn off.", Input(ID("emailTo"), Type("email"), bind("emailTo"))),
-					),
+				),
+				Card(H2(g.Text("Email")),
+					P(Class("muted"), g.Text("Send notifications by email through your own SMTP server. Leave the recipient empty to turn email off.")),
+					Field("emailTo", "Send to", "", Input(ID("emailTo"), Type("email"), bind("emailTo"))),
+					Div(append(comp("fieldrow"),
+						Field("smtpHost", "SMTP host", "", Input(ID("smtpHost"), Type("text"), AutoComplete("off"), bind("smtpHost"))),
+						Field("smtpPort", "Port", "Usually 587 (StartTLS) or 465 (TLS).", Input(ID("smtpPort"), Type("number"), Min("1"), Max("65535"), bind("smtpPort"))),
+					)...),
+					Div(append(comp("fieldrow"),
+						Field("smtpUsername", "Username", "", Input(ID("smtpUsername"), Type("text"), AutoComplete("off"), bind("smtpUsername"))),
+						Field("smtpPassword", "Password", "", Input(ID("smtpPassword"), Type("password"), AutoComplete("new-password"), bind("smtpPassword"))),
+					)...),
+					SMTPSecretStatus(d.HasSMTPPassword),
+					Div(append(comp("fieldrow"),
+						Field("smtpSender", "From address", "", Input(ID("smtpSender"), Type("email"), bind("smtpSender"))),
+						Field("smtpSenderName", "From name", "", Input(ID("smtpSenderName"), Type("text"), bind("smtpSenderName"))),
+					)...),
+					Field("smtpTLS", "Require TLS", "Tick for port 465. Otherwise StartTLS is used when the server offers it.", Input(ID("smtpTLS"), Type("checkbox"), bind("smtpTLS"))),
 				),
 			),
 			g.If(len(d.ImportFormats) > 0, Card(

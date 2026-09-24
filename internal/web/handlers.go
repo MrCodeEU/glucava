@@ -163,7 +163,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	s.html(w, http.StatusOK, SettingsPage(s.page(r, "Settings", "settings"), SettingsData{
 		Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
-		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret),
+		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
 	}))
 }
@@ -418,6 +418,13 @@ type settingsSignals struct {
 	WebhookURL     string  `json:"webhookURL"`
 	WebhookSecret  string  `json:"webhookSecret"`
 	EmailTo        string  `json:"emailTo"`
+	SMTPHost       string  `json:"smtpHost"`
+	SMTPPort       int     `json:"smtpPort"`
+	SMTPUsername   string  `json:"smtpUsername"`
+	SMTPPassword   string  `json:"smtpPassword"`
+	SMTPTLS        bool    `json:"smtpTLS"`
+	SMTPSender     string  `json:"smtpSender"`
+	SMTPSenderName string  `json:"smtpSenderName"`
 	RetentionDays  int     `json:"retentionDays"`
 }
 
@@ -446,6 +453,12 @@ func (v settingsSignals) validate() string {
 		return "The webhook URL must start with http:// or https://."
 	case !validOptionalEmail(v.EmailTo):
 		return "The notification email address is not valid."
+	case v.SMTPPort < 0 || v.SMTPPort > 65535:
+		return "The SMTP port must be between 1 and 65535."
+	case !validOptionalEmail(v.SMTPSender):
+		return "The SMTP sender address is not valid."
+	case v.SMTPHost != "" && (v.SMTPPort == 0 || v.SMTPSender == ""):
+		return "SMTP needs a port and a sender address."
 	}
 	return ""
 }
@@ -488,6 +501,8 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PreMin, cfg.PostMin, cfg.PollMin, cfg.Lang = v.PreMin, v.PostMin, v.PollMin, v.Lang
 	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
 	cfg.NtfyURL, cfg.WebhookURL, cfg.EmailTo = v.NtfyURL, v.WebhookURL, v.EmailTo
+	cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPTLS = v.SMTPHost, v.SMTPPort, v.SMTPUsername, v.SMTPTLS
+	cfg.SMTPSender, cfg.SMTPSenderName = v.SMTPSender, v.SMTPSenderName
 	cfg.RetentionDays = v.RetentionDays
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
@@ -499,6 +514,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 		secrets.NameDexcomPassword: v.DexcomPassword,
 		secrets.NameNtfyToken:      v.NtfyToken,
 		secrets.NameWebhookSecret:  v.WebhookSecret,
+		secrets.NameSMTPPassword:   v.SMTPPassword,
 	} {
 		if val == "" {
 			continue
@@ -508,11 +524,12 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_ = sse.PatchSignals([]byte(`{"dexcomPassword":"","ntfyToken":"","webhookSecret":""}`))
+	_ = sse.PatchSignals([]byte(`{"dexcomPassword":"","ntfyToken":"","webhookSecret":"","smtpPassword":""}`))
 	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
 	_ = sse.PatchElements(renderString(DexcomSecretStatus(has(secrets.NameDexcomPassword))))
 	_ = sse.PatchElements(renderString(NtfySecretStatus(has(secrets.NameNtfyToken))))
 	_ = sse.PatchElements(renderString(WebhookSecretStatus(has(secrets.NameWebhookSecret))))
+	_ = sse.PatchElements(renderString(SMTPSecretStatus(has(secrets.NameSMTPPassword))))
 	s.toast(sse, "ok", "Settings saved.")
 	s.Bus.Publish()
 }
