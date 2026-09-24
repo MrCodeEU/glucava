@@ -418,7 +418,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 	c := d.Cfg
 	sig, _ := json.Marshal(map[string]any{
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "preMin": c.PreMin, "postMin": c.PostMin,
-		"pollMin": c.PollMin, "lang": c.Lang, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
+		"pollMin": c.PollMin, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
 		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
 		"emailTo":  c.EmailTo,
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
@@ -442,8 +442,6 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("postMin", "Minutes after end", "Also how long to wait after an activity before processing it.", Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
 					)...),
 					Field("pollMin", "Check Strava every (minutes)", "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
-					Field("lang", "Language", "Only English is translated so far.", Select(ID("lang"), bind("lang"),
-						Option(Value("en"), g.Text("English")), Option(Value("de"), g.Text("Deutsch")))),
 				),
 				Card(H2(g.Text("Dexcom Share")),
 					P(Class("muted"), g.Text("Turn on Dexcom Share in the Dexcom app first. The account is the one that owns the sensor.")),

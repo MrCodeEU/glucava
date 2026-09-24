@@ -20,7 +20,6 @@ type Config struct {
 	PreMin         int
 	PostMin        int
 	PollMin        int
-	Lang           string // "en" or "de"
 	DexcomRegion   string // "us", "ous" or "jp"
 	DexcomUsername string
 	NtfyURL        string
@@ -55,7 +54,7 @@ func (s *PB) LoadConfig() (Config, error) {
 	return Config{
 		Unit: r.GetString("unit"), RangeLow: r.GetFloat("range_low"), RangeHigh: r.GetFloat("range_high"),
 		PreMin: r.GetInt("pre_minutes"), PostMin: r.GetInt("post_minutes"), PollMin: r.GetInt("poll_interval_minutes"),
-		Lang: r.GetString("lang"), DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
+		DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
 		NtfyURL: r.GetString("ntfy_url"), WebhookURL: r.GetString("webhook_url"), EmailTo: r.GetString("email_to"),
 		SMTPHost: r.GetString("smtp_host"), SMTPPort: r.GetInt("smtp_port"), SMTPUsername: r.GetString("smtp_username"),
 		SMTPTLS: r.GetBool("smtp_tls"), SMTPSender: r.GetString("smtp_sender_address"), SMTPSenderName: r.GetString("smtp_sender_name"),
@@ -75,7 +74,6 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("pre_minutes", c.PreMin)
 	r.Set("post_minutes", c.PostMin)
 	r.Set("poll_interval_minutes", c.PollMin)
-	r.Set("lang", c.Lang)
 	r.Set("dexcom_region", c.DexcomRegion)
 	r.Set("dexcom_username", c.DexcomUsername)
 	r.Set("ntfy_url", c.NtfyURL)

@@ -409,7 +409,6 @@ type settingsSignals struct {
 	PreMin         int     `json:"preMin"`
 	PostMin        int     `json:"postMin"`
 	PollMin        int     `json:"pollMin"`
-	Lang           string  `json:"lang"`
 	DexcomRegion   string  `json:"dexcomRegion"`
 	DexcomUsername string  `json:"dexcomUsername"`
 	DexcomPassword string  `json:"dexcomPassword"`
@@ -432,7 +431,7 @@ type settingsSignals struct {
 func (v settingsSignals) config() store.Config {
 	return store.Config{
 		Unit: v.Unit, RangeLow: v.RangeLow, RangeHigh: v.RangeHigh, PreMin: v.PreMin, PostMin: v.PostMin,
-		PollMin: v.PollMin, Lang: v.Lang, DexcomRegion: v.DexcomRegion, DexcomUsername: v.DexcomUsername,
+		PollMin: v.PollMin, DexcomRegion: v.DexcomRegion, DexcomUsername: v.DexcomUsername,
 		NtfyURL: v.NtfyURL, WebhookURL: v.WebhookURL, EmailTo: v.EmailTo, RetentionDays: v.RetentionDays,
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
@@ -461,7 +460,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg.Unit, cfg.RangeLow, cfg.RangeHigh = v.Unit, v.RangeLow, v.RangeHigh
-	cfg.PreMin, cfg.PostMin, cfg.PollMin, cfg.Lang = v.PreMin, v.PostMin, v.PollMin, v.Lang
+	cfg.PreMin, cfg.PostMin, cfg.PollMin = v.PreMin, v.PostMin, v.PollMin
 	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
 	cfg.NtfyURL, cfg.WebhookURL, cfg.EmailTo = v.NtfyURL, v.WebhookURL, v.EmailTo
 	cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPTLS = v.SMTPHost, v.SMTPPort, v.SMTPUsername, v.SMTPTLS

@@ -330,7 +330,7 @@ func TestLogoutClearsCookie(t *testing.T) {
 	}
 }
 
-const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,"lang":"de",
+const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
 "webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
 "smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava"}`
@@ -345,7 +345,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 		t.Fatalf("response = %s", w.Body)
 	}
 	cfg, _ := e.srv.Store.LoadConfig()
-	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.Lang != "de" || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" {
+	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" {
 		t.Errorf("config = %+v", cfg)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
@@ -803,7 +803,7 @@ func TestExportNeedsLoginAndSetsHeaders(t *testing.T) {
 
 func TestRetentionValidation(t *testing.T) {
 	t.Parallel()
-	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, Lang: "en", DexcomRegion: "ous", RetentionDays: -1}
+	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", RetentionDays: -1}
 	if v.validate() == "" {
 		t.Error("negative retention accepted")
 	}

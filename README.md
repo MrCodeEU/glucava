@@ -103,7 +103,7 @@ printf '%s\n' "$SMTP_APP_PASSWORD" | glucava secrets set smtp_password --dev=fal
 glucava secrets status --dev=false --dir /data     # set/unset per secret, never the values
 ```
 
-- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `lang`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name` (`glucava config list` is authoritative).
+- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name` (`glucava config list` is authoritative).
 - Settings you pass in one call are validated together, so related keys (`smtp_host` with `smtp_sender_address`) can come in any order. An invalid batch changes nothing and exits non-zero.
 - Secrets: `dexcom_password`, `ntfy_token`, `webhook_secret`, `smtp_password`. Strava cookies: `glucava strava cookies import`. Trigger tokens: `glucava token create <name>`.
 - `GLUCAVA_RETENTION_DAYS`, when set, still overrides `retention_days` at every server start.
