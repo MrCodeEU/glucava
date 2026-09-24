@@ -423,6 +423,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"emailTo":  c.EmailTo,
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
+		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -483,6 +484,11 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("smtpSenderName", "From name", "", Input(ID("smtpSenderName"), Type("text"), bind("smtpSenderName"))),
 					)...),
 					Field("smtpTLS", "Require TLS", "Tick for port 465. Otherwise StartTLS is used when the server offers it.", Input(ID("smtpTLS"), Type("checkbox"), bind("smtpTLS"))),
+					H3(g.Text("What to email")),
+					Field("mailAlerts", "Failure alerts", "Expired session, failed update, missing glucose data, canary failures.", Input(ID("mailAlerts"), Type("checkbox"), bind("mailAlerts"))),
+					Field("mailActivity", "Summary after each activity", "One mail per processed activity with its glucose numbers.", Input(ID("mailActivity"), Type("checkbox"), bind("mailActivity"))),
+					Field("mailWeekly", "Weekly summary", "Every Monday morning: last week's activities and glucose numbers.", Input(ID("mailWeekly"), Type("checkbox"), bind("mailWeekly"))),
+					Field("publicURL", "Public URL of this web UI", "Used for links in emails, for example https://glucava.example.com. Leave empty for no links.", Input(ID("publicURL"), Type("url"), bind("publicURL"))),
 				),
 			),
 			g.If(len(d.ImportFormats) > 0, Card(

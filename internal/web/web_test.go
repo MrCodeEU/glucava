@@ -333,7 +333,8 @@ func TestLogoutClearsCookie(t *testing.T) {
 const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
 "webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
-"smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava"}`
+"smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava",
+"publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true}`
 
 func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	t.Parallel()
@@ -345,7 +346,8 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 		t.Fatalf("response = %s", w.Body)
 	}
 	cfg, _ := e.srv.Store.LoadConfig()
-	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" {
+	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" ||
+		cfg.PublicURL != "https://glucava.example.com" || !cfg.MailAlerts || !cfg.MailActivity || !cfg.MailWeekly {
 		t.Errorf("config = %+v", cfg)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
@@ -364,7 +366,13 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 			t.Errorf("%s leaks a secret", p)
 		}
 	}
-	if !strings.Contains(e.get(t, "/settings", c).Body.String(), "A password is stored") {
+	page := e.get(t, "/settings", c).Body.String()
+	for _, want := range []string{"Weekly summary", "Summary after each activity", "Failure alerts", "Public URL"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("settings page is missing %q", want)
+		}
+	}
+	if !strings.Contains(page, "A password is stored") {
 		t.Error("settings page does not say the password is stored")
 	}
 
@@ -392,6 +400,7 @@ func TestSettingsValidation(t *testing.T) {
 		"email":          strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
 		"smtp no sender": strings.Replace(validSettings, `"smtpSender":"g@example.com"`, `"smtpSender":""`, 1),
 		"smtp port":      strings.Replace(validSettings, `"smtpPort":587`, `"smtpPort":99999`, 1),
+		"public url":     strings.Replace(validSettings, `https://glucava.example.com`, `javascript:alert(1)`, 1),
 		"not json":       `{"unit":`,
 	}
 	for name, body := range bad {

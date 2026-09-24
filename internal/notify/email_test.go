@@ -101,3 +101,39 @@ func TestEmailHTMLSeverityDefaultsToInfo(t *testing.T) {
 		t.Errorf("empty severity should render as info: %s", h)
 	}
 }
+
+func TestEmailWantsFiltersKinds(t *testing.T) {
+	calls := 0
+	e := &Email{
+		SendFunc: func(*mailer.Message) error { calls++; return nil }, To: "me@example.com",
+		Wants: func(typ string) bool { return typ == "strava_failed" },
+	}
+	if err := e.Send(context.Background(), Message{Type: "weekly_summary"}); err != nil || calls != 0 {
+		t.Fatalf("unwanted kind sent: err=%v calls=%d", err, calls)
+	}
+	if err := e.Send(context.Background(), Message{Type: "strava_failed"}); err != nil || calls != 1 {
+		t.Fatalf("wanted kind not sent: err=%v calls=%d", err, calls)
+	}
+}
+
+func TestEmailRendersFactsAndLink(t *testing.T) {
+	var got *mailer.Message
+	e := &Email{SendFunc: func(m *mailer.Message) error { got = m; return nil }, To: "me@example.com"}
+	err := e.Send(context.Background(), Message{
+		Type: "weekly_summary", Title: "Weekly", Body: "b", Link: "https://g.example/", LinkLabel: "Open dashboard",
+		Facts: []Fact{{"Activities", "3"}, {"Best <b>", "92%"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`href="https://g.example/"`, "Open dashboard", "Activities", "Best &lt;b&gt;", "92%"} {
+		if !strings.Contains(got.HTML, want) {
+			t.Errorf("HTML missing %q", want)
+		}
+	}
+	for _, want := range []string{"Activities: 3", "Open dashboard: https://g.example/"} {
+		if !strings.Contains(got.Text, want) {
+			t.Errorf("text missing %q: %s", want, got.Text)
+		}
+	}
+}

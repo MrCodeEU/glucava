@@ -38,6 +38,7 @@ type Dispatcher struct {
 	Cooldown time.Duration    // default 6 hours
 	MaxAge   time.Duration    // default 24 hours
 	Now      func() time.Time
+	Link     func(Message) (href, label string) // optional: adds a web UI link to each message
 
 	mu   sync.Mutex
 	sent map[string]time.Time
@@ -83,6 +84,9 @@ func (d *Dispatcher) Flush(ctx context.Context) error {
 		msg := Message{
 			Type: e.Type, Severity: e.Severity, Title: Title(e.Type), Body: e.Message,
 			StravaID: e.StravaID, Repaired: e.Repaired, Time: e.Created,
+		}
+		if d.Link != nil {
+			msg.Link, msg.LinkLabel = d.Link(msg)
 		}
 		var errs []error
 		delivered := false

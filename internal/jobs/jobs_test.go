@@ -376,3 +376,30 @@ func TestUnsafeMergeIsRefused(t *testing.T) {
 		t.Errorf("activity marked done: %+v", got)
 	}
 }
+
+func TestOnDoneCalledOnceForFirstRunOnly(t *testing.T) {
+	w := &fakeWriter{desc: "My run"}
+	q, _ := setup(&fakeSource{samples: readings()}, w)
+	var got []Activity
+	q.OnDone = func(_ context.Context, a Activity) { got = append(got, a) }
+
+	runOne(t, q, Job{Activity: activity()})
+	if len(got) != 1 || got[0].Summary == nil || got[0].StravaID != "42" {
+		t.Fatalf("OnDone calls = %+v", got)
+	}
+	runOne(t, q, Job{Activity: activity()}) // already done: skipped
+	runOne(t, q, Job{Activity: activity(), Force: true})
+	if len(got) != 1 {
+		t.Errorf("OnDone ran for a skipped or forced run: %d calls", len(got))
+	}
+}
+
+func TestOnDoneNotCalledOnFailure(t *testing.T) {
+	q, _ := setup(&fakeSource{}, &fakeWriter{})
+	called := false
+	q.OnDone = func(context.Context, Activity) { called = true }
+	runOne(t, q, Job{Activity: activity()})
+	if called {
+		t.Error("OnDone ran for a failed activity")
+	}
+}

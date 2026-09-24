@@ -290,3 +290,29 @@ func TestEnsureSMTPLateEnvPasswordIsStored(t *testing.T) {
 		t.Errorf("password overwritten: %q", pw)
 	}
 }
+
+func TestEnsurePublicURL(t *testing.T) {
+	app := newApp(t)
+	if err := EnsurePublicURL(app); err != nil || smtpRec(t, app).GetString("public_url") != "" {
+		t.Fatalf("unset env should do nothing: %v", err)
+	}
+	t.Setenv("GLUCAVA_PUBLIC_URL", "ftp://nope")
+	if err := EnsurePublicURL(app); err == nil {
+		t.Error("non-http URL accepted")
+	}
+	t.Setenv("GLUCAVA_PUBLIC_URL", "https://glucava.example.com")
+	if err := EnsurePublicURL(app); err != nil {
+		t.Fatal(err)
+	}
+	if got := smtpRec(t, app).GetString("public_url"); got != "https://glucava.example.com" {
+		t.Fatalf("public_url = %q", got)
+	}
+	// A value saved in the UI wins over a later env change.
+	t.Setenv("GLUCAVA_PUBLIC_URL", "https://other.example.com")
+	if err := EnsurePublicURL(app); err != nil {
+		t.Fatal(err)
+	}
+	if got := smtpRec(t, app).GetString("public_url"); got != "https://glucava.example.com" {
+		t.Errorf("seed overwrote the stored value: %q", got)
+	}
+}

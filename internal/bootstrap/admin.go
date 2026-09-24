@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -180,6 +182,33 @@ func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 		return err
 	}
 	log.Printf("bootstrap: SMTP configured from the environment (%s:%d)", host, port)
+	return nil
+}
+
+// EnsurePublicURL seeds the web UI's public address (used for links in
+// emails) from GLUCAVA_PUBLIC_URL while none is stored. Like the other seeds it
+// never overwrites a value saved in the web UI.
+func EnsurePublicURL(app core.App) error {
+	raw := strings.TrimSpace(os.Getenv("GLUCAVA_PUBLIC_URL"))
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("bootstrap: GLUCAVA_PUBLIC_URL must start with http:// or https://, got %q", raw)
+	}
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		return fmt.Errorf("bootstrap: settings row not found: %w", err)
+	}
+	if recs[0].GetString("public_url") != "" {
+		return nil
+	}
+	recs[0].Set("public_url", raw)
+	if err := app.Save(recs[0]); err != nil {
+		return err
+	}
+	log.Printf("bootstrap: public URL set from the environment (%s)", raw)
 	return nil
 }
 
