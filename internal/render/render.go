@@ -101,6 +101,14 @@ func Strip(existing string) string {
 	return strings.Trim(strings.Join(lines, "\n"), "\n \t")
 }
 
+// PreservesText reports whether merged differs from existing only by Glucava
+// blocks: with every block removed, both texts must be identical. It is the
+// invariant behind never touching the user's own description text, checked
+// before anything is written to Strava.
+func PreservesText(existing, merged string) bool {
+	return Strip(existing) == Strip(merged)
+}
+
 // Merge puts block into existing. Any earlier Glucava block (see blockMarker)
 // is removed first, then the new one is inserted where the first one was, or
 // appended after a blank line if there wasn't one. Other text — including
