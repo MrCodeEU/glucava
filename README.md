@@ -54,6 +54,13 @@ Put a TLS reverse proxy in front. Then:
 | `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`), `GLUCAVA_SMTP_TO` | rest of the seed; `TO` is the recipient. The password goes into the encrypted vault, and is stored later too if you add it after the first start |
 | `GLUCAVA_SECRET_KEY` | encryption key for stored secrets (default: `<data dir>/secret.key`) |
 | `GLUCAVA_TRUSTED_PROXIES` | comma-separated IPs/CIDRs of your reverse proxy. Only then are `X-Forwarded-For`/`-Proto` believed (per-client rate limits, Secure cookie). Unset = direct peer only |
+| `GLUCAVA_SOURCE` | live glucose source (default and currently only: `dexcom`); an unknown name stops the server at start |
+| `GLUCAVA_CANARY_INTERVAL` | how often the edit-page canary runs, e.g. `12h`; `off` disables it (default `24h`) |
+| `GLUCAVA_POLL_LOOKBACK` | how old an activity may be and still be picked up by polling (default `24h`) |
+| `GLUCAVA_RETRY_BACKOFF` | waits before each retry of a failed job, comma-separated (default `1m,3m,10m`) |
+| `GLUCAVA_NOTIFY_COOLDOWN`, `GLUCAVA_NOTIFY_MAX_AGE` | one notification per event and activity per cooldown (default `6h`); undeliverable events older than max age are dropped (default `24h`) |
+| `GLUCAVA_STRAVA_SELECTOR_DESCRIPTION`, `GLUCAVA_STRAVA_SELECTOR_SAVE` | JSON array of CSS selectors for Strava's edit page, tried **before** the built-in ones, so a Strava markup change is a config fix, not a release. Check with `glucava strava check` |
+| `GLUCAVA_USER_AGENT` | browser user agent for the Strava session (default built in) |
 | `GLUCAVA_ADMIN_UI=1` | expose PocketBase admin UI and API (off by default) |
 | `GLUCAVA_NO_SANDBOX=1` | Chrome `--no-sandbox` (set in the Docker image) |
 | `CHROME_PATH` | Chrome binary |

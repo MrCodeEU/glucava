@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +35,10 @@ func openVault(app core.App) (*secrets.Vault, error) {
 
 // newStravaWriter builds the browser writer. Cookies live in the vault, and the
 // browser's refreshed cookies are written back after each successful run.
-func newStravaWriter(vault *secrets.Vault) *strava.Writer {
+func newStravaWriter(vault *secrets.Vault, tun tuning) *strava.Writer {
 	return strava.NewWriter(strava.Config{
+		Selectors: tun.Selectors,
+		UserAgent: tun.UserAgent,
 		BaseURL:   os.Getenv("GLUCAVA_STRAVA_URL"), // empty means https://www.strava.com; set for tests
 		NoSandbox: os.Geteuid() == 0 || os.Getenv("GLUCAVA_NO_SANDBOX") == "1",
 		LoadCookies: func() ([]strava.Cookie, error) {
@@ -53,6 +57,38 @@ func newStravaWriter(vault *secrets.Vault) *strava.Writer {
 		},
 		Pause: func() { time.Sleep(time.Duration(400+rand.IntN(800)) * time.Millisecond) },
 	})
+}
+
+// defaultSource is the glucose source used when GLUCAVA_SOURCE is unset.
+const defaultSource = "dexcom"
+
+// liveSource is a glucose source and the key its readings are stored under.
+type liveSource struct {
+	name   string
+	source glucose.Source
+}
+
+// sourceBuilders maps GLUCAVA_SOURCE values to constructors. A new live source
+// (Nightscout, LibreLinkUp, ...) is one entry here plus its glucose.Source.
+var sourceBuilders = map[string]func(st *store.PB, vault *secrets.Vault) glucose.Source{
+	"dexcom": func(st *store.PB, vault *secrets.Vault) glucose.Source { return &dexcomSource{st: st, vault: vault} },
+}
+
+// newSource returns the live glucose source named name (default "dexcom").
+func newSource(name string, st *store.PB, vault *secrets.Vault) (liveSource, error) {
+	if name == "" {
+		name = defaultSource
+	}
+	build, ok := sourceBuilders[name]
+	if !ok {
+		known := make([]string, 0, len(sourceBuilders))
+		for k := range sourceBuilders {
+			known = append(known, k)
+		}
+		sort.Strings(known)
+		return liveSource{}, fmt.Errorf("GLUCAVA_SOURCE %q is not a known glucose source (known: %s)", name, strings.Join(known, ", "))
+	}
+	return liveSource{name: name, source: build(st, vault)}, nil
 }
 
 // dexcomSource reads region, username and password on each call and rebuilds the
