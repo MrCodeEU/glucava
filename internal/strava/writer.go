@@ -88,6 +88,7 @@ type Config struct {
 	Timeout        time.Duration  // whole run; default 2 minutes
 	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
 	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
+	StartTimeout   time.Duration  // wait for Chrome to come up; default 60 seconds (chromedp's own 20 is too short on a busy or slow host)
 }
 
 // Writer implements jobs.Writer with chromedp.
@@ -112,6 +113,9 @@ func NewWriter(cfg Config) *Writer {
 	}
 	if cfg.SaveTimeout <= 0 {
 		cfg.SaveTimeout = 15 * time.Second
+	}
+	if cfg.StartTimeout <= 0 {
+		cfg.StartTimeout = 60 * time.Second
 	}
 	if len(cfg.Selectors.Description) == 0 {
 		cfg.Selectors.Description = DefaultSelectors.Description
@@ -450,7 +454,8 @@ func (w *Writer) withFreshBrowser(ctx context.Context, fn func(context.Context) 
 	defer removeDir(profile)
 
 	opts := append([]chromedp.ExecAllocatorOption(nil), chromedp.DefaultExecAllocatorOptions[:]...)
-	opts = append(opts, chromedp.ExecPath(path), chromedp.UserAgent(w.cfg.UserAgent), chromedp.UserDataDir(profile))
+	opts = append(opts, chromedp.ExecPath(path), chromedp.UserAgent(w.cfg.UserAgent), chromedp.UserDataDir(profile),
+		chromedp.WSURLReadTimeout(w.cfg.StartTimeout))
 	if w.cfg.NoSandbox {
 		opts = append(opts, chromedp.Flag("no-sandbox", true), chromedp.Flag("disable-dev-shm-usage", true))
 	}
