@@ -115,7 +115,17 @@ glucava secrets status --dev=false --dir /data     # set/unset per secret, never
 - `glucava secrets rotate-key` re-encrypts stored secrets with a fresh key. Stop the server and back up the data dir first.
 - Settings → **Your data**: retention (default 365 days for readings and events; 0 keeps them), CSV export of readings and activities, and delete-all. `glucava data purge --yes` does the same from the shell. Activities are kept by retention because they log what was written to Strava.
 - Only one user account can exist.
-- Back up the data dir and the encryption key separately; a backup holding both exposes your credentials.
+- Back up the data dir and the encryption key separately; a backup holding both exposes your credentials. See [Backup and restore](#backup-and-restore).
+
+## Backup and restore
+
+All state is in the data dir (`/data` in Docker): the SQLite database (settings, activities, readings, events, encrypted secrets) and, unless you set `GLUCAVA_SECRET_KEY`, `secret.key`.
+
+- **Back up** with the server stopped, or from a filesystem snapshot: copy the data dir. Keep the encryption key somewhere else (`GLUCAVA_SECRET_KEY` in your secret store, or `secret.key` copied separately). Data without the key cannot be decrypted, and the key without the data is useless, which is the point.
+- **Restore:** put the data dir back, provide the same key, start the same or a newer version. Migrations run on start.
+- **Upgrades** only move forward: migrations have no down steps. To go back to an older version, restore a backup taken before the upgrade.
+- **Lost key:** stored secrets are unrecoverable. Start with a new key, then enter them again (`glucava secrets set ...`, `glucava strava cookies import`). Settings and history are not affected.
+- **Rehearse it** once: restore a copy into a temp dir and run `glucava config list --dev=false --dir <copy>` and `glucava secrets status --dev=false --dir <copy>` with the key.
 
 ## Development
 
@@ -129,7 +139,7 @@ type Source interface {
 }
 ```
 
-A Libre, Tandem or Medtronic **live API** source is a new type implementing that one method, wired in `cmd/glucava/main.go` next to `dexcomSource`. No changes needed elsewhere.
+A Libre, Tandem or Medtronic **live API** source is a new type implementing that one method, plus one entry in `sourceBuilders` (`cmd/glucava/wire.go`); users then select it with `GLUCAVA_SOURCE`. No changes needed elsewhere.
 
 **Adding a file importer** (a one-shot export, not a live API) is a separate, smaller interface in `internal/glucose/importers`:
 
