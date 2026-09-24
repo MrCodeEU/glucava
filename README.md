@@ -39,7 +39,7 @@ Put a TLS reverse proxy in front. Then:
   See [docs/triggers.md](docs/triggers.md) for Tasker, HTTP Shortcuts/MacroDroid, and Apple Shortcuts setup.
 - **Manual:** open an activity for a preview, then Process or Reprocess. Existing text is kept; only the 🩸 block is replaced.
 - **By id:** the **Strava session** page has a "Process a specific activity" field for an activity the poller never saw at all (e.g. it predates glucava, or is older than the polling window). It pages through your Strava training log looking for that id, same as Reprocess otherwise.
-- **Notifications:** ntfy, webhook (HMAC-signed) or email on failures and expired sessions. Email needs SMTP configured via `GLUCAVA_SMTP_*` (below); the PocketBase admin UI where you'd normally set this is blocked by default.
+- **Notifications:** ntfy, webhook (HMAC-signed) or email on failures and expired sessions. Email is set up under Settings → Email (SMTP host, credentials, recipient); `GLUCAVA_SMTP_*` (below) can seed it on first start.
 - **Canary:** once a day, glucava dry-runs the edit page against your most recent activity (no save) to catch a broken selector or an expired session before it silently fails a real one; a failure notifies like any other event.
 - Dexcom Share itself only serves ~24 h of history, but a background job stores every reading it sees into glucava's own database as it arrives, so an activity can still be reprocessed later as long as its window is within Settings → **Your data** → retention (default 365 days). An activity missed entirely while it was still fresh (e.g. glucava was not running, or the reading never got ingested) cannot be recovered after the fact — unless you can still get that period as an export file: `make glucose-import FILE=export.csv FORMAT=libre` backfills readings from another app's export directly into the same database, so an older activity can be reprocessed against them. `glucava glucose import --format` currently understands `glooko` (a Glooko export — either the zip download directly, or `cgm_data_*.csv` from its extracted folder; verified against a real export), `libre` (a LibreView CSV export; unverified against a real file — see the code comment) and `nightscout` (an `entries.json` export). A zip is decoded entirely in memory and never extracted to disk: the entry name is only ever compared as a string, never used to build a filesystem path, so a malicious entry name cannot write outside the intended location; decompression is capped to bound a zip bomb. Adding another format is one function; see the extension point below.
 
@@ -50,13 +50,35 @@ Put a TLS reverse proxy in front. Then:
 | `GLUCAVA_ADMIN_EMAIL`, `GLUCAVA_ADMIN_PASSWORD` | first user, created on start |
 | `GLUCAVA_DEXCOM_USERNAME`, `GLUCAVA_DEXCOM_PASSWORD`, `GLUCAVA_DEXCOM_REGION` | Dexcom Share login, stored on first start if no credential is stored yet (alternative to `make dexcom`); safe to remove afterwards |
 | `GLUCAVA_RETENTION_DAYS` | readings/events retention in days (0 = forever); overrides the UI setting on every start, not just the first |
-| `GLUCAVA_SMTP_HOST`, `GLUCAVA_SMTP_SENDER_ADDRESS` | required to enable the email notify channel; recipient is set in Settings → Notifications |
-| `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`) | rest of the SMTP config; applied on every start, like `GLUCAVA_RETENTION_DAYS` |
+| `GLUCAVA_SMTP_HOST`, `GLUCAVA_SMTP_SENDER_ADDRESS` | seed the SMTP settings on first start (only while none are saved; afterwards edit them in Settings → Email) |
+| `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`), `GLUCAVA_SMTP_TO` | rest of the seed; `TO` is the recipient. The password goes into the encrypted vault, and is stored later too if you add it after the first start |
 | `GLUCAVA_SECRET_KEY` | encryption key for stored secrets (default: `<data dir>/secret.key`) |
 | `GLUCAVA_TRUSTED_PROXIES` | comma-separated IPs/CIDRs of your reverse proxy. Only then are `X-Forwarded-For`/`-Proto` believed (per-client rate limits, Secure cookie). Unset = direct peer only |
 | `GLUCAVA_ADMIN_UI=1` | expose PocketBase admin UI and API (off by default) |
 | `GLUCAVA_NO_SANDBOX=1` | Chrome `--no-sandbox` (set in the Docker image) |
 | `CHROME_PATH` | Chrome binary |
+
+## Email notifications (Gmail example)
+
+Glucava sends through any SMTP server; Gmail works well for a personal setup.
+
+1. Turn on 2-Step Verification for the Google account.
+2. Create an app password at <https://myaccount.google.com/apppasswords> (16 characters; your normal password is rejected). Type it without spaces.
+3. Either fill in **Settings → Email**, or seed it from `.env` before the first start:
+
+   ```sh
+   GLUCAVA_SMTP_HOST=smtp.gmail.com
+   GLUCAVA_SMTP_PORT=587
+   GLUCAVA_SMTP_TLS=0            # 587 uses StartTLS; for port 465 set GLUCAVA_SMTP_TLS=1
+   GLUCAVA_SMTP_USERNAME=you@gmail.com
+   GLUCAVA_SMTP_PASSWORD=your-16-char-app-password
+   GLUCAVA_SMTP_SENDER_ADDRESS=you@gmail.com   # must be the Gmail address (or one of its aliases)
+   GLUCAVA_SMTP_TO=you@gmail.com
+   ```
+
+4. Press **Send test notification** on the Settings page.
+
+The variables only seed the settings while no SMTP host is saved yet; after that the web UI is the source of truth and later edits in `.env` are ignored (except a password added while none is stored). Glucava does not expose the SMTP auth method or EHLO name, so servers that need LOGIN auth or a custom EHLO name (e.g. Gmail SMTP-relay) are not supported.
 
 ## Maintenance
 

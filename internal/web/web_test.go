@@ -332,7 +332,8 @@ func TestLogoutClearsCookie(t *testing.T) {
 
 const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,"lang":"de",
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
-"webhookURL":"","webhookSecret":"","emailTo":"me@example.com"}`
+"webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
+"smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava"}`
 
 func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	t.Parallel()
@@ -344,7 +345,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 		t.Fatalf("response = %s", w.Body)
 	}
 	cfg, _ := e.srv.Store.LoadConfig()
-	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.Lang != "de" || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" {
+	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.Lang != "de" || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" {
 		t.Errorf("config = %+v", cfg)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
@@ -359,7 +360,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	// The secrets never come back in any page.
 	for _, p := range []string{"/settings", "/", "/strava", "/tokens", "/events"} {
 		body := e.get(t, p, c).Body.String()
-		if strings.Contains(body, "s3cret-dexcom") || strings.Contains(body, "tk-secret") {
+		if strings.Contains(body, "s3cret-dexcom") || strings.Contains(body, "tk-secret") || strings.Contains(body, "s3cret-smtp") {
 			t.Errorf("%s leaks a secret", p)
 		}
 	}
@@ -381,15 +382,17 @@ func TestSettingsValidation(t *testing.T) {
 	before, _ := e.srv.Store.LoadConfig()
 
 	bad := map[string]string{
-		"unit":         strings.Replace(validSettings, `"unit":"mmol/L"`, `"unit":"parsec"`, 1),
-		"range order":  strings.Replace(validSettings, `"rangeHigh":170`, `"rangeHigh":60`, 1),
-		"poll zero":    strings.Replace(validSettings, `"pollMin":5`, `"pollMin":0`, 1),
-		"pre huge":     strings.Replace(validSettings, `"preMin":15`, `"preMin":9999`, 1),
-		"region":       strings.Replace(validSettings, `"dexcomRegion":"us"`, `"dexcomRegion":"mars"`, 1),
-		"ntfy scheme":  strings.Replace(validSettings, `https://ntfy.example/t`, `javascript:alert(1)`, 1),
-		"webhook file": strings.Replace(validSettings, `"webhookURL":""`, `"webhookURL":"file:///etc/passwd"`, 1),
-		"email":        strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
-		"not json":     `{"unit":`,
+		"unit":           strings.Replace(validSettings, `"unit":"mmol/L"`, `"unit":"parsec"`, 1),
+		"range order":    strings.Replace(validSettings, `"rangeHigh":170`, `"rangeHigh":60`, 1),
+		"poll zero":      strings.Replace(validSettings, `"pollMin":5`, `"pollMin":0`, 1),
+		"pre huge":       strings.Replace(validSettings, `"preMin":15`, `"preMin":9999`, 1),
+		"region":         strings.Replace(validSettings, `"dexcomRegion":"us"`, `"dexcomRegion":"mars"`, 1),
+		"ntfy scheme":    strings.Replace(validSettings, `https://ntfy.example/t`, `javascript:alert(1)`, 1),
+		"webhook file":   strings.Replace(validSettings, `"webhookURL":""`, `"webhookURL":"file:///etc/passwd"`, 1),
+		"email":          strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
+		"smtp no sender": strings.Replace(validSettings, `"smtpSender":"g@example.com"`, `"smtpSender":""`, 1),
+		"smtp port":      strings.Replace(validSettings, `"smtpPort":587`, `"smtpPort":99999`, 1),
+		"not json":       `{"unit":`,
 	}
 	for name, body := range bad {
 		w := e.action("/actions/settings", body, c, nil)

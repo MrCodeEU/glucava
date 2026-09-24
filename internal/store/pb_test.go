@@ -191,20 +191,20 @@ func TestOutbox(t *testing.T) {
 	}
 }
 
-func TestNotifySettings(t *testing.T) {
-	app := newApp(t)
-	s := &PB{App: app}
-	if n, w, e, err := s.NotifySettings(); err != nil || n != "" || w != "" || e != "" {
-		t.Fatalf("defaults = %q %q %q %v", n, w, e, err)
+func TestConfigNotifyAndSMTPRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil || c.NtfyURL != "" || c.EmailTo != "" || c.SMTPHost != "" {
+		t.Fatalf("defaults = %+v %v", c, err)
 	}
-	recs, _ := app.FindRecordsByFilter("settings", "", "", 1, 0)
-	recs[0].Set("ntfy_url", "https://ntfy.example/t")
-	recs[0].Set("email_to", "me@example.com")
-	if err := app.Save(recs[0]); err != nil {
+	c.NtfyURL, c.EmailTo = "https://ntfy.example/t", "me@example.com"
+	c.SMTPHost, c.SMTPPort, c.SMTPUsername, c.SMTPTLS, c.SMTPSender, c.SMTPSenderName = "smtp.example.com", 465, "u", true, "g@example.com", "glucava"
+	if err := s.SaveConfig(c); err != nil {
 		t.Fatal(err)
 	}
-	if n, _, e, _ := s.NotifySettings(); n != "https://ntfy.example/t" || e != "me@example.com" {
-		t.Errorf("ntfy = %q email = %q", n, e)
+	got, _ := s.LoadConfig()
+	if got != c {
+		t.Errorf("got %+v, want %+v", got, c)
 	}
 }
 

@@ -26,7 +26,13 @@ type Config struct {
 	NtfyURL        string
 	WebhookURL     string
 	EmailTo        string // recipient for the email notify channel; empty disables it
-	RetentionDays  int    // samples and events older than this are deleted; 0 keeps them
+	SMTPHost       string // SMTP server for email; empty disables the channel
+	SMTPPort       int
+	SMTPUsername   string
+	SMTPTLS        bool   // enforce TLS instead of opportunistic StartTLS
+	SMTPSender     string // From address
+	SMTPSenderName string
+	RetentionDays  int // samples and events older than this are deleted; 0 keeps them
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -51,6 +57,8 @@ func (s *PB) LoadConfig() (Config, error) {
 		PreMin: r.GetInt("pre_minutes"), PostMin: r.GetInt("post_minutes"), PollMin: r.GetInt("poll_interval_minutes"),
 		Lang: r.GetString("lang"), DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
 		NtfyURL: r.GetString("ntfy_url"), WebhookURL: r.GetString("webhook_url"), EmailTo: r.GetString("email_to"),
+		SMTPHost: r.GetString("smtp_host"), SMTPPort: r.GetInt("smtp_port"), SMTPUsername: r.GetString("smtp_username"),
+		SMTPTLS: r.GetBool("smtp_tls"), SMTPSender: r.GetString("smtp_sender_address"), SMTPSenderName: r.GetString("smtp_sender_name"),
 		RetentionDays: r.GetInt("retention_days"),
 	}, nil
 }
@@ -73,6 +81,12 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("ntfy_url", c.NtfyURL)
 	r.Set("webhook_url", c.WebhookURL)
 	r.Set("email_to", c.EmailTo)
+	r.Set("smtp_host", c.SMTPHost)
+	r.Set("smtp_port", c.SMTPPort)
+	r.Set("smtp_username", c.SMTPUsername)
+	r.Set("smtp_tls", c.SMTPTLS)
+	r.Set("smtp_sender_address", c.SMTPSender)
+	r.Set("smtp_sender_name", c.SMTPSenderName)
 	r.Set("retention_days", c.RetentionDays)
 	return s.App.Save(r)
 }

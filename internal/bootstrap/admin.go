@@ -120,13 +120,16 @@ func ApplyRetentionOverride(app core.App) error {
 	return nil
 }
 
-// ApplySMTPOverride configures PocketBase's own mailer from GLUCAVA_SMTP_*
-// env vars, so the email notify channel has somewhere to send through
-// without exposing the PocketBase admin UI (which is blocked by default).
-// It does nothing when GLUCAVA_SMTP_HOST is unset. Like
-// ApplyRetentionOverride, it always wins over anything saved through the
-// (normally unreachable) admin UI, applied fresh on every start.
-func ApplySMTPOverride(app core.App) error {
+// EnsureSMTP seeds the email notify SMTP settings from GLUCAVA_SMTP_* when
+// none are stored yet. Like EnsureDexcomCredential it only ever seeds a
+// first value: once smtp_host is set (by env or the web UI) the variables
+// are ignored on later starts, so UI edits are not overwritten and the
+// password can be removed from .env again. GLUCAVA_SMTP_HOST and
+// GLUCAVA_SMTP_SENDER_ADDRESS are required to seed. GLUCAVA_SMTP_TO seeds the
+// notification recipient. The password is seeded on its own: if it was left
+// out the first time, adding it to .env later still stores it (while none is
+// stored), instead of being ignored because the host is already saved.
+func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 	host := os.Getenv("GLUCAVA_SMTP_HOST")
 	if host == "" {
 		return nil
@@ -138,8 +141,8 @@ func ApplySMTPOverride(app core.App) error {
 	port := 587
 	if raw := os.Getenv("GLUCAVA_SMTP_PORT"); raw != "" {
 		p, err := strconv.Atoi(raw)
-		if err != nil || p <= 0 {
-			return fmt.Errorf("bootstrap: GLUCAVA_SMTP_PORT must be a positive integer, got %q", raw)
+		if err != nil || p <= 0 || p > 65535 {
+			return fmt.Errorf("bootstrap: GLUCAVA_SMTP_PORT must be a port number, got %q", raw)
 		}
 		port = p
 	}
@@ -147,18 +150,34 @@ func ApplySMTPOverride(app core.App) error {
 	if senderName == "" {
 		senderName = "glucava"
 	}
-
-	s := app.Settings()
-	s.SMTP.Enabled = true
-	s.SMTP.Host = host
-	s.SMTP.Port = port
-	s.SMTP.Username = os.Getenv("GLUCAVA_SMTP_USERNAME")
-	s.SMTP.Password = os.Getenv("GLUCAVA_SMTP_PASSWORD")
-	s.SMTP.TLS = os.Getenv("GLUCAVA_SMTP_TLS") == "1"
-	s.Meta.SenderAddress = senderAddr
-	s.Meta.SenderName = senderName
-	if err := app.Save(s); err != nil {
-		return fmt.Errorf("bootstrap: apply SMTP settings: %w", err)
+	recs, err := app.FindRecordsByFilter("settings", "", "created", 1, 0)
+	if err != nil || len(recs) == 0 {
+		return fmt.Errorf("bootstrap: settings row not found: %w", err)
+	}
+	if pw := os.Getenv("GLUCAVA_SMTP_PASSWORD"); pw != "" {
+		if _, ok, err := vault.Get(passwordName); err != nil {
+			return err
+		} else if !ok {
+			if err := vault.Set(passwordName, pw); err != nil {
+				return err
+			}
+			log.Printf("bootstrap: stored the SMTP password from the environment")
+		}
+	}
+	if recs[0].GetString("smtp_host") != "" {
+		return nil // already configured (env earlier, or the web UI)
+	}
+	recs[0].Set("smtp_host", host)
+	if to := os.Getenv("GLUCAVA_SMTP_TO"); to != "" && recs[0].GetString("email_to") == "" {
+		recs[0].Set("email_to", to)
+	}
+	recs[0].Set("smtp_port", port)
+	recs[0].Set("smtp_username", os.Getenv("GLUCAVA_SMTP_USERNAME"))
+	recs[0].Set("smtp_tls", os.Getenv("GLUCAVA_SMTP_TLS") == "1")
+	recs[0].Set("smtp_sender_address", senderAddr)
+	recs[0].Set("smtp_sender_name", senderName)
+	if err := app.Save(recs[0]); err != nil {
+		return err
 	}
 	log.Printf("bootstrap: SMTP configured from the environment (%s:%d)", host, port)
 	return nil

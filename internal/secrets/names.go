@@ -6,4 +6,5 @@ const (
 	NameDexcomPassword = "dexcom_password"
 	NameNtfyToken      = "ntfy_token"
 	NameWebhookSecret  = "webhook_secret"
+	NameSMTPPassword   = "smtp_password"
 )
