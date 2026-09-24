@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"regexp"
 	"sort"
@@ -23,6 +22,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
+	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
 )
 
@@ -428,56 +428,19 @@ type settingsSignals struct {
 	RetentionDays  int     `json:"retentionDays"`
 }
 
+// config converts the form values to the stored settings shape.
+func (v settingsSignals) config() store.Config {
+	return store.Config{
+		Unit: v.Unit, RangeLow: v.RangeLow, RangeHigh: v.RangeHigh, PreMin: v.PreMin, PostMin: v.PostMin,
+		PollMin: v.PollMin, Lang: v.Lang, DexcomRegion: v.DexcomRegion, DexcomUsername: v.DexcomUsername,
+		NtfyURL: v.NtfyURL, WebhookURL: v.WebhookURL, EmailTo: v.EmailTo, RetentionDays: v.RetentionDays,
+		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
+		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
+	}
+}
+
 // validate returns a message for the first problem, or "".
-func (v settingsSignals) validate() string {
-	switch {
-	case v.Unit != "mg/dL" && v.Unit != "mmol/L":
-		return "Unit must be mg/dL or mmol/L."
-	case v.RangeLow < 40 || v.RangeLow > 200:
-		return "Target low must be between 40 and 200 mg/dL."
-	case v.RangeHigh <= v.RangeLow || v.RangeHigh > 400:
-		return "Target high must be above the low value and at most 400 mg/dL."
-	case v.PreMin < 0 || v.PreMin > 240 || v.PostMin < 0 || v.PostMin > 240:
-		return "Minutes before and after must be between 0 and 240."
-	case v.PollMin < 1 || v.PollMin > 1440:
-		return "The polling interval must be between 1 and 1440 minutes."
-	case v.RetentionDays < 0 || v.RetentionDays > 3650:
-		return "Retention must be between 0 and 3650 days."
-	case v.Lang != "en" && v.Lang != "de":
-		return "Language must be English or Deutsch."
-	case v.DexcomRegion != "us" && v.DexcomRegion != "ous" && v.DexcomRegion != "jp":
-		return "Choose a Dexcom region."
-	case !validOptionalURL(v.NtfyURL):
-		return "The ntfy URL must start with http:// or https://."
-	case !validOptionalURL(v.WebhookURL):
-		return "The webhook URL must start with http:// or https://."
-	case !validOptionalEmail(v.EmailTo):
-		return "The notification email address is not valid."
-	case v.SMTPPort < 0 || v.SMTPPort > 65535:
-		return "The SMTP port must be between 1 and 65535."
-	case !validOptionalEmail(v.SMTPSender):
-		return "The SMTP sender address is not valid."
-	case v.SMTPHost != "" && (v.SMTPPort == 0 || v.SMTPSender == ""):
-		return "SMTP needs a port and a sender address."
-	}
-	return ""
-}
-
-func validOptionalEmail(s string) bool {
-	if s == "" {
-		return true
-	}
-	_, err := mail.ParseAddress(s)
-	return err == nil
-}
-
-func validOptionalURL(s string) bool {
-	if s == "" {
-		return true
-	}
-	u, err := url.Parse(s)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
-}
+func (v settingsSignals) validate() string { return v.config().Validate() }
 
 func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	var v settingsSignals
