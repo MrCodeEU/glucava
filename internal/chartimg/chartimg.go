@@ -60,6 +60,7 @@ type Style struct {
 	HideBand     bool    // no shaded target range
 	HideActivity bool    // no shaded activity span
 	HideDots     bool    // no red/orange dots on out-of-range readings
+	HideHR       bool    // no heart rate curve, even when heart rate data is given
 	LineWidth    float64 // curve thickness in logical pixels; 0 means 2
 }
 

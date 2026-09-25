@@ -114,7 +114,7 @@ func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, 
 	if !ok {
 		return nil
 	}
-	png, err := chartimg.Glucose(chartimg.Series{Samples: samples, Range: set.Range, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
+	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
 	if err != nil {
 		return fmt.Errorf("draw chart: %w", err)
 	}

@@ -108,7 +108,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	png, err := chartimg.Glucose(chartimg.Series{
+	png, err := chartimg.Photo(chartimg.PhotoData{
 		Samples: samples, Range: stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh},
 		Start: start, End: end, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Style: cfg.ChartStyle(),
 	})

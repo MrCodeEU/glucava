@@ -472,8 +472,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Div(
 						Field("chartTheme", "Theme", "", Select(ID("chartTheme"), bind("chartTheme"),
 							Option(Value("light"), g.Text("Light")), Option(Value("dark"), g.Text("Dark")))),
-						Field("chartSize", "Size", "Large is 1200 px wide, sharper on big screens.", Select(ID("chartSize"), bind("chartSize"),
-							Option(Value("standard"), g.Text("Standard (600 px)")), Option(Value("large"), g.Text("Large (1200 px)")))),
+						Field("chartSize", "Size", "Strava shows the photo as a square. Large is 1620 px, otherwise 1080 px.", Select(ID("chartSize"), bind("chartSize"),
+							Option(Value("standard"), g.Text("Standard (1080 px)")), Option(Value("large"), g.Text("Large (1620 px)")))),
 						Field("chartLine", "Line thickness (1 to 4)", "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
 						Field("chartBand", "Shade the target range", "", Input(ID("chartBand"), Type("checkbox"), bind("chartBand"))),
 						Field("chartActivity", "Shade the activity", "", Input(ID("chartActivity"), Type("checkbox"), bind("chartActivity"))),
