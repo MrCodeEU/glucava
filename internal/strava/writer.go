@@ -35,6 +35,9 @@ type SelectorError struct {
 	URL   string
 }
 
+// Permanent tells the job queue that retrying will not help.
+func (e *SelectorError) Permanent() bool { return true }
+
 func (e *SelectorError) Error() string {
 	return fmt.Sprintf("strava: no %s element on %s (tried %s)", e.Key, e.URL, strings.Join(e.Tried, ", "))
 }

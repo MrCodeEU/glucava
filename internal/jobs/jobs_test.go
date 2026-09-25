@@ -468,3 +468,40 @@ func TestChartSkippedForWriterWithoutPhotos(t *testing.T) {
 		t.Errorf("activity = %+v", a)
 	}
 }
+
+type permErr struct{}
+
+func (permErr) Error() string   { return "no such element" }
+func (permErr) Permanent() bool { return true }
+
+func TestPermanentErrorIsNotRetried(t *testing.T) {
+	w := &fakeWriter{errs: []error{permErr{}, permErr{}, permErr{}}}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+	if w.calls != 1 {
+		t.Errorf("writer called %d times, want 1 (a missing element does not appear by waiting)", w.calls)
+	}
+	if a := st.acts["42"]; a.Status != StatusFailed || !strings.Contains(a.Error, "no such element") {
+		t.Errorf("activity = %+v", a)
+	}
+}
+
+func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
+	w := &fakeWriter{errs: []error{errors.New("chrome hiccup")}}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	var seen string
+	q.Backoff = []time.Duration{50 * time.Millisecond}
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		st.mu.Lock()
+		seen = st.acts["42"].Error
+		st.mu.Unlock()
+	}()
+	runOne(t, q, Job{Activity: activity()})
+	if !strings.Contains(seen, "Attempt 1 failed") || !strings.Contains(seen, "chrome hiccup") {
+		t.Errorf("while waiting, activity error = %q", seen)
+	}
+	if a := st.acts["42"]; a.Status != StatusDone || a.Error != "" {
+		t.Errorf("after the retry: %+v", a)
+	}
+}
