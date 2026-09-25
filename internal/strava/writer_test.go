@@ -480,3 +480,18 @@ func TestPhotoFailuresAreNotRetried(t *testing.T) {
 		t.Error("permanentErr must be permanent")
 	}
 }
+
+func TestShapeOfDescribesWithoutValues(t *testing.T) {
+	got := shapeOf(`{"heartrate":[61,62,63],"time":[0,1,2],"meta":{"ok":true}}`)
+	for _, want := range []string{"heartrate:[3 of number]", "time:[3 of number]", "meta:{ok:bool}"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("shape %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "61") {
+		t.Errorf("shape leaks values: %s", got)
+	}
+	if s := shapeOf("<html> \n  hi"); s != "text: <html> hi" {
+		t.Errorf("text shape = %q", s)
+	}
+}
