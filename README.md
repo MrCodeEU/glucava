@@ -1,6 +1,6 @@
 # Glucava
 
-Free, self-hosted alternative to Ando. After a Strava activity ends, Glucava adds your Dexcom glucose stats (time in range, min, max, average, sparkline) to its description:
+Free and self-hosted. After a Strava activity ends, Glucava adds your Dexcom glucose stats (time in range, min, max, average, sparkline) to its description:
 
 ```
 🩸 TIR 92% | min 78 | max 164 | avg 112 mg/dL
