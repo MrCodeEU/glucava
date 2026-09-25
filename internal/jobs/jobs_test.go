@@ -505,3 +505,15 @@ func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
 		t.Errorf("after the retry: %+v", a)
 	}
 }
+
+func TestRetryChartAttachesAgain(t *testing.T) {
+	w := &photoWriter{}
+	q, _ := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	again := activity()
+	again.RetryChart = true
+	runOne(t, q, Job{Activity: again, Force: true})
+	if len(w.photos) != 2 {
+		t.Errorf("photos = %d, want 2 after an explicit retry", len(w.photos))
+	}
+}

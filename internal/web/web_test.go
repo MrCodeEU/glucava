@@ -996,3 +996,23 @@ func TestActivityPageShowsChartOnlyWhenEnabled(t *testing.T) {
 		t.Error("settings page has no live preview")
 	}
 }
+
+func TestChartAgainNeedsTheSettingAndQueues(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "31", Name: "Run", Start: time.Now().Add(-3 * time.Hour), Duration: time.Hour, Status: jobs.StatusDone, ChartUploaded: true})
+
+	if w := e.action("/actions/chart/31", "{}", c, nil); !strings.Contains(w.Body.String(), "Turn on the chart photo") {
+		t.Errorf("without the setting: %s", w.Body)
+	}
+	cfg, _ := e.srv.Store.LoadConfig()
+	cfg.ChartImage = true
+	_ = e.srv.Store.SaveConfig(cfg)
+	if w := e.action("/actions/chart/31", "{}", c, nil); !strings.Contains(w.Body.String(), "Queued") {
+		t.Errorf("with the setting: %s", w.Body)
+	}
+	if len(e.jobs.got) != 1 || !e.jobs.got[0].Activity.RetryChart || !e.jobs.got[0].Force {
+		t.Errorf("queued jobs = %+v", e.jobs.got)
+	}
+}

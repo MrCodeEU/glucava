@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
@@ -51,7 +52,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		if a.Original == nil {
 			a.Original = prev.Original
 		}
-		a.ChartUploaded = a.ChartUploaded || prev.ChartUploaded
+		a.ChartUploaded = !a.RetryChart && (a.ChartUploaded || prev.ChartUploaded)
 	}
 
 	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
@@ -88,10 +89,16 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	}
 
 	a.Summary = &sum
-	if set.ChartImage && !a.ChartUploaded {
+	switch {
+	case !set.ChartImage:
+	case a.ChartUploaded:
+		log.Printf("jobs: activity %s: chart photo skipped, one was attached before", a.StravaID)
+	default:
+		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
 		if err := p.uploadChart(ctx, a, set, samples); err != nil {
 			return err
 		}
+		log.Printf("jobs: activity %s: chart photo attached (unverified: Strava's answer is not checked)", a.StravaID)
 	}
 
 	a.Status = StatusDone

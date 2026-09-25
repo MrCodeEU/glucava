@@ -213,6 +213,7 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
 				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
+			g.If(d.Cfg.ChartImage, Btn("", "Attach chart again", post("/actions/chart/"+a.StravaID))),
 			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing")),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
@@ -258,6 +259,8 @@ func ActivityBody(d ActivityData) g.Node {
 				Dl(append(comp("dl"),
 					Dt(g.Text("Status")), Dd(StatusBadge(a.Status)),
 					Dt(g.Text("Attempts")), Dd(g.Textf("%d", a.Attempts)),
+					g.If(d.Cfg.ChartImage, Dt(g.Text("Chart photo"))),
+					g.If(d.Cfg.ChartImage, Dd(g.Text(map[bool]string{true: "sent once", false: "not sent"}[a.ChartUploaded]))),
 					Dt(g.Text("Strava ID")), Dd(Code(g.Text(a.StravaID))),
 				)...),
 				eventList(d.Events, d.Loc, d.Now),

@@ -64,6 +64,10 @@ type Activity struct {
 	// ChartUploaded is set once the chart photo is on the activity. It is
 	// never cleared, so a reprocess does not attach a second photo.
 	ChartUploaded bool
+
+	// RetryChart (not stored) makes this run attach the chart even though one
+	// was attached before, for when the first photo never showed up on Strava.
+	RetryChart bool
 }
 
 // End returns the activity end time.
