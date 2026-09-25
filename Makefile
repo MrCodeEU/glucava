@@ -1,4 +1,4 @@
-.PHONY: help hooks build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-list strava-cookies shot mailshot site reset-mock reset-real clean
+.PHONY: help hooks build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-photo strava-hr strava-list strava-cookies shot mailshot site reset-mock reset-real clean
 
 SHELL := /bin/bash
 BIN := glucava
@@ -57,6 +57,14 @@ strava-cookies: build ## import cookies: make strava-cookies FILE=cookies.json
 
 strava-check: build ## dry run against Strava: make strava-check [ID=12345]  (never saves)
 	./$(BIN) strava check $(ID) --dir $(REAL_DIR)
+
+strava-photo: build ## dry run of the chart photo upload, three methods, never saves: make strava-photo ID=12345
+	@test -n "$(ID)" || { echo "usage: make strava-photo ID=<activity id>"; exit 1; }
+	./$(BIN) strava check $(ID) --photo --screenshot $(or $(SHOT),/tmp/glucava-photo.png) --dir $(REAL_DIR)
+
+strava-hr: build ## read-only: where does Strava serve heart rate? make strava-hr ID=12345
+	@test -n "$(ID)" || { echo "usage: make strava-hr ID=<activity id>"; exit 1; }
+	./$(BIN) strava check $(ID) --hr --dir $(REAL_DIR)
 
 strava-list: build ## raw recent-activities JSON: make strava-list
 	./$(BIN) strava list --raw --dir $(REAL_DIR)

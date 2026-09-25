@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -170,5 +171,31 @@ func TestWeeklyMessageHasBarChart(t *testing.T) {
 	m, ok := WeeklyMessage(cur, nil, time.Date(2026, 9, 14, 0, 0, 0, 0, vienna), time.Date(2026, 9, 21, 0, 0, 0, 0, vienna), render.MgDL, vienna)
 	if !ok || len(m.Chart) == 0 {
 		t.Fatalf("ok=%v chart=%d", ok, len(m.Chart))
+	}
+}
+
+func TestActivityMessageIncludesHeartRateWhenKnown(t *testing.T) {
+	at := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	a := jobs.Activity{StravaID: "1", Name: "Run", Start: at, Duration: time.Hour, Summary: &stats.Summary{TIR: 90, Count: 5},
+		HeartRate: []chartimg.HRPoint{{Time: at.Add(time.Minute), BPM: 120}, {Time: at.Add(2 * time.Minute), BPM: 160}}}
+	m, ok := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, time.UTC)
+	if !ok {
+		t.Fatal("no message")
+	}
+	found := false
+	for _, f := range m.Facts {
+		if f.Label == "Heart rate, average / max" && f.Value == "140 / 160 bpm" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("facts = %+v", m.Facts)
+	}
+	a.HeartRate = nil
+	m, _ = ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, time.UTC)
+	for _, f := range m.Facts {
+		if strings.HasPrefix(f.Label, "Heart rate") {
+			t.Error("heart rate fact without heart rate")
+		}
 	}
 }

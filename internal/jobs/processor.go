@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -36,18 +38,31 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		return fmt.Errorf("load settings: %w", err)
 	}
 	from, to := a.Start.Add(-set.Pre), a.End().Add(set.Post)
+	// The chart may open earlier than the statistics do. Fetch the wider window,
+	// and compute everything else on the narrower one.
+	fetchFrom := from
+	if set.ChartImage && a.Start.Add(-set.ChartPre).Before(fetchFrom) {
+		fetchFrom = a.Start.Add(-set.ChartPre)
+	}
 
-	samples, err := p.samples(ctx, from, to)
+	chartSamples, err := p.samples(ctx, fetchFrom, to)
 	if err != nil {
 		return err
 	}
+	samples := within(chartSamples, from, to)
 	sum, ok := stats.Summarize(samples, set.Range)
 	if !ok {
 		return ErrNoData
 	}
 
-	if prev, perr := p.Store.Activity(ctx, a.StravaID); perr == nil && prev != nil && a.Original == nil {
-		a.Original = prev.Original
+	if prev, perr := p.Store.Activity(ctx, a.StravaID); perr == nil && prev != nil {
+		if a.Original == nil {
+			a.Original = prev.Original
+		}
+		a.ChartUploaded = !a.RetryChart && (a.ChartUploaded || prev.ChartUploaded)
+		if len(a.HeartRate) == 0 {
+			a.HeartRate = prev.HeartRate
+		}
 	}
 
 	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
@@ -83,9 +98,44 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		return err
 	}
 
+	a.Summary = &sum
+	if set.HRRead && len(a.HeartRate) == 0 {
+		p.fetchHeartRate(ctx, a)
+	}
+	switch {
+	case !set.ChartImage:
+	case a.ChartUploaded:
+		log.Printf("jobs: activity %s: chart photo skipped, one was attached before", a.StravaID)
+	default:
+		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
+		if err := p.uploadChart(ctx, a, set, chartSamples); err != nil {
+			return err
+		}
+		log.Printf("jobs: activity %s: chart photo attached and confirmed on the edit page", a.StravaID)
+	}
+
 	a.Status = StatusDone
 	a.Error = ""
-	a.Summary = &sum
+	return p.Store.SaveActivity(ctx, a)
+}
+
+// uploadChart attaches the glucose chart as a photo, once per activity. The
+// description is already written at this point, so a failure here is retried
+// without touching the text again (the merge is idempotent).
+func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, samples []stats.Sample) error {
+	pw, ok := p.Writer.(PhotoWriter)
+	if !ok {
+		return nil
+	}
+	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, HR: a.HeartRate, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
+	if err != nil {
+		return fmt.Errorf("draw chart: %w", err)
+	}
+	if err := pw.UploadPhoto(ctx, a.StravaID, "glucose.png", png); err != nil {
+		return fmt.Errorf("upload chart: %w", err)
+	}
+	a.ChartUploaded = true
+	// Persist right away: if the final save fails, a retry must not attach it again.
 	return p.Store.SaveActivity(ctx, a)
 }
 
@@ -133,4 +183,31 @@ func (p *Processor) Restore(ctx context.Context, a *Activity) error {
 	}
 	prev.Status, prev.Error, prev.Summary = StatusSkipped, "original description restored", nil
 	return p.Store.SaveActivity(ctx, prev)
+}
+
+// fetchHeartRate reads the activity's heart rate for the chart. It never fails
+// the run: the chart is still worth attaching without it.
+func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
+	src, ok := p.Writer.(HRSource)
+	if !ok {
+		return
+	}
+	pts, err := src.HeartRate(ctx, a.StravaID, a.Start)
+	if err != nil {
+		log.Printf("jobs: activity %s: no heart rate for the chart: %v", a.StravaID, err)
+		return
+	}
+	log.Printf("jobs: activity %s: %d heart rate points for the chart", a.StravaID, len(pts))
+	a.HeartRate = pts
+}
+
+// within returns the samples inside [from, to].
+func within(in []stats.Sample, from, to time.Time) []stats.Sample {
+	out := make([]stats.Sample, 0, len(in))
+	for _, s := range in {
+		if !s.Time.Before(from) && !s.Time.After(to) {
+			out = append(out, s)
+		}
+	}
+	return out
 }

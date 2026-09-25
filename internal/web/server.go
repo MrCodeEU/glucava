@@ -113,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	page := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	page("GET /{$}", s.dashboard)
 	page("GET /activity/{id}", s.activity)
+	page("GET /chart/{name}", s.chartImage)
 	page("GET /strava", s.stravaPage)
 	page("GET /settings", s.settingsPage)
 	page("GET /tokens", s.tokensPage)
@@ -122,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 
 	page("POST /actions/poll", s.actionPoll)
 	page("POST /actions/reprocess/{id}", s.actionReprocess)
+	page("POST /actions/chart/{id}", s.actionChartAgain)
 	page("POST /actions/process", s.actionProcessActivity)
 	page("POST /actions/restore/{id}", s.actionRestore)
 	page("POST /actions/settings", s.actionSettings)
@@ -144,7 +146,7 @@ func (s *Server) Handler() http.Handler {
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/settings", "/tokens", "/events",
-	"/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/chart/{path...}", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 
 // maxBody caps most request bodies. The largest legitimate one otherwise is a

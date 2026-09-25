@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,11 @@ type mock struct {
 	posts       int
 	ignorePosts bool // simulate a save the server silently drops
 	noTextarea  bool
+	noFile      bool // the edit page has no photo input
+	noThumb     bool // the uploader never shows a thumbnail
+	dropPhoto   bool // the save does not keep the photo
+	photo       []byte
+	photoPosts  int
 	rotate      bool // send a new session cookie on GET
 
 	loginMode string // "", "challenge" or "wrong": how /login/submit behaves
@@ -95,15 +101,53 @@ func (m *mock) handler() http.Handler {
 		if m.noTextarea {
 			field = `<p>Something else</p>`
 		}
+		items := make([]string, m.photoPosts)
+		for i := range items {
+			items[i] = `{"id":1}`
+		}
+		script := `<script>document.querySelector('input[type=file]').addEventListener('change',function(){fetch('/photos/metadata',{method:'PUT'}).then(function(){return fetch('/storage/x.jpg',{method:'PUT'})})})</script>`
+		if m.noThumb {
+			script = ""
+		}
+		fileInput := `<div data-react-class="MediaUploader" data-react-props='{"media":[` + strings.Join(items, ",") + `]}'><div class="MediaUploader--dropzone--sS1mw"><input type="file" name="photo" accept multiple></div></div>` + script
+		if m.noFile {
+			fileInput = ""
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!doctype html><html><body><form method="post" action="/activities/42"><input name="x" value="1">%s
-			<button type="submit">Save</button></form></body></html>`, field)
+		fmt.Fprintf(w, `<!doctype html><html><body><form method="post" action="/activities/42" enctype="multipart/form-data"><input name="x" value="1">%s%s
+			<button type="submit">Save</button></form></body></html>`, field, fileInput)
+	})
+	for _, path := range []string{"/photos/metadata", "/storage/x.jpg"} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	}
+	mux.HandleFunc("/activities/42/streams", func(w http.ResponseWriter, r *http.Request) {
+		if !loggedIn(r) {
+			http.Error(w, "no", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Query().Get("stream_types[]") != "heartrate" {
+			http.Error(w, "wrong query", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"heartrate":[120,130,0,140,150],"time":[0,60,120,180,240]}`)
 	})
 	mux.HandleFunc("/activities/42", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && !loggedIn(r) {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
 		if r.Method == http.MethodPost {
-			_ = r.ParseForm()
+			_ = r.ParseMultipartForm(8 << 20)
 			m.mu.Lock()
 			m.posts++
+			if f, _, err := r.FormFile("photo"); err == nil {
+				m.photo, _ = io.ReadAll(f)
+				if !m.dropPhoto {
+					m.photoPosts++
+				}
+				_ = f.Close()
+			}
 			if !m.ignorePosts {
 				m.description = r.Form.Get("activity[description]")
 			}
@@ -365,5 +409,140 @@ func TestStartTimeoutDefaultsAndOverrides(t *testing.T) {
 	}
 	if got := NewWriter(Config{StartTimeout: 5 * time.Second}).cfg.StartTimeout; got != 5*time.Second {
 		t.Errorf("explicit StartTimeout = %v, want 5s", got)
+	}
+}
+
+func TestUploadPhoto(t *testing.T) {
+	m := &mock{description: "My run"}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = 1500 * time.Millisecond
+
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", png); err != nil {
+		t.Fatal(err)
+	}
+	if string(m.photo) != string(png) || m.photoPosts != 1 {
+		t.Errorf("server got %d bytes in %d posts, want %d", len(m.photo), m.photoPosts, len(png))
+	}
+	if m.description != "My run" {
+		t.Errorf("description changed to %q", m.description)
+	}
+}
+
+func TestUploadPhotoWithoutFileInput(t *testing.T) {
+	w := newWriter(t, &mock{description: "x", noFile: true}, goodCookies, nil)
+	w.cfg.UploadWait = 1500 * time.Millisecond
+	var se *SelectorError
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.As(err, &se) || se.Key != "photo" {
+		t.Errorf("err = %v, want a photo SelectorError", err)
+	}
+}
+
+func TestUploadPhotoSessionExpired(t *testing.T) {
+	w := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil)
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestUploadPhotoThatNeverShowsUpFails(t *testing.T) {
+	m := &mock{description: "x", noThumb: true}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = 700 * time.Millisecond
+	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "did not send the photo") {
+		t.Errorf("err = %v", err)
+	}
+	if m.posts != 0 {
+		t.Errorf("saved %d times although the uploader never took the photo", m.posts)
+	}
+}
+
+func TestUploadPhotoNotKeptBySaveFails(t *testing.T) {
+	m := &mock{description: "x", dropPhoto: true}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = time.Second
+	w.cfg.LocateTimeout = 800 * time.Millisecond
+	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "lists no new photo") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestProbePhotoTriesEveryMethodAndNeverSaves(t *testing.T) {
+	m := &mock{description: "x"}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.ProbeWait = 400 * time.Millisecond
+	tries, err := w.ProbePhoto(context.Background(), "42", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tries) != 3 || tries[0].Method != "cdp-set-files" || tries[1].Method != "input-change-event" || tries[2].Method != "drop-event" {
+		t.Fatalf("tries = %+v", tries)
+	}
+	for _, x := range tries {
+		if !strings.Contains(x.State, "MediaUploader") || len(x.Screenshot) == 0 {
+			t.Errorf("%s: %+v", x.Method, x)
+		}
+	}
+	if m.posts != 0 {
+		t.Errorf("probe saved the form %d times", m.posts)
+	}
+}
+
+func TestPhotoFailuresAreNotRetried(t *testing.T) {
+	var p interface{ Permanent() bool }
+	if !errors.As(permanentErr{errors.New("x")}, &p) || !p.Permanent() {
+		t.Error("permanentErr must be permanent")
+	}
+}
+
+func TestShapeOfDescribesWithoutValues(t *testing.T) {
+	got := shapeOf(`{"heartrate":[61,62,63],"time":[0,1,2],"meta":{"ok":true}}`)
+	for _, want := range []string{"heartrate:[3 of number]", "time:[3 of number]", "meta:{ok:bool}"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("shape %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "61") {
+		t.Errorf("shape leaks values: %s", got)
+	}
+	if s := shapeOf("<html> \n  hi"); s != "text: <html> hi" {
+		t.Errorf("text shape = %q", s)
+	}
+}
+
+func TestParseHeartRateDropsBadReadingsAndThins(t *testing.T) {
+	start := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	pts, err := ParseHeartRate([]byte(`{"heartrate":[120,0,140,300],"time":[0,10,20,30]}`), start)
+	if err != nil || len(pts) != 2 || pts[1].BPM != 140 || !pts[1].Time.Equal(start.Add(20*time.Second)) {
+		t.Fatalf("pts = %+v, err = %v", pts, err)
+	}
+	var hr, tm []string
+	for i := 0; i < 9394; i++ {
+		hr = append(hr, "140")
+		tm = append(tm, fmt.Sprint(i))
+	}
+	big, err := ParseHeartRate([]byte(`{"heartrate":[`+strings.Join(hr, ",")+`],"time":[`+strings.Join(tm, ",")+`]}`), start)
+	if err != nil || len(big) > maxHRPoints || len(big) < maxHRPoints/2 {
+		t.Errorf("thinned to %d points, err %v", len(big), err)
+	}
+	if none, err := ParseHeartRate([]byte(`{}`), start); err != nil || len(none) != 0 {
+		t.Errorf("empty stream: %v %v", none, err)
+	}
+	if _, err := ParseHeartRate([]byte(`<html>`), start); err == nil {
+		t.Error("non-JSON must be an error")
+	}
+}
+
+func TestHeartRateFromBrowser(t *testing.T) {
+	w := newWriter(t, &mock{}, goodCookies, nil)
+	start := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	pts, err := w.HeartRate(context.Background(), "42", start)
+	if err != nil || len(pts) != 4 || pts[3].BPM != 150 {
+		t.Fatalf("pts = %+v, err = %v", pts, err)
+	}
+	if _, err := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil).HeartRate(context.Background(), "42", start); !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("expired session: %v", err)
 	}
 }

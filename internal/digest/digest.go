@@ -74,6 +74,10 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples
 		{Label: "Duration", Value: dur(a.Duration)},
 		{Label: "Readings", Value: fmt.Sprint(s.Count)},
 	}
+	if h, ok := stats.SummarizeHR(a.HeartRate, a.Start, a.End()); ok {
+		facts = append(facts,
+			notify.Fact{Label: "Heart rate, average / max", Value: fmt.Sprintf("%.0f / %.0f bpm", h.Avg, h.Max)})
+	}
 	body := name
 	if a.Sport != "" {
 		body += " (" + a.Sport + ")"

@@ -5,13 +5,17 @@ package strava
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +38,9 @@ type SelectorError struct {
 	URL   string
 }
 
+// Permanent tells the job queue that retrying will not help.
+func (e *SelectorError) Permanent() bool { return true }
+
 func (e *SelectorError) Error() string {
 	return fmt.Sprintf("strava: no %s element on %s (tried %s)", e.Key, e.URL, strings.Join(e.Tried, ", "))
 }
@@ -43,6 +50,7 @@ func (e *SelectorError) Error() string {
 // the real page, and prefer stable attributes such as name and aria-label.
 type Selectors struct {
 	Description []string
+	Photo       []string // the file input that takes a picture
 	Save        []string // used when the description field has no form with a submit button
 }
 
@@ -61,6 +69,15 @@ var DefaultSelectors = Selectors{
 		// stable id; picking "the textarea that isn't that one" works
 		// regardless of locale, as long as the page has exactly these two.
 		`textarea:not(#activity_private_note)`,
+	},
+	// The edit page's uploader (checked 2026-09) is a dropzone with a hidden
+	// <input type=file multiple>; its class names carry a build hash, so match
+	// only the stable prefix. "glucava strava inspect" lists the file inputs.
+	Photo: []string{
+		`[class*="MediaUploader--dropzone"] input[type="file"]`,
+		`[class*="MediaUploader"] input[type="file"]`,
+		`input[type="file"][accept*="image"]`,
+		`input[type="file"]`,
 	},
 	Save: []string{
 		`form button[type="submit"]`,
@@ -87,6 +104,8 @@ type Config struct {
 	Pause          func()         // called between steps to look less robotic; nil means no pause
 	Timeout        time.Duration  // whole run; default 2 minutes
 	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
+	ProbeWait      time.Duration  // how long the photo probe watches the page per method; default 8 seconds
+	UploadWait     time.Duration  // longest wait for the chosen photo to show up in the uploader; default 30 seconds
 	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
 	StartTimeout   time.Duration  // wait for Chrome to come up; default 60 seconds (chromedp's own 20 is too short on a busy or slow host)
 }
@@ -97,7 +116,10 @@ type Writer struct {
 	mu  sync.Mutex // one browser at a time: Strava sees a single session
 }
 
-var _ jobs.Writer = (*Writer)(nil)
+var (
+	_ jobs.Writer      = (*Writer)(nil)
+	_ jobs.PhotoWriter = (*Writer)(nil)
+)
 
 // NewWriter returns a Writer with defaults applied.
 func NewWriter(cfg Config) *Writer {
@@ -114,11 +136,20 @@ func NewWriter(cfg Config) *Writer {
 	if cfg.SaveTimeout <= 0 {
 		cfg.SaveTimeout = 15 * time.Second
 	}
+	if cfg.ProbeWait <= 0 {
+		cfg.ProbeWait = 8 * time.Second
+	}
+	if cfg.UploadWait <= 0 {
+		cfg.UploadWait = 30 * time.Second
+	}
 	if cfg.StartTimeout <= 0 {
 		cfg.StartTimeout = 60 * time.Second
 	}
 	if len(cfg.Selectors.Description) == 0 {
 		cfg.Selectors.Description = DefaultSelectors.Description
+	}
+	if len(cfg.Selectors.Photo) == 0 {
+		cfg.Selectors.Photo = DefaultSelectors.Photo
 	}
 	if len(cfg.Selectors.Save) == 0 {
 		cfg.Selectors.Save = DefaultSelectors.Save
@@ -183,6 +214,317 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 		}
 		return w.exportCookies(ctx)
 	})
+}
+
+// UploadPhoto implements jobs.PhotoWriter. It hands png to the edit page's
+// media uploader the way a chosen file arrives (see photoInjectJS), waits for
+// the uploader to send it to Strava's storage, saves the form, and checks that
+// the reopened edit page lists one more photo. Anything short of that is an
+// error, and none of those errors is retried: the photo may have arrived.
+func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []byte) error {
+	if !idRe.MatchString(stravaID) {
+		return fmt.Errorf("strava: invalid activity id %q", stravaID)
+	}
+	editURL := w.cfg.BaseURL + "/activities/" + stravaID + "/edit"
+
+	return w.withBrowser(ctx, func(ctx context.Context) error {
+		descSel, err := w.openEdit(ctx, editURL)
+		if err != nil {
+			return err
+		}
+		photoSel, err := w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo)
+		if err != nil {
+			return err
+		}
+		before, err := mediaOnPage(ctx)
+		if err != nil {
+			return permanentErr{err}
+		}
+		net := watchRequests(ctx)
+
+		w.pause()
+		if res, err := evalString(ctx, photoInjectJS("input-change-event", photoSel, png)); err != nil || res != "ok" {
+			return permanentErr{fmt.Errorf("strava: hand the photo to the uploader: %v %s", err, res)}
+		}
+		// The uploader sends the file to storage as soon as it has it. Saving
+		// before that finishes would drop it.
+		if err := w.waitUploaded(ctx, net, w.cfg.UploadWait); err != nil {
+			log.Printf("strava: photo upload did not finish; requests seen: %s; page: %s", net.filtered(), photoState(ctx))
+			return permanentErr{fmt.Errorf("strava: the uploader did not send the photo within %s (nothing was saved; the page's uploader may have changed)", w.cfg.UploadWait)}
+		}
+
+		w.pause()
+		if err := w.save(ctx, descSel, editURL); err != nil {
+			return err
+		}
+
+		// Confirm: the reopened edit page lists the photo among the activity's media.
+		deadline := time.Now().Add(w.cfg.LocateTimeout)
+		for {
+			if _, err := w.openEdit(ctx, editURL); err != nil {
+				return err
+			}
+			if n, err := mediaOnPage(ctx); err == nil && n > before {
+				break
+			}
+			if time.Now().After(deadline) {
+				log.Printf("strava: after saving, requests seen: %s; reopened page: %s", net.filtered(), photoState(ctx))
+				return permanentErr{errors.New("strava: saved, but the reopened edit page lists no new photo; check the activity on Strava before trying again, or a second copy may be added")}
+			}
+			if err := sleep(ctx, 2*time.Second); err != nil {
+				return err
+			}
+		}
+		return w.exportCookies(ctx)
+	})
+}
+
+// mediaOnPage returns how many photos and videos the edit page lists for the
+// activity, read from the props of its React media uploader.
+func mediaOnPage(ctx context.Context) (int, error) {
+	s, err := evalString(ctx, `(function(){
+	  const el=document.querySelector('[data-react-class="MediaUploader"]');
+	  if(!el)return 'no uploader';
+	  try{const m=JSON.parse(el.getAttribute('data-react-props')).media;
+	      return Array.isArray(m)?String(m.length):'no media list'}catch(e){return 'bad props'}})()`)
+	if err != nil {
+		return 0, err
+	}
+	n, cerr := strconv.Atoi(s)
+	if cerr != nil {
+		return 0, fmt.Errorf("strava: cannot read the activity's media from the edit page (%s)", s)
+	}
+	return n, nil
+}
+
+// waitUploaded polls until the uploader has registered the photo and sent it
+// to storage.
+func (w *Writer) waitUploaded(ctx context.Context, net *requestLog, max time.Duration) error {
+	deadline := time.Now().Add(max)
+	for !net.uploaded() {
+		if time.Now().After(deadline) {
+			return errors.New("no upload")
+		}
+		if err := sleep(ctx, 300*time.Millisecond); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uploaded reports whether two PUTs succeeded, one of them to /photos/metadata:
+// the uploader registering the photo, then sending its bytes to storage.
+func (l *requestLog) uploaded() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ok, meta := 0, false
+	for _, line := range l.lines {
+		if strings.HasPrefix(line, "PUT ") && strings.HasSuffix(line, "-> 200") {
+			ok++
+			meta = meta || strings.Contains(line, "/photos/metadata")
+		}
+	}
+	return ok >= 2 && meta
+}
+
+// permanentErr marks a failure that the job queue must not retry: an upload
+// that may or may not have arrived is not safe to repeat blindly.
+type permanentErr struct{ error }
+
+func (permanentErr) Permanent() bool { return true }
+func (e permanentErr) Unwrap() error { return e.error }
+
+// photoStateJS describes the uploader area for diagnosing a photo that does not
+// arrive: its markup, dialogs, visible buttons and the first images.
+const photoStateJS = `JSON.stringify((function(){
+  const cut=(s,n)=>(s||'').replace(/\s+/g,' ').trim().slice(0,n);
+  const up=document.querySelector('[class*="MediaUploader"]');
+  const box=up&&(up.parentElement&&up.parentElement.parentElement||up.parentElement||up);
+  const vis=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);
+  return {url:location.pathname,
+    uploader:box?cut(box.outerHTML,2500):'(no MediaUploader element)',
+    dialogs:[...document.querySelectorAll('[role=dialog],dialog')].filter(vis).map(e=>cut(e.innerText,300)),
+    buttons:[...document.querySelectorAll('button')].filter(vis).map(e=>cut(e.innerText||e.getAttribute('aria-label'),40)).filter(Boolean).slice(0,30),
+    images:[...document.querySelectorAll('img')].slice(0,12).map(e=>cut(e.currentSrc||e.src,90))}
+})())`
+
+func photoState(ctx context.Context) string {
+	s, err := evalString(ctx, photoStateJS)
+	if err != nil {
+		return "(could not read the page: " + err.Error() + ")"
+	}
+	return s
+}
+
+// PhotoTry is what the page did after one way of handing it the file.
+type PhotoTry struct {
+	Method     string
+	Requests   string // uploads the page made, without analytics and error reporting
+	Blobs      int    // preview images/videos made from the chosen file
+	Dialogs    string
+	State      string
+	Screenshot []byte
+}
+
+// noiseHosts are trackers the edit page talks to all the time.
+var noiseHosts = []string{"snowplowanalytics", "google-analytics", "googlesyndication", "sentry.io", "doubleclick", "googletagmanager"}
+
+func (l *requestLog) filtered() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var keep []string
+	for _, line := range l.lines {
+		noise := false
+		for _, h := range noiseHosts {
+			if strings.Contains(line, h) {
+				noise = true
+			}
+		}
+		if !noise {
+			keep = append(keep, line)
+		}
+	}
+	if len(keep) == 0 {
+		return "none"
+	}
+	return strings.Join(keep, "; ")
+}
+
+// photoMethods are the ways to hand a file to a page's uploader. The real
+// one depends on how the page's script listens for it.
+var photoMethods = []string{"cdp-set-files", "input-change-event", "drop-event"}
+
+// photoInjectJS gives the uploader the file without a real click: it builds a
+// File in the page and either sets it on the input and fires change, or drops
+// it on the dropzone like a drag and drop would.
+func photoInjectJS(method, sel string, png []byte) string {
+	return `(function(sel,b64,mode){
+	  const bin=atob(b64), u=new Uint8Array(bin.length);
+	  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+	  const f=new File([u],'glucava.png',{type:'image/png'});
+	  const dt=new DataTransfer(); dt.items.add(f);
+	  const el=document.querySelector(sel); if(!el)return 'no input';
+	  if(mode==='input-change-event'){
+	    el.files=dt.files;
+	    el.dispatchEvent(new Event('input',{bubbles:true}));
+	    el.dispatchEvent(new Event('change',{bubbles:true}));
+	    return 'ok';
+	  }
+	  const zone=el.closest('[role=presentation]')||el.parentElement;
+	  for(const t of ['dragenter','dragover','drop']){
+	    zone.dispatchEvent(new DragEvent(t,{bubbles:true,cancelable:true,dataTransfer:dt}));
+	  }
+	  return 'ok'})(` + jsStr(sel) + `,` + jsStr(base64.StdEncoding.EncodeToString(png)) + `,` + jsStr(method) + `)`
+}
+
+// ProbePhoto is a dry run of the photo upload. For each way of handing the
+// page a file it loads the edit page fresh, hands over png, waits, and reports
+// what the page did. It never saves the form. The uploader itself may already
+// send the file to Strava.
+func (w *Writer) ProbePhoto(ctx context.Context, stravaID string, png []byte) ([]PhotoTry, error) {
+	if !idRe.MatchString(stravaID) {
+		return nil, fmt.Errorf("strava: invalid activity id %q", stravaID)
+	}
+	editURL := w.cfg.BaseURL + "/activities/" + stravaID + "/edit"
+	dir, err := os.MkdirTemp("", "glucava-photo-")
+	if err != nil {
+		return nil, err
+	}
+	defer removeDir(dir)
+	file := filepath.Join(dir, "probe.png")
+	if err := os.WriteFile(file, png, 0o600); err != nil {
+		return nil, err
+	}
+	var out []PhotoTry
+	err = w.withBrowser(ctx, func(ctx context.Context) error {
+		net := watchRequests(ctx)
+		for _, method := range photoMethods {
+			if _, err := w.openEdit(ctx, editURL); err != nil {
+				return err
+			}
+			sel, err := w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo)
+			if err != nil {
+				return err
+			}
+			if err := sleep(ctx, w.cfg.ProbeWait/4); err != nil { // let the page finish loading
+				return err
+			}
+			net.reset()
+			if method == "cdp-set-files" {
+				if err := chromedp.Run(ctx, chromedp.SetUploadFiles(sel, []string{file}, chromedp.ByQuery)); err != nil {
+					return err
+				}
+			} else if res, err := evalString(ctx, photoInjectJS(method, sel, png)); err != nil || res != "ok" {
+				return fmt.Errorf("strava: %s: %v %s", method, err, res)
+			}
+			if err := sleep(ctx, w.cfg.ProbeWait); err != nil {
+				return err
+			}
+			t := PhotoTry{Method: method, Requests: net.filtered(), State: photoState(ctx)}
+			blobs, _ := evalString(ctx, `String(document.querySelectorAll('img[src^="blob:"],video[src^="blob:"],img[src^="data:image"]').length)`)
+			t.Blobs, _ = strconv.Atoi(blobs)
+			t.Dialogs, _ = evalString(ctx, `JSON.stringify([...document.querySelectorAll('[role=dialog],dialog,[class*="odal"]')].filter(e=>e.offsetWidth||e.offsetHeight).map(e=>(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,300)))`)
+			_ = chromedp.Run(ctx, chromedp.FullScreenshot(&t.Screenshot, 80))
+			out = append(out, t)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (l *requestLog) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = nil
+	l.byID = map[network.RequestID]int{}
+}
+
+// requestLog remembers the uploads the page makes, for diagnosing a photo that
+// does not arrive.
+type requestLog struct {
+	mu    sync.Mutex
+	lines []string
+	byID  map[network.RequestID]int
+}
+
+func watchRequests(ctx context.Context) *requestLog {
+	l := &requestLog{byID: map[network.RequestID]int{}}
+	_ = chromedp.Run(ctx, network.Enable())
+	chromedp.ListenTarget(ctx, func(ev any) {
+		switch e := ev.(type) {
+		case *network.EventRequestWillBeSent:
+			if e.Request.Method == "GET" || e.Request.Method == "OPTIONS" || e.Request.Method == "HEAD" {
+				return
+			}
+			u := e.Request.URL
+			if i := strings.IndexAny(u, "?#"); i >= 0 {
+				u = u[:i]
+			}
+			l.mu.Lock()
+			l.byID[e.RequestID] = len(l.lines)
+			l.lines = append(l.lines, e.Request.Method+" "+u)
+			l.mu.Unlock()
+		case *network.EventResponseReceived:
+			l.mu.Lock()
+			if i, ok := l.byID[e.RequestID]; ok {
+				l.lines[i] += " -> " + strconv.Itoa(int(e.Response.Status))
+			}
+			l.mu.Unlock()
+		}
+	})
+	return l
+}
+
+func (l *requestLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.lines) == 0 {
+		return "none"
+	}
+	return strings.Join(l.lines, "; ")
 }
 
 // LoginSelectors are unverified guesses at Strava's login form.
@@ -463,7 +805,7 @@ func (w *Writer) withFreshBrowser(ctx context.Context, fn func(context.Context) 
 	opts = append(opts, chromedp.ModifyCmdFunc(func(c *exec.Cmd) { c.Stderr = chromeOut }))
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancelAlloc()
-	bctx, cancelBrowser := chromedp.NewContext(allocCtx)
+	bctx, cancelBrowser := chromedp.NewContext(allocCtx, chromedp.WithErrorf(quietErrorf))
 	defer func() {
 		cancelBrowser()
 		_ = chromedp.Cancel(bctx) // waits for Chrome to exit before the profile is deleted
@@ -636,4 +978,13 @@ func removeDir(dir string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// quietErrorf is chromedp's error logger without its "unhandled node event"
+// lines, which report harmless DOM events it has no use for.
+func quietErrorf(format string, args ...any) {
+	if strings.Contains(format, "unhandled node event") {
+		return
+	}
+	log.Printf("ERROR: "+format, args...)
 }

@@ -120,6 +120,9 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 			d.Act.Summary = &sum
 		}
 	}
+	if hs, ok := stats.SummarizeHR(act.HeartRate, act.Start, act.End()); ok {
+		d.HR = &hs
+	}
 	evs, err := s.Store.ListEvents(ctx, 200)
 	if err != nil {
 		return nil, err
@@ -228,11 +231,21 @@ func (s *Server) streamActivity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	prev := ""
 	s.stream(w, r, func(sse *datastar.ServerSentEventGenerator) error {
 		d, err := s.activityData(r.Context(), id)
 		if err != nil || d == nil {
 			return errors.New("activity gone")
 		}
+		// Tell the person when a run they are watching ends.
+		waiting := prev == jobs.StatusPending || prev == jobs.StatusProcessing
+		switch {
+		case waiting && d.Act.Status == jobs.StatusDone:
+			s.toast(sse, "ok", "Finished: the description is on Strava."+chartNote(d))
+		case waiting && d.Act.Status == jobs.StatusFailed:
+			s.toast(sse, "error", "Failed: "+d.Act.Error)
+		}
+		prev = d.Act.Status
 		return sse.PatchElements(renderString(ActivityBody(*d)))
 	})
 }
@@ -286,6 +299,49 @@ func plural(n int) string {
 		return "y"
 	}
 	return "ies"
+}
+
+// chartNote says what happened to the chart photo, for the finish message.
+func chartNote(d *ActivityData) string {
+	switch {
+	case !d.Cfg.ChartImage:
+		return ""
+	case d.Act.ChartUploaded:
+		return " The chart photo was sent (Strava's answer is not checked, so look at the activity)."
+	default:
+		return " The chart photo was not sent."
+	}
+}
+
+// actionChartAgain reprocesses an activity and attaches the chart again.
+func (s *Server) actionChartAgain(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	if !digits.MatchString(r.PathValue("id")) {
+		s.toast(sse, "error", "That is not an activity id.")
+		return
+	}
+	cfg, err := s.Store.LoadConfig()
+	if err != nil || !cfg.ChartImage {
+		s.toast(sse, "error", "Turn on the chart photo in Settings first.")
+		return
+	}
+	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
+	if err != nil || act == nil {
+		s.toast(sse, "error", "That activity no longer exists.")
+		return
+	}
+	act.Status, act.Error, act.RetryChart = jobs.StatusPending, "", true
+	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
+		s.toast(sse, "error", "Could not update the activity: "+err.Error())
+		return
+	}
+	if queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true}); err != nil {
+		s.toast(sse, "error", "Could not queue it: "+err.Error())
+	} else if !queued {
+		s.toast(sse, "", "This activity is already queued.")
+	} else {
+		s.toast(sse, "ok", "Queued. This adds another chart photo on Strava; delete the old one there.")
+	}
 }
 
 func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
@@ -431,6 +487,16 @@ type settingsSignals struct {
 	MailWeekly     bool    `json:"mailWeekly"`
 	MailHealth     bool    `json:"mailHealth"`
 	GapAlertHours  int     `json:"gapAlertHours"`
+	ChartImage     bool    `json:"chartImage"`
+	ChartTheme     string  `json:"chartTheme"`
+	ChartSize      string  `json:"chartSize"`
+	ChartBand      bool    `json:"chartBand"`
+	ChartActivity  bool    `json:"chartActivity"`
+	ChartDots      bool    `json:"chartDots"`
+	ChartLine      int     `json:"chartLine"`
+	ChartHR        bool    `json:"chartHR"`
+	ChartPre       int     `json:"chartPre"`
+	HRRead         bool    `json:"hrRead"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -442,7 +508,10 @@ func (v settingsSignals) config() store.Config {
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
 		PublicURL: strings.TrimSpace(v.PublicURL), MailAlerts: v.MailAlerts, MailActivity: v.MailActivity, MailWeekly: v.MailWeekly,
-		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours,
+		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
+		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
+		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
+		ChartPreMin: v.ChartPre, HRRead: v.HRRead,
 	}
 }
 
@@ -477,6 +546,9 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PublicURL, cfg.MailAlerts = strings.TrimSpace(v.PublicURL), v.MailAlerts
 	cfg.MailActivity, cfg.MailWeekly = v.MailActivity, v.MailWeekly
 	cfg.MailHealth, cfg.GapAlertHours = v.MailHealth, v.GapAlertHours
+	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
+	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
+	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

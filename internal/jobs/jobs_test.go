@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -49,6 +51,7 @@ func (m *memStore) SaveActivity(_ context.Context, a *Activity) error {
 	if a.Original == nil { // like the real store, never clear a stored backup
 		a.Original = m.acts[a.StravaID].Original
 	}
+	a.ChartUploaded = a.ChartUploaded || m.acts[a.StravaID].ChartUploaded // never cleared, like the real store
 	m.acts[a.StravaID] = *a
 	m.savedCalls++
 	return nil
@@ -401,5 +404,189 @@ func TestOnDoneNotCalledOnFailure(t *testing.T) {
 	runOne(t, q, Job{Activity: activity()})
 	if called {
 		t.Error("OnDone ran for a failed activity")
+	}
+}
+
+type photoWriter struct {
+	fakeWriter
+	photos [][]byte
+	err    error
+}
+
+func (w *photoWriter) UploadPhoto(_ context.Context, _, _ string, png []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	w.photos = append(w.photos, png)
+	return nil
+}
+
+func chartSetup(w Writer, on bool) (*Queue, *memStore) {
+	st := newStore()
+	st.set.ChartImage = on
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w}
+	return NewQueue(p, []time.Duration{time.Millisecond, time.Millisecond}, 8), st
+}
+
+func TestChartUploadedOnceAndOnlyWhenEnabled(t *testing.T) {
+	w := &photoWriter{}
+	q, st := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	if len(w.photos) != 1 || !bytes.HasPrefix(w.photos[0], []byte("\x89PNG")) || !st.acts["42"].ChartUploaded {
+		t.Fatalf("photos=%d uploaded=%v", len(w.photos), st.acts["42"].ChartUploaded)
+	}
+	// A reprocess must not attach a second copy.
+	runOne(t, q, Job{Activity: activity(), Force: true})
+	if len(w.photos) != 1 {
+		t.Errorf("photos after reprocess = %d, want 1", len(w.photos))
+	}
+
+	off := &photoWriter{}
+	q2, st2 := chartSetup(off, false)
+	runOne(t, q2, Job{Activity: activity()})
+	if len(off.photos) != 0 || st2.acts["42"].ChartUploaded {
+		t.Error("chart uploaded although the setting is off")
+	}
+}
+
+func TestChartFailureFailsTheRunButKeepsDescription(t *testing.T) {
+	w := &photoWriter{err: errors.New("no file input")}
+	w.desc = "My run"
+	q, st := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusFailed || a.ChartUploaded || !strings.Contains(a.Error, "upload chart") {
+		t.Fatalf("activity = %+v", a)
+	}
+	if !strings.Contains(w.desc, render.Prefix) {
+		t.Errorf("description lost: %q", w.desc)
+	}
+}
+
+func TestChartSkippedForWriterWithoutPhotos(t *testing.T) {
+	q, st := chartSetup(&fakeWriter{}, true)
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || a.ChartUploaded {
+		t.Errorf("activity = %+v", a)
+	}
+}
+
+type permErr struct{}
+
+func (permErr) Error() string   { return "no such element" }
+func (permErr) Permanent() bool { return true }
+
+func TestPermanentErrorIsNotRetried(t *testing.T) {
+	w := &fakeWriter{errs: []error{permErr{}, permErr{}, permErr{}}}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+	if w.calls != 1 {
+		t.Errorf("writer called %d times, want 1 (a missing element does not appear by waiting)", w.calls)
+	}
+	if a := st.acts["42"]; a.Status != StatusFailed || !strings.Contains(a.Error, "no such element") {
+		t.Errorf("activity = %+v", a)
+	}
+}
+
+func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
+	w := &fakeWriter{errs: []error{errors.New("chrome hiccup")}}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	var seen string
+	q.Backoff = []time.Duration{50 * time.Millisecond}
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		st.mu.Lock()
+		seen = st.acts["42"].Error
+		st.mu.Unlock()
+	}()
+	runOne(t, q, Job{Activity: activity()})
+	if !strings.Contains(seen, "Attempt 1 failed") || !strings.Contains(seen, "chrome hiccup") {
+		t.Errorf("while waiting, activity error = %q", seen)
+	}
+	if a := st.acts["42"]; a.Status != StatusDone || a.Error != "" {
+		t.Errorf("after the retry: %+v", a)
+	}
+}
+
+func TestRetryChartAttachesAgain(t *testing.T) {
+	w := &photoWriter{}
+	q, _ := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	again := activity()
+	again.RetryChart = true
+	runOne(t, q, Job{Activity: again, Force: true})
+	if len(w.photos) != 2 {
+		t.Errorf("photos = %d, want 2 after an explicit retry", len(w.photos))
+	}
+}
+
+type hrWriter struct {
+	photoWriter
+	hr   []chartimg.HRPoint
+	err  error
+	asks int
+}
+
+func (w *hrWriter) HeartRate(context.Context, string, time.Time) ([]chartimg.HRPoint, error) {
+	w.asks++
+	return w.hr, w.err
+}
+
+func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
+	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 130}, {Time: start.Add(time.Minute), BPM: 140}}}
+	q, st := chartSetup(w, true)
+	st.set.HRRead = true
+	runOne(t, q, Job{Activity: activity()})
+	if w.asks != 1 || len(st.acts["42"].HeartRate) != 2 || len(w.photos) != 1 {
+		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
+	}
+	again := activity()
+	again.RetryChart = true
+	again.HeartRate = st.acts["42"].HeartRate
+	runOne(t, q, Job{Activity: again, Force: true})
+	if w.asks != 1 {
+		t.Errorf("heart rate fetched again (%d asks)", w.asks)
+	}
+}
+
+func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
+	w := &hrWriter{err: errors.New("streams down")}
+	q, st := chartSetup(w, true)
+	st.set.HRRead = true
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
+		t.Errorf("activity = %+v photos=%d", a, len(w.photos))
+	}
+	off := &hrWriter{}
+	q2, _ := chartSetup(off, true) // chart_hr off
+	runOne(t, q2, Job{Activity: activity()})
+	if off.asks != 0 {
+		t.Error("heart rate fetched although chart_hr is off")
+	}
+}
+
+func TestChartLeadInDoesNotChangeTheNumbers(t *testing.T) {
+	early := stats.Sample{Time: start.Add(-20 * time.Minute), Value: 300}
+	src := &fakeSource{samples: append([]stats.Sample{early}, readings()...)}
+	w := &photoWriter{}
+	st := newStore()
+	st.set.ChartImage, st.set.ChartPre = true, 30*time.Minute
+	q := NewQueue(&Processor{Store: st, Source: src, SourceName: "dexcom", Writer: w}, []time.Duration{time.Millisecond}, 8)
+	runOne(t, q, Job{Activity: activity()})
+	a := st.acts["42"]
+	if a.Summary == nil || a.Summary.Max != 160 || a.Summary.Count != 4 {
+		t.Errorf("the lead-in leaked into the statistics: %+v", a.Summary)
+	}
+	if len(w.photos) != 1 {
+		t.Errorf("photos = %d", len(w.photos))
+	}
+}
+
+func TestHeartRateReadWithoutTheChart(t *testing.T) {
+	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 131}}}
+	q, st := chartSetup(w, false) // chart off
+	st.set.HRRead = true
+	runOne(t, q, Job{Activity: activity()})
+	if w.asks != 1 || len(st.acts["42"].HeartRate) != 1 || len(w.photos) != 0 {
+		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
 	}
 }

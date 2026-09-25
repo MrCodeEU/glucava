@@ -95,6 +95,8 @@ func stravaCommand(app core.App) *cobra.Command {
 
 	var htmlFile string
 	var fullDesc bool
+	var probePhoto, probeHR bool
+	var probeShot string
 	check := &cobra.Command{
 		Use:   "check [activity-id]",
 		Short: "Dry run: test the session, or inspect an activity's edit page without saving",
@@ -111,6 +113,21 @@ func stravaCommand(app core.App) *cobra.Command {
 				}
 				fmt.Println("session OK: Strava accepts the stored cookies")
 				return nil
+			}
+			if probeHR {
+				tries, hint, err := w.ProbeHeartRate(ctx, args[0])
+				if err != nil {
+					return err
+				}
+				fmt.Println(hint)
+				for _, a := range tries {
+					fmt.Printf("\n%s\n  status %d (%s), %s, %d bytes\n  %s\n", a.Path, a.Status, a.Type, a.ContentType, a.Bytes, a.Shape)
+				}
+				fmt.Println("\nnothing was changed.")
+				return nil
+			}
+			if probePhoto {
+				return runPhotoProbe(ctx, w, args[0], probeShot)
 			}
 			rep, err := w.Inspect(ctx, args[0], htmlFile != "")
 			if err != nil {
@@ -133,6 +150,9 @@ func stravaCommand(app core.App) *cobra.Command {
 		},
 	}
 	check.Flags().StringVar(&htmlFile, "html", "", "write the edit page source to this file")
+	check.Flags().BoolVar(&probePhoto, "photo", false, "dry run of the chart photo upload: choose a small test image in the uploader, report what the page does, never save (the uploader may still send the file to Strava)")
+	check.Flags().BoolVar(&probeHR, "hr", false, "read-only: ask Strava's web endpoints for the activity's heart rate and report what each answers")
+	check.Flags().StringVar(&probeShot, "screenshot", "", "with --photo: write a screenshot of the page after the upload attempt to this file")
 	check.Flags().BoolVar(&fullDesc, "full", false, "print the whole description text, quoted, not just its length")
 
 	var raw bool

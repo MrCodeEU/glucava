@@ -100,3 +100,51 @@ func TestFitTransliteratesAndCutsByCharacter(t *testing.T) {
 		t.Errorf("multi-byte cut: %q", got)
 	}
 }
+
+func photoData() PhotoData {
+	start := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	var ss []stats.Sample
+	var hr []HRPoint
+	for i := 0; i < 24; i++ {
+		ss = append(ss, stats.Sample{Time: start.Add(time.Duration(i) * 5 * time.Minute), Value: 110 + float64(i%7)*15})
+		hr = append(hr, HRPoint{Time: start.Add(time.Duration(i) * 5 * time.Minute), BPM: 120 + float64(i)})
+	}
+	return PhotoData{Samples: ss, HR: hr, Range: stats.DefaultRange, Start: start, End: start.Add(100 * time.Minute), Unit: render.MgDL, Loc: time.UTC}
+}
+
+func TestPhotoIsSquareAndSizesFollowStyle(t *testing.T) {
+	for _, tc := range []struct {
+		style Style
+		side  int
+	}{{Style{}, 1080}, {Style{Large: true}, 1620}, {Style{Dark: true, HideBand: true, HideActivity: true, HideDots: true, HideHR: true, LineWidth: 4}, 1080}} {
+		d := photoData()
+		d.Style = tc.style
+		b, err := Photo(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := png.DecodeConfig(bytes.NewReader(b))
+		if err != nil || cfg.Width != tc.side || cfg.Height != tc.side {
+			t.Errorf("%+v: %dx%d %v, want %d square", tc.style, cfg.Width, cfg.Height, err, tc.side)
+		}
+	}
+}
+
+func TestPhotoNeedsSamplesAndToleratesOddData(t *testing.T) {
+	if _, err := Photo(PhotoData{}); err == nil {
+		t.Error("no samples must be an error")
+	}
+	d := photoData()
+	d.Samples = d.Samples[:1] // a single reading
+	d.HR = nil
+	d.Start, d.End = time.Time{}, time.Time{}
+	if _, err := Photo(d); err != nil {
+		t.Errorf("single reading: %v", err)
+	}
+	d = photoData()
+	d.Unit = render.MmolL
+	d.HR = d.HR[:1]
+	if _, err := Photo(d); err != nil {
+		t.Errorf("mmol/L: %v", err)
+	}
+}

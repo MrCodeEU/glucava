@@ -94,6 +94,13 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		if err == nil || !retryable(err) || attempt >= len(q.Backoff) {
 			break
 		}
+		// Say why, and when it will try again, instead of sitting silent for
+		// minutes: the activity page shows this text while the job waits.
+		log.Printf("jobs: activity %s: attempt %d failed, retrying in %s: %v", a.StravaID, attempt+1, q.Backoff[attempt], err)
+		a.Error = fmt.Sprintf("Attempt %d failed: %v. Trying again in %s.", attempt+1, err, q.Backoff[attempt].Round(time.Second))
+		if serr := q.P.Store.SaveActivity(ctx, &a); serr != nil {
+			log.Printf("jobs: save activity %s: %v", a.StravaID, serr)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -101,12 +108,14 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		}
 	}
 	if err == nil {
+		log.Printf("jobs: activity %s: done (attempt %d)", a.StravaID, a.Attempts)
 		if q.OnDone != nil && !j.Force {
 			q.OnDone(ctx, a)
 		}
 		return
 	}
 
+	log.Printf("jobs: activity %s: failed after %d attempt(s): %v", a.StravaID, a.Attempts, err)
 	typ, sev := classify(err)
 	a.Status = StatusFailed
 	a.Error = err.Error()
@@ -134,8 +143,17 @@ func (q *Queue) restore(ctx context.Context, a Activity) {
 	}
 }
 
+// permanent is implemented by errors that a second try cannot fix, such as a
+// page element that is not there.
+type permanent interface{ Permanent() bool }
+
 func retryable(err error) bool {
-	return !errors.Is(err, glucose.ErrAuth) &&
+	var p permanent
+	if errors.As(err, &p) && p.Permanent() {
+		return false
+	}
+	return !errors.Is(err, ErrUnsafeMerge) && !errors.Is(err, ErrNoOriginal) &&
+		!errors.Is(err, glucose.ErrAuth) &&
 		!errors.Is(err, glucose.ErrTooOld) &&
 		!errors.Is(err, ErrSessionExpired) &&
 		!errors.Is(err, context.Canceled)
