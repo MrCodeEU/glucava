@@ -79,7 +79,7 @@ func Page(pd PageData, body ...g.Node) g.Node {
 						SubmitBtn("", "sm", "Sign out ("+pd.User+")")),
 				))...),
 				Main(g.Group(body)),
-				Div(append(comp("footer"), g.Text("glucava "+pd.Build+" · self-hosted, open source"))...),
+				sourceFooter(pd.Build),
 				Div(ID("toast"), g.Attr("aria-live", "polite")),
 			)...)),
 		),
@@ -94,7 +94,7 @@ func LoginPage(build, errMsg, email string) g.Node {
 		g.Raw("<!doctype html>"),
 		HTML(Lang("en"),
 			head("Sign in", build),
-			Body(Div(append(comp("loginwrap"),
+			Body(g.Group([]g.Node{Div(append(comp("loginwrap"),
 				Card(
 					H1(g.Text("glucava")),
 					P(Class("muted"), g.Text("Sign in to continue.")),
@@ -105,7 +105,20 @@ func LoginPage(build, errMsg, email string) g.Node {
 						SubmitBtn("primary", "", "Sign in"),
 					),
 				),
-			)...)),
+			)...), sourceFooter(build)})),
 		),
 	})
+}
+
+// SourceURL is where the running version's source code is offered. The AGPL
+// (section 13) requires this for everyone who uses the software over a
+// network, so it is on every page, including the sign-in page. A fork changes
+// it to its own repository.
+var SourceURL = "https://github.com/MrCodeEU/glucava"
+
+func sourceFooter(build string) g.Node {
+	return Div(append(comp("footer"),
+		g.Text("glucava "+build+" · self-hosted, open source (AGPL-3.0) · "),
+		A(Href(SourceURL), Rel("noopener"), g.Text("source code")),
+	)...)
 }

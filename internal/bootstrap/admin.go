@@ -32,6 +32,9 @@ func EnsureAdminUser(app core.App) error {
 	if len(password) < 12 {
 		return errors.New("bootstrap: GLUCAVA_ADMIN_PASSWORD must be at least 12 characters")
 	}
+	if isPlaceholderPassword(password) {
+		return errors.New("bootstrap: GLUCAVA_ADMIN_PASSWORD is still the example value from the docs; choose your own")
+	}
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
@@ -45,6 +48,20 @@ func EnsureAdminUser(app core.App) error {
 	}
 	log.Printf("bootstrap: created first user %s", email)
 	return nil
+}
+
+// isPlaceholderPassword reports whether pw is one of the example passwords in
+// the docs, compose file and .env.example. Publishing a known password as the
+// admin login of an internet-facing instance would be an open door. The demo
+// password is accepted only in demo mode, where all data is made up.
+func isPlaceholderPassword(pw string) bool {
+	switch pw {
+	case "change-me-to-a-long-password":
+		return true
+	case "demo-password-123":
+		return os.Getenv("GLUCAVA_DEMO") != "1"
+	}
+	return false
 }
 
 // Vault is the subset of *secrets.Vault that EnsureDexcomCredential needs.

@@ -1,6 +1,11 @@
 name: CodeQL
-# Code scanning needs GitHub Advanced Security on private repos.
-# Re-enable the pull_request, push and schedule triggers once the repo is public.
+# Uploading results needs GitHub Advanced Security on private repos (the scan
+# itself runs, the upload fails). Once the repo is public, switch on:
+#   pull_request:
+#   push:
+#     branches: [main]
+#   schedule:
+#     - cron: "17 4 * * 1"
 on:
   workflow_dispatch:
 permissions:

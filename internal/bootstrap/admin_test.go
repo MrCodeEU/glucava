@@ -316,3 +316,27 @@ func TestEnsurePublicURL(t *testing.T) {
 		t.Errorf("seed overwrote the stored value: %q", got)
 	}
 }
+
+func TestEnsureAdminUserRejectsExamplePasswords(t *testing.T) {
+	app := newApp(t)
+	t.Setenv("GLUCAVA_ADMIN_EMAIL", "a@example.test")
+	for _, pw := range []string{"change-me-to-a-long-password", "demo-password-123"} {
+		t.Setenv("GLUCAVA_ADMIN_PASSWORD", pw)
+		if err := EnsureAdminUser(app); err == nil {
+			t.Errorf("example password %q accepted outside demo mode", pw)
+		}
+	}
+	if n, _ := app.CountRecords("users"); n != 0 {
+		t.Fatalf("a user was created with an example password: %d", n)
+	}
+	// Demo mode is all made-up data, so its own password is fine there, the docs placeholder still is not.
+	t.Setenv("GLUCAVA_DEMO", "1")
+	t.Setenv("GLUCAVA_ADMIN_PASSWORD", "change-me-to-a-long-password")
+	if err := EnsureAdminUser(app); err == nil {
+		t.Error("the docs placeholder must be refused in demo mode too")
+	}
+	t.Setenv("GLUCAVA_ADMIN_PASSWORD", "demo-password-123")
+	if err := EnsureAdminUser(app); err != nil {
+		t.Errorf("demo password refused in demo mode: %v", err)
+	}
+}
