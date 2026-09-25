@@ -1,10 +1,12 @@
 name: CodeQL
+# Uploading results needs GitHub Advanced Security on private repos (the scan
+# itself runs, the upload fails). Once the repo is public, switch on:
+#   pull_request:
+#   push:
+#     branches: [main]
+#   schedule:
+#     - cron: "17 4 * * 1"
 on:
-  pull_request:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "17 4 * * 1"
   workflow_dispatch:
 permissions:
   contents: read
