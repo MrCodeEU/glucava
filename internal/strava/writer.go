@@ -5,6 +5,7 @@ package strava
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,6 +104,7 @@ type Config struct {
 	Pause          func()         // called between steps to look less robotic; nil means no pause
 	Timeout        time.Duration  // whole run; default 2 minutes
 	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
+	ProbeWait      time.Duration  // how long the photo probe watches the page per method; default 8 seconds
 	UploadWait     time.Duration  // longest wait for the chosen photo to show up in the uploader; default 30 seconds
 	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
 	StartTimeout   time.Duration  // wait for Chrome to come up; default 60 seconds (chromedp's own 20 is too short on a busy or slow host)
@@ -133,6 +135,9 @@ func NewWriter(cfg Config) *Writer {
 	}
 	if cfg.SaveTimeout <= 0 {
 		cfg.SaveTimeout = 15 * time.Second
+	}
+	if cfg.ProbeWait <= 0 {
+		cfg.ProbeWait = 8 * time.Second
 	}
 	if cfg.UploadWait <= 0 {
 		cfg.UploadWait = 30 * time.Second
@@ -302,20 +307,72 @@ func photoState(ctx context.Context) string {
 	return s
 }
 
-// PhotoProbe is the result of ProbePhoto.
-type PhotoProbe struct {
-	Selector   string
-	Before     int
-	After      int
-	Requests   string
+// PhotoTry is what the page did after one way of handing it the file.
+type PhotoTry struct {
+	Method     string
+	Requests   string // uploads the page made, without analytics and error reporting
+	Blobs      int    // preview images/videos made from the chosen file
+	Dialogs    string
 	State      string
 	Screenshot []byte
 }
 
-// ProbePhoto is a dry run of the photo upload: it chooses png in the uploader
-// on the edit page, waits, and reports what the page did. It never saves the
-// form. Note that the uploader itself may already send the file to Strava.
-func (w *Writer) ProbePhoto(ctx context.Context, stravaID string, png []byte) (*PhotoProbe, error) {
+// noiseHosts are trackers the edit page talks to all the time.
+var noiseHosts = []string{"snowplowanalytics", "google-analytics", "googlesyndication", "sentry.io", "doubleclick", "googletagmanager"}
+
+func (l *requestLog) filtered() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var keep []string
+	for _, line := range l.lines {
+		noise := false
+		for _, h := range noiseHosts {
+			if strings.Contains(line, h) {
+				noise = true
+			}
+		}
+		if !noise {
+			keep = append(keep, line)
+		}
+	}
+	if len(keep) == 0 {
+		return "none"
+	}
+	return strings.Join(keep, "; ")
+}
+
+// photoMethods are the ways to hand a file to a page's uploader. The real
+// one depends on how the page's script listens for it.
+var photoMethods = []string{"cdp-set-files", "input-change-event", "drop-event"}
+
+// photoInjectJS gives the uploader the file without a real click: it builds a
+// File in the page and either sets it on the input and fires change, or drops
+// it on the dropzone like a drag and drop would.
+func photoInjectJS(method, sel string, png []byte) string {
+	return `(function(sel,b64,mode){
+	  const bin=atob(b64), u=new Uint8Array(bin.length);
+	  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+	  const f=new File([u],'glucava.png',{type:'image/png'});
+	  const dt=new DataTransfer(); dt.items.add(f);
+	  const el=document.querySelector(sel); if(!el)return 'no input';
+	  if(mode==='input-change-event'){
+	    el.files=dt.files;
+	    el.dispatchEvent(new Event('input',{bubbles:true}));
+	    el.dispatchEvent(new Event('change',{bubbles:true}));
+	    return 'ok';
+	  }
+	  const zone=el.closest('[role=presentation]')||el.parentElement;
+	  for(const t of ['dragenter','dragover','drop']){
+	    zone.dispatchEvent(new DragEvent(t,{bubbles:true,cancelable:true,dataTransfer:dt}));
+	  }
+	  return 'ok'})(` + jsStr(sel) + `,` + jsStr(base64.StdEncoding.EncodeToString(png)) + `,` + jsStr(method) + `)`
+}
+
+// ProbePhoto is a dry run of the photo upload. For each way of handing the
+// page a file it loads the edit page fresh, hands over png, waits, and reports
+// what the page did. It never saves the form. The uploader itself may already
+// send the file to Strava.
+func (w *Writer) ProbePhoto(ctx context.Context, stravaID string, png []byte) ([]PhotoTry, error) {
 	if !idRe.MatchString(stravaID) {
 		return nil, fmt.Errorf("strava: invalid activity id %q", stravaID)
 	}
@@ -329,35 +386,51 @@ func (w *Writer) ProbePhoto(ctx context.Context, stravaID string, png []byte) (*
 	if err := os.WriteFile(file, png, 0o600); err != nil {
 		return nil, err
 	}
-	out := &PhotoProbe{}
+	var out []PhotoTry
 	err = w.withBrowser(ctx, func(ctx context.Context) error {
-		if _, err := w.openEdit(ctx, editURL); err != nil {
-			return err
-		}
-		if out.Selector, err = w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo); err != nil {
-			return err
-		}
-		if out.Before, err = mediaCount(ctx); err != nil {
-			return err
-		}
 		net := watchRequests(ctx)
-		if err := chromedp.Run(ctx, chromedp.SetUploadFiles(out.Selector, []string{file}, chromedp.ByQuery)); err != nil {
-			return err
+		for _, method := range photoMethods {
+			if _, err := w.openEdit(ctx, editURL); err != nil {
+				return err
+			}
+			sel, err := w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo)
+			if err != nil {
+				return err
+			}
+			if err := sleep(ctx, w.cfg.ProbeWait/4); err != nil { // let the page finish loading
+				return err
+			}
+			net.reset()
+			if method == "cdp-set-files" {
+				if err := chromedp.Run(ctx, chromedp.SetUploadFiles(sel, []string{file}, chromedp.ByQuery)); err != nil {
+					return err
+				}
+			} else if res, err := evalString(ctx, photoInjectJS(method, sel, png)); err != nil || res != "ok" {
+				return fmt.Errorf("strava: %s: %v %s", method, err, res)
+			}
+			if err := sleep(ctx, w.cfg.ProbeWait); err != nil {
+				return err
+			}
+			t := PhotoTry{Method: method, Requests: net.filtered(), State: photoState(ctx)}
+			blobs, _ := evalString(ctx, `String(document.querySelectorAll('img[src^="blob:"],video[src^="blob:"],img[src^="data:image"]').length)`)
+			t.Blobs, _ = strconv.Atoi(blobs)
+			t.Dialogs, _ = evalString(ctx, `JSON.stringify([...document.querySelectorAll('[role=dialog],dialog,[class*="odal"]')].filter(e=>e.offsetWidth||e.offsetHeight).map(e=>(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,300)))`)
+			_ = chromedp.Run(ctx, chromedp.FullScreenshot(&t.Screenshot, 80))
+			out = append(out, t)
 		}
-		_ = w.waitMedia(ctx, out.Before, 10*time.Second)
-		if err := sleep(ctx, 4*time.Second); err != nil { // let a slow upload show its requests
-			return err
-		}
-		out.After, _ = mediaCount(ctx)
-		out.Requests = net.String()
-		out.State = photoState(ctx)
-		_ = chromedp.Run(ctx, chromedp.FullScreenshot(&out.Screenshot, 80))
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func (l *requestLog) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = nil
+	l.byID = map[network.RequestID]int{}
 }
 
 // mediaSignal counts what a new thumbnail would add: images on the page and

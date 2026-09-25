@@ -447,15 +447,21 @@ func TestUploadPhotoNotKeptBySaveFails(t *testing.T) {
 	}
 }
 
-func TestProbePhotoReportsAndNeverSaves(t *testing.T) {
+func TestProbePhotoTriesEveryMethodAndNeverSaves(t *testing.T) {
 	m := &mock{description: "x"}
 	w := newWriter(t, m, goodCookies, nil)
-	p, err := w.ProbePhoto(context.Background(), "42", []byte("x"))
+	w.cfg.ProbeWait = 400 * time.Millisecond
+	tries, err := w.ProbePhoto(context.Background(), "42", []byte("x"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.After <= p.Before || !strings.Contains(p.State, "MediaUploader") || len(p.Screenshot) == 0 {
-		t.Errorf("probe = %+v", p)
+	if len(tries) != 3 || tries[0].Method != "cdp-set-files" || tries[1].Method != "input-change-event" || tries[2].Method != "drop-event" {
+		t.Fatalf("tries = %+v", tries)
+	}
+	for _, x := range tries {
+		if !strings.Contains(x.State, "MediaUploader") || len(x.Screenshot) == 0 {
+			t.Errorf("%s: %+v", x.Method, x)
+		}
 	}
 	if m.posts != 0 {
 		t.Errorf("probe saved the form %d times", m.posts)
