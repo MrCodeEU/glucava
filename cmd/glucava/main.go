@@ -44,6 +44,10 @@ import (
 var buildID = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		runHealthcheck()
+		return
+	}
 	app := pocketbase.New()
 	changes := &bus.Bus{}
 	toks := &tokens.Manager{App: app}
@@ -54,6 +58,7 @@ func main() {
 	bootstrap.EnforceSingleUser(app)
 	// A failed command is not a usage error; skip the flag dump before the message.
 	app.RootCmd.SilenceUsage = true
+	app.RootCmd.Version = buildID
 	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st), glucoseCommand(app, st), configCommand(app, st))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
