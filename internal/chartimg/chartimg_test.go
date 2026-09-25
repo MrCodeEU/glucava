@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,5 +81,22 @@ func TestBars(t *testing.T) {
 	}
 	if _, err := Bars(nil); err == nil {
 		t.Error("no bars must be an error")
+	}
+}
+
+func TestFitTransliteratesAndCutsByCharacter(t *testing.T) {
+	for in, want := range map[string]string{
+		"Easy Run":                       "Easy Run",
+		"Läufer Übung ß":                 "Laufer Ubung ss",
+		"Lauf 🏃 heute":                   "Lauf ? heute",
+		"a very long activity name here": "a very long activity ...",
+		"Ünïcödé":                        "Un?code",
+	} {
+		if got := fit(in, 24); got != want {
+			t.Errorf("fit(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := fit("ääääääääääääääääääääääääää", 24); len([]rune(got)) != 24 || !strings.HasSuffix(got, "...") {
+		t.Errorf("multi-byte cut: %q", got)
 	}
 }

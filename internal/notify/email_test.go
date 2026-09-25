@@ -170,3 +170,9 @@ func TestIconForEveryAlertType(t *testing.T) {
 		t.Error("fallback icon missing")
 	}
 }
+
+func TestEmailHTMLDeclaresUTF8(t *testing.T) {
+	if h := emailHTML(Message{Title: "t", Body: "b", Icon: "\U0001F3C3"}); !strings.Contains(h, `<meta charset="utf-8">`) {
+		t.Error("the HTML must declare UTF-8 so emoji survive being opened outside a mail client")
+	}
+}

@@ -162,7 +162,7 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	}
 	var bars []chartimg.Bar
 	for _, a := range cur {
-		bars = append(bars, chartimg.Bar{Label: label(a), Below: a.Summary.Below, InRange: a.Summary.TIR, Above: a.Summary.Above})
+		bars = append(bars, chartimg.Bar{Label: barLabel(a, loc), Below: a.Summary.Below, InRange: a.Summary.TIR, Above: a.Summary.Above})
 	}
 	chart, cerr := chartimg.Bars(bars)
 	if cerr != nil {
@@ -174,6 +174,15 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 		Body:  "Your glucose numbers for last week's activities.", Facts: facts, Time: time.Now(),
 		Chart: chart, ChartAlt: "Time in range per activity: green in range, red below, orange above",
 	}, true
+}
+
+// barLabel is the short row label of the weekly chart: the day and the name.
+func barLabel(a jobs.Activity, loc *time.Location) string {
+	n := a.Name
+	if n == "" {
+		n = a.StravaID
+	}
+	return a.Start.In(loc).Format("Mon 2") + ": " + n
 }
 
 func withSummary(in []jobs.Activity) []jobs.Activity {
