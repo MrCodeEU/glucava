@@ -108,7 +108,7 @@ func emailHTML(m Message) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(`<!doctype html><html><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2933">`)
+	b.WriteString(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2933">`)
 	fmt.Fprintf(&b, `<div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:8px;border-top:4px solid %s;overflow:hidden">`, accent)
 	fmt.Fprintf(&b, `<table role="presentation" style="width:100%%;border-collapse:collapse"><tr><td style="width:72px;padding:20px 0 8px 24px;vertical-align:top"><div style="width:48px;height:48px;line-height:48px;text-align:center;font-size:26px;border-radius:24px;background:%s">%s</div></td>`, tint, esc(IconFor(m)))
 	fmt.Fprintf(&b, `<td style="padding:20px 24px 8px 0;vertical-align:top"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:%s;color:%s;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">%s</span>`, tint, accent, esc(sev))

@@ -191,7 +191,7 @@ func Bars(bars []Bar) ([]byte, error) {
 	if len(bars) > 12 {
 		bars = bars[len(bars)-12:]
 	}
-	const padL, padR, padT = 150.0, 44.0, 10.0
+	const padL, padR, padT = 176.0, 44.0, 10.0
 	const rowH = 26.0
 	c := newCanvas(int(padT+rowH*float64(len(bars)))+10, colBG)
 	for i, b := range bars {
@@ -209,12 +209,38 @@ func Bars(bars []Bar) ([]byte, error) {
 	return c.finish(func(img *image.RGBA) {
 		for i, b := range bars {
 			top := padT + float64(i)*rowH
-			label := b.Label
-			if len(label) > 19 {
-				label = label[:18] + "..."
-			}
+			label := fit(b.Label, 24)
 			text(img, int(padL)-8, int(top+rowH/2)+4, label, true)
 			text(img, int(W-padR)+6, int(top+rowH/2)+4, fmt.Sprintf("%.0f%%", b.InRange), false)
 		}
 	})
+}
+
+// fit makes s drawable with the built-in bitmap font: it has only ASCII
+// glyphs, so umlauts are transliterated and other characters become "?".
+// It cuts s to at most n characters, ending in "..." when it had to cut.
+func fit(s string, n int) string {
+	var out []rune
+	for _, r := range s {
+		switch {
+		case r >= 0x20 && r < 0x7f:
+			out = append(out, r)
+		default:
+			t, ok := translit[r]
+			if !ok {
+				t = "?"
+			}
+			out = append(out, []rune(t)...)
+		}
+	}
+	if len(out) > n {
+		out = append(out[:n-3], '.', '.', '.')
+	}
+	return string(out)
+}
+
+var translit = map[rune]string{
+	'ä': "a", 'ö': "o", 'ü': "u", 'Ä': "A", 'Ö': "O", 'Ü': "U", 'ß': "ss",
+	'é': "e", 'è': "e", 'ê': "e", 'á': "a", 'à': "a", 'â': "a", 'ó': "o", 'ô': "o", 'í': "i", 'ú': "u", 'ç': "c", 'ñ': "n",
+	'–': "-", '—': "-", '·': "-", '\u2019': "'",
 }
