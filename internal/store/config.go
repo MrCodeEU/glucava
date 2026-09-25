@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 )
 
 // Validate returns a message for the first problem with c, or "". It is the
@@ -21,6 +23,12 @@ func (c Config) Validate() string {
 		return "Target high must be above the low value and at most 400 mg/dL."
 	case c.PreMin < 0 || c.PreMin > 240 || c.PostMin < 0 || c.PostMin > 240:
 		return "Minutes before and after must be between 0 and 240."
+	case c.ChartTheme != "light" && c.ChartTheme != "dark":
+		return "Chart theme must be light or dark."
+	case c.ChartSize != "standard" && c.ChartSize != "large":
+		return "Chart size must be standard or large."
+	case c.ChartLine < 1 || c.ChartLine > 4:
+		return "Chart line thickness must be between 1 and 4."
 	case c.PollMin < 1 || c.PollMin > 1440:
 		return "The polling interval must be between 1 and 1440 minutes."
 	case c.RetentionDays < 0 || c.RetentionDays > 3650:
@@ -150,6 +158,12 @@ var configKeys = map[string]configKey{
 	"mail_health":           boolKey(func(c *Config) *bool { return &c.MailHealth }),
 	"gap_alert_hours":       intKey(func(c *Config) *int { return &c.GapAlertHours }),
 	"chart_image":           boolKey(func(c *Config) *bool { return &c.ChartImage }),
+	"chart_theme":           strKey(func(c *Config) *string { return &c.ChartTheme }),
+	"chart_size":            strKey(func(c *Config) *string { return &c.ChartSize }),
+	"chart_band":            boolKey(func(c *Config) *bool { return &c.ChartBand }),
+	"chart_activity":        boolKey(func(c *Config) *bool { return &c.ChartActivity }),
+	"chart_dots":            boolKey(func(c *Config) *bool { return &c.ChartDots }),
+	"chart_line":            intKey(func(c *Config) *int { return &c.ChartLine }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.
@@ -182,4 +196,13 @@ func (c *Config) Set(key, value string) error {
 		return fmt.Errorf("%s: %w", key, err)
 	}
 	return nil
+}
+
+// ChartStyle converts the chart settings to how the chart is drawn.
+func (c Config) ChartStyle() chartimg.Style {
+	return chartimg.Style{
+		Dark: c.ChartTheme == "dark", Large: c.ChartSize == "large",
+		HideBand: !c.ChartBand, HideActivity: !c.ChartActivity, HideDots: !c.ChartDots,
+		LineWidth: float64(c.ChartLine),
+	}
 }

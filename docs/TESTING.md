@@ -65,6 +65,8 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 
 Use a throwaway activity you own. This writes a photo to a real Strava activity and cannot be undone by glucava (delete it in Strava).
 
+- [ ] Settings > Chart photo: changing theme, size, line and the three checkboxes updates the preview at once, without saving; saving keeps the look.
+- [ ] With the option on, the activity page shows the chart photo; with it off, it does not.
 - [ ] `glucava strava inspect <id>` shows a matching "photo:" line and lists the file input(s).
 - [ ] Turn `chart_image` on, process the activity: the chart photo appears once, description text intact.
 - [ ] Reprocess: no second photo.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -77,6 +78,7 @@ type Settings struct {
 
 	PollInterval time.Duration // how often the poller checks Strava
 	ChartImage   bool          // also attach a glucose chart photo
+	ChartStyle   chartimg.Style
 }
 
 // Event is an entry for the notification outbox.

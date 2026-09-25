@@ -21,6 +21,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/migrations"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/secrets"
+	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
 	"github.com/MrCodeEU/glucava/internal/tokens"
@@ -334,7 +335,7 @@ const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":1
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
 "webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
 "smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava",
-"publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true,"mailHealth":true,"gapAlertHours":6}`
+"publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true,"mailHealth":true,"gapAlertHours":6,"chartTheme":"dark","chartSize":"large","chartBand":true,"chartActivity":true,"chartDots":false,"chartLine":3}`
 
 func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	t.Parallel()
@@ -813,7 +814,7 @@ func TestExportNeedsLoginAndSetsHeaders(t *testing.T) {
 
 func TestRetentionValidation(t *testing.T) {
 	t.Parallel()
-	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", RetentionDays: -1}
+	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", RetentionDays: -1, ChartTheme: "light", ChartSize: "standard", ChartLine: 2}
 	if v.validate() == "" {
 		t.Error("negative retention accepted")
 	}
@@ -929,5 +930,69 @@ func TestSourceLinkOnEveryPage(t *testing.T) {
 		if !strings.Contains(body, `href="`+SourceURL+`"`) || !strings.Contains(body, "AGPL-3.0") {
 			t.Errorf("%s page has no source link", name)
 		}
+	}
+}
+
+func TestChartImageEndpoint(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	ctx := context.Background()
+
+	if w := e.get(t, "/chart/latest.png", nil); w.Code != http.StatusSeeOther && w.Code != http.StatusUnauthorized && w.Code != http.StatusFound {
+		t.Errorf("chart is reachable without login: %d", w.Code)
+	}
+	// With no readings at all, the preview uses made-up data.
+	w := e.get(t, "/chart/latest.png?theme=dark&size=large&line=4&band=false&dots=false", c)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !strings.HasPrefix(w.Body.String(), "\x89PNG") {
+		t.Fatalf("preview: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	large := w.Body.Len()
+	if small := e.get(t, "/chart/latest.png", c).Body.Len(); small >= large {
+		t.Errorf("large chart (%d bytes) should be bigger than standard (%d)", large, small)
+	}
+	if w := e.get(t, "/chart/latest.png?theme=<script>&line=99", c); w.Code != http.StatusOK {
+		t.Errorf("bad parameters must be ignored, got %d", w.Code)
+	}
+	for _, p := range []string{"/chart/latest", "/chart/abc.png", "/chart/999.png"} {
+		if w := e.get(t, p, c); w.Code != http.StatusNotFound {
+			t.Errorf("%s = %d, want 404", p, w.Code)
+		}
+	}
+
+	// A real activity with readings.
+	start := time.Now().Add(-3 * time.Hour).UTC()
+	_ = e.srv.Store.SaveActivity(ctx, &jobs.Activity{StravaID: "31", Name: "Run", Start: start, Duration: time.Hour, Status: jobs.StatusDone})
+	var ss []stats.Sample
+	for i := 0; i < 12; i++ {
+		ss = append(ss, stats.Sample{Time: start.Add(time.Duration(i) * 5 * time.Minute), Value: 100 + float64(i)*5})
+	}
+	if err := e.srv.Store.SaveSamples(ctx, "dexcom", ss); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.get(t, "/chart/31.png", c); w.Code != http.StatusOK {
+		t.Errorf("activity chart = %d", w.Code)
+	}
+}
+
+func TestActivityPageShowsChartOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "31", Name: "Run", Start: time.Now().Add(-3 * time.Hour), Duration: time.Hour, Status: jobs.StatusDone})
+
+	if body := e.get(t, "/activity/31", c).Body.String(); strings.Contains(body, "/chart/31.png") {
+		t.Error("chart shown although chart_image is off")
+	}
+	cfg, _ := e.srv.Store.LoadConfig()
+	cfg.ChartImage = true
+	if err := e.srv.Store.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if body := e.get(t, "/activity/31", c).Body.String(); !strings.Contains(body, `src="/chart/31.png"`) {
+		t.Error("chart missing although chart_image is on")
+	}
+	if body := e.get(t, "/settings", c).Body.String(); !strings.Contains(body, "/chart/latest.png?theme=") {
+		t.Error("settings page has no live preview")
 	}
 }

@@ -237,6 +237,11 @@ func ActivityBody(d ActivityData) g.Node {
 		g.If(a.Status == jobs.StatusFailed && a.Error != "",
 			Notice("error", Strong(g.Text("This activity failed. ")), g.Text(a.Error))),
 		g.If(tiles != nil, tiles),
+		g.If(d.Cfg.ChartImage, Card(H2(g.Text("Chart photo for Strava")),
+			P(Class("muted"), g.Text("What glucava attaches to the activity, with your current chart settings.")),
+			Img(Alt("Glucose chart as attached to Strava"), Src("/chart/"+a.StravaID+".png"),
+				g.Attr("style", "max-width:100%;height:auto;border-radius:8px")),
+		)),
 		Card(H2(g.Text("Glucose")), GlucoseChart(ChartData{
 			Samples: d.Samples, Unit: unit, Loc: d.Loc, Start: a.Start, End: a.End(),
 			Range: stats.Range{Low: d.Cfg.RangeLow, High: d.Cfg.RangeHigh},
@@ -424,6 +429,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
+		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -443,7 +449,6 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("postMin", "Minutes after end", "Also how long to wait after an activity before processing it.", Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
 					)...),
 					Field("pollMin", "Check Strava every (minutes)", "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
-					Field("chartImage", "Attach a glucose chart to the activity", "Adds the chart as a photo on Strava, once per activity. Experimental: photos cannot be removed again by glucava, and a first photo can replace the map as the activity's cover.", Input(ID("chartImage"), Type("checkbox"), bind("chartImage"))),
 				),
 				Card(H2(g.Text("Dexcom Share")),
 					P(Class("muted"), g.Text("Turn on Dexcom Share in the Dexcom app first. The account is the one that owns the sensor.")),
@@ -452,6 +457,26 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Field("dexcomUsername", "Username, email or phone", "", Input(ID("dexcomUsername"), Type("text"), AutoComplete("off"), bind("dexcomUsername"))),
 					Field("dexcomPassword", "Password", "", Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
 					DexcomSecretStatus(d.HasDexcomPassword),
+				),
+			),
+			Card(H2(g.Text("Chart photo")),
+				P(Class("muted"), g.Text("Optionally attach the glucose chart to the Strava activity as a photo. The preview below updates as you change the options, using your latest activity (or sample data), before anything is saved.")),
+				Field("chartImage", "Attach the chart to each activity", "Once per activity. Experimental: glucava cannot remove photos again, and a first photo can replace the map as the activity's cover.", Input(ID("chartImage"), Type("checkbox"), bind("chartImage"))),
+				Grid("2",
+					Div(
+						Field("chartTheme", "Theme", "", Select(ID("chartTheme"), bind("chartTheme"),
+							Option(Value("light"), g.Text("Light")), Option(Value("dark"), g.Text("Dark")))),
+						Field("chartSize", "Size", "Large is 1200 px wide, sharper on big screens.", Select(ID("chartSize"), bind("chartSize"),
+							Option(Value("standard"), g.Text("Standard (600 px)")), Option(Value("large"), g.Text("Large (1200 px)")))),
+						Field("chartLine", "Line thickness (1 to 4)", "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
+						Field("chartBand", "Shade the target range", "", Input(ID("chartBand"), Type("checkbox"), bind("chartBand"))),
+						Field("chartActivity", "Shade the activity", "", Input(ID("chartActivity"), Type("checkbox"), bind("chartActivity"))),
+						Field("chartDots", "Mark out-of-range readings", "", Input(ID("chartDots"), Type("checkbox"), bind("chartDots"))),
+					),
+					Div(
+						Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
+							g.Attr("data-attr:src", chartPreviewExpr)),
+					),
 				),
 			),
 			Card(H2(g.Text("Notifications")),
@@ -617,3 +642,9 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 		Card(body),
 	)
 }
+
+// chartPreviewExpr builds the preview image address from the form signals, so
+// the image reloads whenever an option changes.
+const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
+	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots" +
+	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh"

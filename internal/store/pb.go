@@ -51,6 +51,10 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 		out.Range = stats.Range{Low: lo, High: hi}
 	}
 	out.ChartImage = r.GetBool("chart_image")
+	out.ChartStyle = Config{
+		ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"), ChartBand: r.GetBool("chart_band"),
+		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"),
+	}.ChartStyle()
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
 	out.Post = time.Duration(r.GetInt("post_minutes")) * time.Minute
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {

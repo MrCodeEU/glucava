@@ -39,6 +39,12 @@ type Config struct {
 	MailWeekly    bool   // email a weekly summary
 	MailHealth    bool   // email a monthly health report
 	ChartImage    bool   // attach a glucose chart photo to the Strava activity
+	ChartTheme    string // "light" or "dark"
+	ChartSize     string // "standard" or "large"
+	ChartBand     bool   // shade the target range
+	ChartActivity bool   // shade the activity span
+	ChartDots     bool   // mark out-of-range readings
+	ChartLine     int    // curve thickness, 1 to 4
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 }
 
@@ -70,7 +76,9 @@ func (s *PB) LoadConfig() (Config, error) {
 		PublicURL:     r.GetString("public_url"), MailAlerts: r.GetBool("mail_alerts"),
 		MailActivity: r.GetBool("mail_activity"), MailWeekly: r.GetBool("mail_weekly"),
 		MailHealth: r.GetBool("mail_health"), GapAlertHours: r.GetInt("gap_alert_hours"),
-		ChartImage: r.GetBool("chart_image"),
+		ChartImage: r.GetBool("chart_image"), ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"),
+		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
+		ChartLine: r.GetInt("chart_line"),
 	}, nil
 }
 
@@ -105,6 +113,12 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("mail_health", c.MailHealth)
 	r.Set("gap_alert_hours", c.GapAlertHours)
 	r.Set("chart_image", c.ChartImage)
+	r.Set("chart_theme", c.ChartTheme)
+	r.Set("chart_size", c.ChartSize)
+	r.Set("chart_band", c.ChartBand)
+	r.Set("chart_activity", c.ChartActivity)
+	r.Set("chart_dots", c.ChartDots)
+	r.Set("chart_line", c.ChartLine)
 	return s.App.Save(r)
 }
 

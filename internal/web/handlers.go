@@ -432,6 +432,12 @@ type settingsSignals struct {
 	MailHealth     bool    `json:"mailHealth"`
 	GapAlertHours  int     `json:"gapAlertHours"`
 	ChartImage     bool    `json:"chartImage"`
+	ChartTheme     string  `json:"chartTheme"`
+	ChartSize      string  `json:"chartSize"`
+	ChartBand      bool    `json:"chartBand"`
+	ChartActivity  bool    `json:"chartActivity"`
+	ChartDots      bool    `json:"chartDots"`
+	ChartLine      int     `json:"chartLine"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -444,6 +450,8 @@ func (v settingsSignals) config() store.Config {
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
 		PublicURL: strings.TrimSpace(v.PublicURL), MailAlerts: v.MailAlerts, MailActivity: v.MailActivity, MailWeekly: v.MailWeekly,
 		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
+		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
+		ChartDots: v.ChartDots, ChartLine: v.ChartLine,
 	}
 }
 
@@ -478,7 +486,8 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PublicURL, cfg.MailAlerts = strings.TrimSpace(v.PublicURL), v.MailAlerts
 	cfg.MailActivity, cfg.MailWeekly = v.MailActivity, v.MailWeekly
 	cfg.MailHealth, cfg.GapAlertHours = v.MailHealth, v.GapAlertHours
-	cfg.ChartImage = v.ChartImage
+	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
+	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return
