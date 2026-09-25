@@ -145,7 +145,9 @@ func main() {
 			if err != nil {
 				return
 			}
-			if m, ok := digest.ActivityMessage(a, set.Unit, time.Local); ok {
+			// Same window the description used, so the chart shows what was summarized.
+			samples, _ := st.LoadSamplesAny(ctx, a.Start.Add(-set.Pre), a.End().Add(set.Post))
+			if m, ok := digest.ActivityMessage(a, set.Unit, set.Range, samples, time.Local); ok {
 				if err := sendSummary(ctx, st, vault, m); err != nil {
 					log.Printf("notify: activity summary: %v", err)
 				}

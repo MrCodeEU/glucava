@@ -9,6 +9,7 @@ require (
 	github.com/pocketbase/pocketbase v0.40.4
 	github.com/spf13/cobra v1.10.2
 	github.com/starfederation/datastar-go v1.2.2
+	golang.org/x/image v0.46.0
 	maragu.dev/gomponents v1.3.0
 )
 
@@ -41,7 +42,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
