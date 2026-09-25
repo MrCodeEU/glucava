@@ -13,7 +13,7 @@ make help      # all targets (cli, token, dexcom, strava-cookies, strava-check, 
 make check     # everything CI runs
 ```
 
-Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. On CI the Chrome-launching tests can rarely fail with `websocket url timeout reached`; that is a runner flake, re-run the job. `make shot` (needs `CHROME_PATH` and a running demo) writes screenshots, and `go run ./tools/shot -flow` clicks through the main UI paths.
+Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. On CI the Chrome-launching tests can rarely fail with `websocket url timeout reached`; that is a runner flake, re-run the job. `make shot` (needs `CHROME_PATH` and a running demo) writes screenshots, `make mailshot` renders sample emails to `docs/img`, `make site` previews the project site in `docs/site` (published by `.github/workflows/pages.yml` once GitHub Pages is set to "GitHub Actions"), and `go run ./tools/shot -flow` clicks through the main UI paths.
 
 ## Layout
 

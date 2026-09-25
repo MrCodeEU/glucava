@@ -1,4 +1,4 @@
-.PHONY: help hooks build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-list strava-cookies shot reset-mock reset-real clean
+.PHONY: help hooks build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-list strava-cookies shot mailshot site reset-mock reset-real clean
 
 SHELL := /bin/bash
 BIN := glucava
@@ -67,6 +67,13 @@ glucose-import: build ## import a CGM export: make glucose-import FILE=export.cs
 
 shot: ## screenshots of a running mock into ./shots (needs CHROME_PATH)
 	go run ./tools/shot -url http://$(ADDR) -out shots -password $(DEMO_PW)
+
+mailshot: ## render sample notification emails to docs/img (needs CHROME_PATH)
+	go run ./tools/mailshot -out docs/img
+
+site: ## preview the project site on http://127.0.0.1:8000 (docs/site + docs/img)
+	rm -rf .site && mkdir .site && cp -r docs/site/. .site/ && cp -r docs/img .site/img
+	@echo "http://127.0.0.1:8000"; cd .site && python3 -m http.server 8000 --bind 127.0.0.1
 
 ## ---- quality ------------------------------------------------------------
 
