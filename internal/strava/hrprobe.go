@@ -68,7 +68,8 @@ func (w *Writer) ProbeHeartRate(ctx context.Context, stravaID string) ([]HRAttem
 	return out, pageHint, err
 }
 
-func (w *Writer) fetchProbe(ctx context.Context, path string) (HRAttempt, error) {
+// fetchRaw fetches path from the page's origin with the session's cookies.
+func (w *Writer) fetchRaw(ctx context.Context, path string) (status int, respType, contentType, body string, err error) {
 	js := `fetch(` + jsStr(path) + `,{credentials:'include',redirect:'manual',
 	  headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json, text/plain, */*'}})
 	  .then(r=>r.text().then(t=>JSON.stringify({type:r.type,status:r.status,ct:r.headers.get('content-type')||'',body:t.slice(0,2000000)})))`
@@ -76,7 +77,7 @@ func (w *Writer) fetchProbe(ctx context.Context, path string) (HRAttempt, error)
 	if err := chromedp.Run(ctx, chromedp.Evaluate(js, &res, func(p *runtime.EvaluateParams) *runtime.EvaluateParams {
 		return p.WithAwaitPromise(true)
 	})); err != nil {
-		return HRAttempt{}, fmt.Errorf("strava: fetch %s: %w", path, err)
+		return 0, "", "", "", fmt.Errorf("strava: fetch %s: %w", path, err)
 	}
 	var r struct {
 		Type   string `json:"type"`
@@ -85,9 +86,17 @@ func (w *Writer) fetchProbe(ctx context.Context, path string) (HRAttempt, error)
 		Body   string `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(res), &r); err != nil {
+		return 0, "", "", "", err
+	}
+	return r.Status, r.Type, r.CT, r.Body, nil
+}
+
+func (w *Writer) fetchProbe(ctx context.Context, path string) (HRAttempt, error) {
+	status, typ, ct, body, err := w.fetchRaw(ctx, path)
+	if err != nil {
 		return HRAttempt{}, err
 	}
-	return HRAttempt{Path: path, Status: r.Status, Type: r.Type, ContentType: r.CT, Bytes: len(r.Body), Shape: shapeOf(r.Body)}, nil
+	return HRAttempt{Path: path, Status: status, Type: typ, ContentType: ct, Bytes: len(body), Shape: shapeOf(body)}, nil
 }
 
 // shapeOf describes a response without printing the activity's data: for

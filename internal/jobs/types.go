@@ -68,6 +68,9 @@ type Activity struct {
 	// RetryChart (not stored) makes this run attach the chart even though one
 	// was attached before, for when the first photo never showed up on Strava.
 	RetryChart bool
+
+	// HeartRate is the activity's heart rate, thinned, once fetched. Never cleared.
+	HeartRate []chartimg.HRPoint
 }
 
 // End returns the activity end time.
@@ -83,6 +86,7 @@ type Settings struct {
 	PollInterval time.Duration // how often the poller checks Strava
 	ChartImage   bool          // also attach a glucose chart photo
 	ChartStyle   chartimg.Style
+	ChartHR      bool // draw the activity's heart rate on the chart
 }
 
 // Event is an entry for the notification outbox.
@@ -119,4 +123,10 @@ type Writer interface {
 // activity. The chart is optional, so the Processor checks for it at run time.
 type PhotoWriter interface {
 	UploadPhoto(ctx context.Context, stravaID, name string, png []byte) error
+}
+
+// HRSource is implemented by a Writer that can also read the activity's heart
+// rate. It is optional, like PhotoWriter.
+type HRSource interface {
+	HeartRate(ctx context.Context, stravaID string, start time.Time) ([]chartimg.HRPoint, error)
 }

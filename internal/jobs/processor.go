@@ -114,7 +114,10 @@ func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, 
 	if !ok {
 		return nil
 	}
-	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
+	if set.ChartHR && len(a.HeartRate) == 0 {
+		p.fetchHeartRate(ctx, a)
+	}
+	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, HR: a.HeartRate, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
 	if err != nil {
 		return fmt.Errorf("draw chart: %w", err)
 	}
@@ -170,4 +173,20 @@ func (p *Processor) Restore(ctx context.Context, a *Activity) error {
 	}
 	prev.Status, prev.Error, prev.Summary = StatusSkipped, "original description restored", nil
 	return p.Store.SaveActivity(ctx, prev)
+}
+
+// fetchHeartRate reads the activity's heart rate for the chart. It never fails
+// the run: the chart is still worth attaching without it.
+func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
+	src, ok := p.Writer.(HRSource)
+	if !ok {
+		return
+	}
+	pts, err := src.HeartRate(ctx, a.StravaID, a.Start)
+	if err != nil {
+		log.Printf("jobs: activity %s: no heart rate for the chart: %v", a.StravaID, err)
+		return
+	}
+	log.Printf("jobs: activity %s: %d heart rate points for the chart", a.StravaID, len(pts))
+	a.HeartRate = pts
 }

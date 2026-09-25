@@ -435,7 +435,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
-		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine,
+		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -478,6 +478,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("chartBand", "Shade the target range", "", Input(ID("chartBand"), Type("checkbox"), bind("chartBand"))),
 						Field("chartActivity", "Shade the activity", "", Input(ID("chartActivity"), Type("checkbox"), bind("chartActivity"))),
 						Field("chartDots", "Mark out-of-range readings", "", Input(ID("chartDots"), Type("checkbox"), bind("chartDots"))),
+						Field("chartHR", "Show heart rate", "Draws your heart rate on a second axis. It is read from Strava when the chart is first attached, so the preview shows it for activities that were already processed with the chart on.", Input(ID("chartHR"), Type("checkbox"), bind("chartHR"))),
 					),
 					Div(
 						Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
@@ -652,5 +653,5 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 // chartPreviewExpr builds the preview image address from the form signals, so
 // the image reloads whenever an option changes.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
-	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots" +
+	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR" +
 	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh"

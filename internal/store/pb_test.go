@@ -9,6 +9,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	_ "github.com/pocketbase/pocketbase/migrations" // registers the system migrations
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -388,5 +389,25 @@ func TestGapEventTypeIsAccepted(t *testing.T) {
 	s := &PB{App: newApp(t)}
 	if err := s.RecordEvent(context.Background(), jobs.Event{Type: jobs.EventGlucoseGap, Severity: "warning", Message: "gap"}); err != nil {
 		t.Fatalf("migration 008 must allow glucose_gap: %v", err)
+	}
+}
+
+func TestHeartRateStoredAndNeverCleared(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	at := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	a := jobs.Activity{StravaID: "9", Start: at, Duration: time.Hour, Status: jobs.StatusDone,
+		HeartRate: []chartimg.HRPoint{{Time: at, BPM: 120}, {Time: at.Add(time.Minute), BPM: 130}}}
+	if err := s.SaveActivity(ctx, &a); err != nil {
+		t.Fatal(err)
+	}
+	// A later save without heart rate (a status update) must keep it.
+	b := jobs.Activity{StravaID: "9", Start: at, Duration: time.Hour, Status: jobs.StatusProcessing}
+	if err := s.SaveActivity(ctx, &b); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Activity(ctx, "9")
+	if got == nil || len(got.HeartRate) != 2 || got.HeartRate[1].BPM != 130 || !got.HeartRate[0].Time.Equal(at) {
+		t.Errorf("heart rate = %+v", got)
 	}
 }

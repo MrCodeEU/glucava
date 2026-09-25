@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -515,5 +516,50 @@ func TestRetryChartAttachesAgain(t *testing.T) {
 	runOne(t, q, Job{Activity: again, Force: true})
 	if len(w.photos) != 2 {
 		t.Errorf("photos = %d, want 2 after an explicit retry", len(w.photos))
+	}
+}
+
+type hrWriter struct {
+	photoWriter
+	hr   []chartimg.HRPoint
+	err  error
+	asks int
+}
+
+func (w *hrWriter) HeartRate(context.Context, string, time.Time) ([]chartimg.HRPoint, error) {
+	w.asks++
+	return w.hr, w.err
+}
+
+func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
+	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 130}, {Time: start.Add(time.Minute), BPM: 140}}}
+	q, st := chartSetup(w, true)
+	st.set.ChartHR = true
+	runOne(t, q, Job{Activity: activity()})
+	if w.asks != 1 || len(st.acts["42"].HeartRate) != 2 || len(w.photos) != 1 {
+		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
+	}
+	again := activity()
+	again.RetryChart = true
+	again.HeartRate = st.acts["42"].HeartRate
+	runOne(t, q, Job{Activity: again, Force: true})
+	if w.asks != 1 {
+		t.Errorf("heart rate fetched again (%d asks)", w.asks)
+	}
+}
+
+func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
+	w := &hrWriter{err: errors.New("streams down")}
+	q, st := chartSetup(w, true)
+	st.set.ChartHR = true
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
+		t.Errorf("activity = %+v photos=%d", a, len(w.photos))
+	}
+	off := &hrWriter{}
+	q2, _ := chartSetup(off, true) // chart_hr off
+	runOne(t, q2, Job{Activity: activity()})
+	if off.asks != 0 {
+		t.Error("heart rate fetched although chart_hr is off")
 	}
 }

@@ -36,6 +36,7 @@ func chartConfig(cfg store.Config, q map[string][]string) store.Config {
 	flag("band", &cfg.ChartBand)
 	flag("activity", &cfg.ChartActivity)
 	flag("dots", &cfg.ChartDots)
+	flag("hr", &cfg.ChartHR)
 	if v, ok := get("line"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 4 {
 			cfg.ChartLine = n
@@ -79,6 +80,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		samples    []stats.Sample
+		hr         []chartimg.HRPoint
 		start, end time.Time
 	)
 	load := func(id string) bool {
@@ -90,7 +92,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(got) < 2 {
 			return false
 		}
-		samples, start, end = got, act.Start, act.End()
+		samples, start, end, hr = got, act.Start, act.End(), act.HeartRate
 		return true
 	}
 	if name == "latest" {
@@ -102,6 +104,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 		}
 		if samples == nil {
 			samples, start, end = sampleCurve(s.now())
+			hr = sampleHR(start)
 		}
 	} else if !load(name) {
 		http.NotFound(w, r)
@@ -109,7 +112,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	png, err := chartimg.Photo(chartimg.PhotoData{
-		Samples: samples, Range: stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh},
+		Samples: samples, HR: hr, Range: stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh},
 		Start: start, End: end, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Style: cfg.ChartStyle(),
 	})
 	if err != nil {
@@ -130,4 +133,13 @@ func sampleCurve(now time.Time) (samples []stats.Sample, start, end time.Time) {
 		samples = append(samples, stats.Sample{Time: start.Add(time.Duration(i) * 5 * time.Minute), Value: v})
 	}
 	return samples, start, start.Add(100 * time.Minute)
+}
+
+// sampleHR is a made-up heart rate for the sample run.
+func sampleHR(start time.Time) []chartimg.HRPoint {
+	var hr []chartimg.HRPoint
+	for i := 0; i < 100; i += 2 {
+		hr = append(hr, chartimg.HRPoint{Time: start.Add(time.Duration(i) * time.Minute), BPM: 135 + 18*math.Sin(float64(i)/9) + float64(i)/8})
+	}
+	return hr
 }

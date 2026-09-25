@@ -53,8 +53,9 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	out.ChartImage = r.GetBool("chart_image")
 	out.ChartStyle = Config{
 		ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"), ChartBand: r.GetBool("chart_band"),
-		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"),
+		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 	}.ChartStyle()
+	out.ChartHR = r.GetBool("chart_hr")
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
 	out.Post = time.Duration(r.GetInt("post_minutes")) * time.Minute
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {
@@ -92,6 +93,9 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 	if r.GetBool("has_original") {
 		o := r.GetString("original_description")
 		a.Original = &o
+	}
+	if raw := r.GetString("heart_rate"); raw != "" && raw != "null" {
+		_ = json.Unmarshal([]byte(raw), &a.HeartRate)
 	}
 	if raw := r.GetString("summary"); raw != "" && raw != "null" {
 		var sum stats.Summary
@@ -133,6 +137,9 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 	if a.Original != nil { // never clear a stored backup
 		r.Set("has_original", true)
 		r.Set("original_description", *a.Original)
+	}
+	if len(a.HeartRate) > 0 { // never cleared: it is what the chart preview draws
+		r.Set("heart_rate", a.HeartRate)
 	}
 	if a.Status == jobs.StatusDone {
 		r.Set("processed_at", time.Now().UTC())

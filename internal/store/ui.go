@@ -45,6 +45,7 @@ type Config struct {
 	ChartActivity bool   // shade the activity span
 	ChartDots     bool   // mark out-of-range readings
 	ChartLine     int    // curve thickness, 1 to 4
+	ChartHR       bool   // draw heart rate on the chart
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 }
 
@@ -78,7 +79,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		MailHealth: r.GetBool("mail_health"), GapAlertHours: r.GetInt("gap_alert_hours"),
 		ChartImage: r.GetBool("chart_image"), ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"),
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
-		ChartLine: r.GetInt("chart_line"),
+		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 	}, nil
 }
 
@@ -119,6 +120,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_activity", c.ChartActivity)
 	r.Set("chart_dots", c.ChartDots)
 	r.Set("chart_line", c.ChartLine)
+	r.Set("chart_hr", c.ChartHR)
 	return s.App.Save(r)
 }
 

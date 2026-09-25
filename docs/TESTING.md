@@ -71,3 +71,10 @@ Use a throwaway activity you own. This writes a photo to a real Strava activity 
 - [ ] Turn `chart_image` on, process the activity: the chart photo appears once, description text intact.
 - [ ] Reprocess: no second photo.
 - [ ] Note whether the photo replaced the map as the cover, and whether the upload needs longer than the default 6 s wait.
+
+## Heart rate on the chart
+
+- [ ] `make strava-hr ID=<id>` shows a `streams` answer with `heartrate:[N of number]` (read-only).
+- [ ] With the chart photo and "Show heart rate" on, "Attach chart again" on an activity: the log says `N heart rate points for the chart` and the photo shows the pink heart rate curve with a bpm axis on the right.
+- [ ] Reopen Settings: the live preview now shows that activity's heart rate; with the option off it does not.
+- [ ] An activity without a heart rate sensor still gets a chart, without the curve.

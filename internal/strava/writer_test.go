@@ -120,7 +120,23 @@ func (m *mock) handler() http.Handler {
 	for _, path := range []string{"/photos/metadata", "/storage/x.jpg"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	}
+	mux.HandleFunc("/activities/42/streams", func(w http.ResponseWriter, r *http.Request) {
+		if !loggedIn(r) {
+			http.Error(w, "no", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Query().Get("stream_types[]") != "heartrate" {
+			http.Error(w, "wrong query", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"heartrate":[120,130,0,140,150],"time":[0,60,120,180,240]}`)
+	})
 	mux.HandleFunc("/activities/42", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && !loggedIn(r) {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
 		if r.Method == http.MethodPost {
 			_ = r.ParseMultipartForm(8 << 20)
 			m.mu.Lock()
@@ -493,5 +509,40 @@ func TestShapeOfDescribesWithoutValues(t *testing.T) {
 	}
 	if s := shapeOf("<html> \n  hi"); s != "text: <html> hi" {
 		t.Errorf("text shape = %q", s)
+	}
+}
+
+func TestParseHeartRateDropsBadReadingsAndThins(t *testing.T) {
+	start := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	pts, err := ParseHeartRate([]byte(`{"heartrate":[120,0,140,300],"time":[0,10,20,30]}`), start)
+	if err != nil || len(pts) != 2 || pts[1].BPM != 140 || !pts[1].Time.Equal(start.Add(20*time.Second)) {
+		t.Fatalf("pts = %+v, err = %v", pts, err)
+	}
+	var hr, tm []string
+	for i := 0; i < 9394; i++ {
+		hr = append(hr, "140")
+		tm = append(tm, fmt.Sprint(i))
+	}
+	big, err := ParseHeartRate([]byte(`{"heartrate":[`+strings.Join(hr, ",")+`],"time":[`+strings.Join(tm, ",")+`]}`), start)
+	if err != nil || len(big) > maxHRPoints || len(big) < maxHRPoints/2 {
+		t.Errorf("thinned to %d points, err %v", len(big), err)
+	}
+	if none, err := ParseHeartRate([]byte(`{}`), start); err != nil || len(none) != 0 {
+		t.Errorf("empty stream: %v %v", none, err)
+	}
+	if _, err := ParseHeartRate([]byte(`<html>`), start); err == nil {
+		t.Error("non-JSON must be an error")
+	}
+}
+
+func TestHeartRateFromBrowser(t *testing.T) {
+	w := newWriter(t, &mock{}, goodCookies, nil)
+	start := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	pts, err := w.HeartRate(context.Background(), "42", start)
+	if err != nil || len(pts) != 4 || pts[3].BPM != 150 {
+		t.Fatalf("pts = %+v, err = %v", pts, err)
+	}
+	if _, err := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil).HeartRate(context.Background(), "42", start); !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("expired session: %v", err)
 	}
 }

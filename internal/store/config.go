@@ -164,6 +164,7 @@ var configKeys = map[string]configKey{
 	"chart_activity":        boolKey(func(c *Config) *bool { return &c.ChartActivity }),
 	"chart_dots":            boolKey(func(c *Config) *bool { return &c.ChartDots }),
 	"chart_line":            intKey(func(c *Config) *int { return &c.ChartLine }),
+	"chart_hr":              boolKey(func(c *Config) *bool { return &c.ChartHR }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.
@@ -202,7 +203,7 @@ func (c *Config) Set(key, value string) error {
 func (c Config) ChartStyle() chartimg.Style {
 	return chartimg.Style{
 		Dark: c.ChartTheme == "dark", Large: c.ChartSize == "large",
-		HideBand: !c.ChartBand, HideActivity: !c.ChartActivity, HideDots: !c.ChartDots,
+		HideBand: !c.ChartBand, HideActivity: !c.ChartActivity, HideDots: !c.ChartDots, HideHR: !c.ChartHR,
 		LineWidth: float64(c.ChartLine),
 	}
 }
