@@ -2,6 +2,7 @@
 
 SHELL := /bin/bash
 BIN := glucava
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PORT ?= 8090
 ADDR ?= 127.0.0.1:$(PORT)
 DEMO_PW ?= demo-password-123
@@ -86,7 +87,7 @@ site: ## preview the project site on http://127.0.0.1:8000 (docs/site + docs/img
 ## ---- quality ------------------------------------------------------------
 
 build: ## compile ./glucava
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o $(BIN) ./cmd/glucava
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.buildID=$(VERSION)" -o $(BIN) ./cmd/glucava
 
 test: ## unit tests with the race detector
 	go test -race ./...
