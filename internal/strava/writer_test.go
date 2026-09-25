@@ -25,6 +25,8 @@ type mock struct {
 	ignorePosts bool // simulate a save the server silently drops
 	noTextarea  bool
 	noFile      bool // the edit page has no photo input
+	noThumb     bool // the uploader never shows a thumbnail
+	dropPhoto   bool // the save does not keep the photo
 	photo       []byte
 	photoPosts  int
 	rotate      bool // send a new session cookie on GET
@@ -99,7 +101,12 @@ func (m *mock) handler() http.Handler {
 		if m.noTextarea {
 			field = `<p>Something else</p>`
 		}
-		fileInput := `<input type="file" name="photo" accept="image/*">`
+		thumbs := strings.Repeat(`<img src="data:,">`, m.photoPosts)
+		script := `<script>document.querySelector('input[type=file]').addEventListener('change',function(){var i=document.createElement('img');document.querySelector('.MediaUploader--thumbs').appendChild(i)})</script>`
+		if m.noThumb {
+			script = ""
+		}
+		fileInput := `<div class="MediaUploader--dropzone--sS1mw"><input type="file" name="photo" accept multiple></div><div class="MediaUploader--thumbs">` + thumbs + `</div>` + script
 		if m.noFile {
 			fileInput = ""
 		}
@@ -114,7 +121,9 @@ func (m *mock) handler() http.Handler {
 			m.posts++
 			if f, _, err := r.FormFile("photo"); err == nil {
 				m.photo, _ = io.ReadAll(f)
-				m.photoPosts++
+				if !m.dropPhoto {
+					m.photoPosts++
+				}
 				_ = f.Close()
 			}
 			if !m.ignorePosts {
@@ -384,7 +393,7 @@ func TestStartTimeoutDefaultsAndOverrides(t *testing.T) {
 func TestUploadPhoto(t *testing.T) {
 	m := &mock{description: "My run"}
 	w := newWriter(t, m, goodCookies, nil)
-	w.cfg.UploadWait = 100 * time.Millisecond
+	w.cfg.UploadWait = 1500 * time.Millisecond
 
 	png := []byte("\x89PNG\r\n\x1a\nfake")
 	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", png); err != nil {
@@ -400,7 +409,7 @@ func TestUploadPhoto(t *testing.T) {
 
 func TestUploadPhotoWithoutFileInput(t *testing.T) {
 	w := newWriter(t, &mock{description: "x", noFile: true}, goodCookies, nil)
-	w.cfg.UploadWait = 100 * time.Millisecond
+	w.cfg.UploadWait = 1500 * time.Millisecond
 	var se *SelectorError
 	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.As(err, &se) || se.Key != "photo" {
 		t.Errorf("err = %v, want a photo SelectorError", err)
@@ -410,6 +419,30 @@ func TestUploadPhotoWithoutFileInput(t *testing.T) {
 func TestUploadPhotoSessionExpired(t *testing.T) {
 	w := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil)
 	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestUploadPhotoThatNeverShowsUpFails(t *testing.T) {
+	m := &mock{description: "x", noThumb: true}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = 700 * time.Millisecond
+	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "did not show up in the uploader") {
+		t.Errorf("err = %v", err)
+	}
+	if m.posts != 0 {
+		t.Errorf("saved %d times although the uploader never took the photo", m.posts)
+	}
+}
+
+func TestUploadPhotoNotKeptBySaveFails(t *testing.T) {
+	m := &mock{description: "x", dropPhoto: true}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = time.Second
+	w.cfg.LocateTimeout = 800 * time.Millisecond
+	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
+	if err == nil || !strings.Contains(err.Error(), "shows no new photo") {
 		t.Errorf("err = %v", err)
 	}
 }

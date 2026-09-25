@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,9 +69,12 @@ var DefaultSelectors = Selectors{
 		// regardless of locale, as long as the page has exactly these two.
 		`textarea:not(#activity_private_note)`,
 	},
-	// Unverified: the photo control on the real edit page has not been
-	// inspected yet. "glucava strava inspect" lists the file inputs it finds.
+	// The edit page's uploader (checked 2026-09) is a dropzone with a hidden
+	// <input type=file multiple>; its class names carry a build hash, so match
+	// only the stable prefix. "glucava strava inspect" lists the file inputs.
 	Photo: []string{
+		`[class*="MediaUploader--dropzone"] input[type="file"]`,
+		`[class*="MediaUploader"] input[type="file"]`,
 		`input[type="file"][accept*="image"]`,
 		`input[type="file"]`,
 	},
@@ -98,7 +103,7 @@ type Config struct {
 	Pause          func()         // called between steps to look less robotic; nil means no pause
 	Timeout        time.Duration  // whole run; default 2 minutes
 	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
-	UploadWait     time.Duration  // pause after choosing the photo so the upload can finish; default 6 seconds
+	UploadWait     time.Duration  // longest wait for the chosen photo to show up in the uploader; default 30 seconds
 	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
 	StartTimeout   time.Duration  // wait for Chrome to come up; default 60 seconds (chromedp's own 20 is too short on a busy or slow host)
 }
@@ -130,7 +135,7 @@ func NewWriter(cfg Config) *Writer {
 		cfg.SaveTimeout = 15 * time.Second
 	}
 	if cfg.UploadWait <= 0 {
-		cfg.UploadWait = 6 * time.Second
+		cfg.UploadWait = 30 * time.Second
 	}
 	if cfg.StartTimeout <= 0 {
 		cfg.StartTimeout = 60 * time.Second
@@ -233,19 +238,116 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 		if err != nil {
 			return err
 		}
+		before, err := mediaCount(ctx)
+		if err != nil {
+			return err
+		}
+		net := watchRequests(ctx)
+
 		w.pause()
 		if err := chromedp.Run(ctx, chromedp.SetUploadFiles(photoSel, []string{file}, chromedp.ByQuery)); err != nil {
 			return fmt.Errorf("strava: choose photo: %w", err)
 		}
-		if err := sleep(ctx, w.cfg.UploadWait); err != nil {
-			return err
+		// The uploader sends the file as soon as it is chosen and shows a
+		// thumbnail. Wait for that, so saving does not race the upload.
+		if err := w.waitMedia(ctx, before, w.cfg.UploadWait); err != nil {
+			log.Printf("strava: photo did not show up in the uploader; requests seen: %s", net.String())
+			return fmt.Errorf("strava: the photo did not show up in the uploader within %s (nothing was saved; the page's uploader may have changed): %w", w.cfg.UploadWait, err)
 		}
+		log.Printf("strava: photo accepted by the uploader; requests seen: %s", net.String())
+
 		w.pause()
 		if err := w.save(ctx, descSel, editURL); err != nil {
 			return err
 		}
+
+		// Confirm the activity now has the media: open the edit page again.
+		if _, err := w.openEdit(ctx, editURL); err != nil {
+			return err
+		}
+		if err := w.waitMedia(ctx, before, w.cfg.LocateTimeout); err != nil {
+			return errors.New("strava: saved, but the reopened edit page shows no new photo; check the activity on Strava before retrying, or a second copy may be added")
+		}
 		return w.exportCookies(ctx)
 	})
+}
+
+// mediaSignal counts what a new thumbnail would add: images on the page and
+// everything inside the media uploader.
+const mediaSignal = `(function(){return document.querySelectorAll('img').length+document.querySelectorAll('[class*="MediaUploader"] *').length})()`
+
+func mediaCount(ctx context.Context) (int, error) {
+	s, err := evalString(ctx, `String(`+mediaSignal+`)`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := strconv.Atoi(s)
+	return n, nil
+}
+
+// waitMedia polls until the media signal is above before.
+func (w *Writer) waitMedia(ctx context.Context, before int, max time.Duration) error {
+	deadline := time.Now().Add(max)
+	for {
+		n, err := mediaCount(ctx)
+		if err != nil {
+			return err
+		}
+		if n > before {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("page media count stayed at %d", n)
+		}
+		if err := sleep(ctx, 300*time.Millisecond); err != nil {
+			return err
+		}
+	}
+}
+
+// requestLog remembers the uploads the page makes, for diagnosing a photo that
+// does not arrive.
+type requestLog struct {
+	mu    sync.Mutex
+	lines []string
+	byID  map[network.RequestID]int
+}
+
+func watchRequests(ctx context.Context) *requestLog {
+	l := &requestLog{byID: map[network.RequestID]int{}}
+	_ = chromedp.Run(ctx, network.Enable())
+	chromedp.ListenTarget(ctx, func(ev any) {
+		switch e := ev.(type) {
+		case *network.EventRequestWillBeSent:
+			if e.Request.Method == "GET" || e.Request.Method == "OPTIONS" || e.Request.Method == "HEAD" {
+				return
+			}
+			u := e.Request.URL
+			if i := strings.IndexAny(u, "?#"); i >= 0 {
+				u = u[:i]
+			}
+			l.mu.Lock()
+			l.byID[e.RequestID] = len(l.lines)
+			l.lines = append(l.lines, e.Request.Method+" "+u)
+			l.mu.Unlock()
+		case *network.EventResponseReceived:
+			l.mu.Lock()
+			if i, ok := l.byID[e.RequestID]; ok {
+				l.lines[i] += " -> " + strconv.Itoa(int(e.Response.Status))
+			}
+			l.mu.Unlock()
+		}
+	})
+	return l
+}
+
+func (l *requestLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.lines) == 0 {
+		return "none"
+	}
+	return strings.Join(l.lines, "; ")
 }
 
 // LoginSelectors are unverified guesses at Strava's login form.
@@ -526,7 +628,7 @@ func (w *Writer) withFreshBrowser(ctx context.Context, fn func(context.Context) 
 	opts = append(opts, chromedp.ModifyCmdFunc(func(c *exec.Cmd) { c.Stderr = chromeOut }))
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancelAlloc()
-	bctx, cancelBrowser := chromedp.NewContext(allocCtx)
+	bctx, cancelBrowser := chromedp.NewContext(allocCtx, chromedp.WithErrorf(quietErrorf))
 	defer func() {
 		cancelBrowser()
 		_ = chromedp.Cancel(bctx) // waits for Chrome to exit before the profile is deleted
@@ -699,4 +801,13 @@ func removeDir(dir string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// quietErrorf is chromedp's error logger without its "unhandled node event"
+// lines, which report harmless DOM events it has no use for.
+func quietErrorf(format string, args ...any) {
+	if strings.Contains(format, "unhandled node event") {
+		return
+	}
+	log.Printf("ERROR: "+format, args...)
 }
