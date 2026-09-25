@@ -18,7 +18,7 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 
 - [ ] Dashboard shows the current Dexcom reading.
 - [ ] A new activity is picked up by polling within the poll interval and its description gets exactly one block.
-- [ ] Text you wrote yourself (and any other app's lines, e.g. Ando) is byte-for-byte unchanged around the block.
+- [ ] Text you wrote yourself (and any other app's lines) is byte-for-byte unchanged around the block.
 - [ ] Reprocess the same activity: still exactly one block, no duplicates.
 - [ ] Restore original puts the pre-glucava text back; reprocess adds the block again.
 - [ ] Process a specific activity by id (older than the polling window) with imported or stored readings.

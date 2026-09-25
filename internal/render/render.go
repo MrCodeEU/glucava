@@ -14,7 +14,7 @@ const Prefix = "🩸 "
 // blockMarker is what Merge and Strip actually match on to recognise a
 // previous Glucava block. It is deliberately more specific than Prefix: the
 // emoji alone collides with any other app that also starts a line with a
-// blood drop (observed in the wild — Ando's own summary starts "🩸 Avg :
+// blood drop (observed in the wild: another integration's own summary starts "🩸 Avg :
 // ..."), which made Strip and Merge mistake someone else's text for ours and
 // either eat or leave duplicates of it. TIR is the fixed word Block() always
 // writes right after Prefix, so this string only ever matches our own line.

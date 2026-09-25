@@ -82,17 +82,17 @@ func TestMergeCRLF(t *testing.T) {
 }
 
 // TestMergeDoesNotCollideWithAnotherAppsSameEmoji is a regression test: a
-// real-world case (Ando, another Strava/Dexcom integration) writes its own
+// real-world case (another Strava/Dexcom integration) writes its own
 // summary starting with the same 🩸 emoji ("🩸 Avg : ..."). Merge must never
 // mistake that for a previous Glucava block, or repeated runs either eat
 // someone else's text or, worse, never find their own block to replace and
 // pile up a fresh copy every time instead.
 func TestMergeDoesNotCollideWithAnotherAppsSameEmoji(t *testing.T) {
-	foreign := "🎯 75% in Range\n🩸 Avg : 156 - Min : 124 - Max : 201 (mg/dL)\n🔗 https://app.ando.care/activity/1"
+	foreign := "🎯 75% in Range\n🩸 Avg : 156 - Min : 124 - Max : 201 (mg/dL)\n🔗 https://other-app.example/activity/1"
 	block := "🩸 TIR 78% | min 122 | max 202 | avg 153 mg/dL\n▅▇███"
 
 	once := Merge(foreign, block)
-	if !strings.Contains(once, "Avg : 156") || !strings.Contains(once, "ando.care") {
+	if !strings.Contains(once, "Avg : 156") || !strings.Contains(once, "other-app.example") {
 		t.Fatalf("foreign block was eaten: %q", once)
 	}
 	if strings.Count(once, blockMarker) != 1 {
@@ -106,7 +106,7 @@ func TestMergeDoesNotCollideWithAnotherAppsSameEmoji(t *testing.T) {
 	if strings.Count(twice, blockMarker) != 1 {
 		t.Errorf("reprocessing duplicated the block: %q", twice)
 	}
-	if !strings.Contains(twice, "ando.care") {
+	if !strings.Contains(twice, "other-app.example") {
 		t.Errorf("foreign block lost on the second merge: %q", twice)
 	}
 }
@@ -159,8 +159,8 @@ func TestPreservesText(t *testing.T) {
 	if !PreservesText(merged, Merge(merged, "🩸 TIR 80% | min 60 | max 190 | avg 120 mg/dL")) {
 		t.Error("re-merging must preserve the user's text")
 	}
-	ando := "🩸 Avg : 5.9 mmol/L\n🩸 Time in range : 90%"
-	if !PreservesText(ando, Merge(ando, block)) {
+	otherApp := "🩸 Avg : 5.9 mmol/L\n🩸 Time in range : 90%"
+	if !PreservesText(otherApp, Merge(otherApp, block)) {
 		t.Error("another app's 🩸 lines must be preserved, not mistaken for ours")
 	}
 	for name, bad := range map[string]string{
