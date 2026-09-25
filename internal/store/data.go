@@ -106,8 +106,8 @@ func (s *PB) ExportActivities(w io.Writer) error {
 		row := []string{a.StravaID, safeCell(a.Name), safeCell(a.Sport), a.Start.UTC().Format(time.RFC3339),
 			strconv.Itoa(int(a.Duration.Seconds())), a.Status, "", "", "", "", isoTime(r.GetString("processed_at"))}
 		if a.Summary != nil {
-			row[6] = fmt.Sprint(a.Summary.TIR)
-			row[7], row[8], row[9] = fmt.Sprint(a.Summary.Min), fmt.Sprint(a.Summary.Max), fmt.Sprint(a.Summary.Avg)
+			row[6] = strconv.FormatFloat(a.Summary.TIR, 'f', 1, 64)
+			row[7], row[8], row[9] = fmt.Sprint(a.Summary.Min), fmt.Sprint(a.Summary.Max), strconv.FormatFloat(a.Summary.Avg, 'f', 1, 64)
 		}
 		_ = cw.Write(row)
 	}
