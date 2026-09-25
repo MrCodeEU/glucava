@@ -334,7 +334,7 @@ const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":1
 "dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
 "webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
 "smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava",
-"publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true}`
+"publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true,"mailHealth":true,"gapAlertHours":6}`
 
 func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	t.Parallel()
@@ -347,7 +347,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	}
 	cfg, _ := e.srv.Store.LoadConfig()
 	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" ||
-		cfg.PublicURL != "https://glucava.example.com" || !cfg.MailAlerts || !cfg.MailActivity || !cfg.MailWeekly {
+		cfg.PublicURL != "https://glucava.example.com" || !cfg.MailAlerts || !cfg.MailActivity || !cfg.MailWeekly || !cfg.MailHealth || cfg.GapAlertHours != 6 {
 		t.Errorf("config = %+v", cfg)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
@@ -367,7 +367,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 		}
 	}
 	page := e.get(t, "/settings", c).Body.String()
-	for _, want := range []string{"Weekly summary", "Summary after each activity", "Failure alerts", "Public URL"} {
+	for _, want := range []string{"Weekly summary", "Summary after each activity", "Failure alerts", "Monthly health report", "no glucose reading arrives", "Public URL"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("settings page is missing %q", want)
 		}
@@ -400,6 +400,7 @@ func TestSettingsValidation(t *testing.T) {
 		"email":          strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
 		"smtp no sender": strings.Replace(validSettings, `"smtpSender":"g@example.com"`, `"smtpSender":""`, 1),
 		"smtp port":      strings.Replace(validSettings, `"smtpPort":587`, `"smtpPort":99999`, 1),
+		"gap too big":    strings.Replace(validSettings, `"gapAlertHours":6`, `"gapAlertHours":9999`, 1),
 		"public url":     strings.Replace(validSettings, `https://glucava.example.com`, `javascript:alert(1)`, 1),
 		"not json":       `{"unit":`,
 	}

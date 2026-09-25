@@ -99,12 +99,18 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples
 }
 
 // WeeklyMessage summarizes the activities that started in [from, to). prev
-// are the activities of the week before, for the comparison. ok is false when
-// the week had no processed activity.
+// are the activities of the week before, for the comparison. A week without
+// processed activities gets a short note instead of numbers, so silence never
+// has to be read as "glucava is broken". ok is always true.
 func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Unit, loc *time.Location) (notify.Message, bool) {
 	cur = withSummary(cur)
+	title := fmt.Sprintf("Weekly summary, %s – %s", from.In(loc).Format("2 Jan"), to.Add(-time.Second).In(loc).Format("2 Jan"))
 	if len(cur) == 0 {
-		return notify.Message{}, false
+		return notify.Message{
+			Type: notify.TypeWeeklySummary, Severity: "info", Title: title, Icon: "\U0001F634", // sleeping face
+			Body: "No activity was processed last week. If you did train, check that glucava is still connected to Strava.",
+			Time: time.Now(),
+		}, true
 	}
 	prev = withSummary(prev)
 
@@ -162,10 +168,9 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	if cerr != nil {
 		log.Printf("digest: weekly chart: %v", cerr)
 	}
-	last := to.Add(-time.Second)
 	return notify.Message{
 		Type: notify.TypeWeeklySummary, Severity: sev,
-		Title: fmt.Sprintf("Weekly summary, %s – %s", from.In(loc).Format("2 Jan"), last.In(loc).Format("2 Jan")),
+		Title: title,
 		Body:  "Your glucose numbers for last week's activities.", Facts: facts, Time: time.Now(),
 		Chart: chart, ChartAlt: "Time in range per activity: green in range, red below, orange above",
 	}, true
@@ -209,7 +214,7 @@ type Store interface {
 	SetWeeklyLast(t time.Time) error
 }
 
-// Weekly sends the weekly summary once per week, on Monday from 08:00 (or
+// Weekly sends the weekly summary (or a "no activities" note) once per week, on Monday from 08:00 (or
 // later that week if the server was down), when enabled.
 type Weekly struct {
 	Store   Store
@@ -258,12 +263,9 @@ func (w *Weekly) Once(ctx context.Context) (bool, error) {
 	sort.Slice(cur, func(i, j int) bool { return cur[i].Start.Before(cur[j].Start) })
 
 	msg, ok := WeeklyMessage(cur, prev, from, monday, w.Unit(), loc)
-	if ok {
-		if err := w.Send(ctx, msg); err != nil {
-			return false, err
-		}
+	if err := w.Send(ctx, msg); err != nil {
+		return false, err
 	}
-	// A quiet week is recorded too, so it is not re-checked every 15 minutes.
 	return ok, w.Store.SetWeeklyLast(now)
 }
 

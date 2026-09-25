@@ -17,6 +17,8 @@ func TestLinkFor(t *testing.T) {
 		{Message{Type: TypeWeeklySummary}, "https://g.example", "https://g.example/"},
 		{Message{Type: TypeActivitySummary, StravaID: "9"}, "https://g.example", "https://g.example/activity/9"},
 		{Message{Type: "strava_failed"}, "https://g.example", "https://g.example/events"},
+		{Message{Type: "glucose_gap"}, "https://g.example", "https://g.example/"},
+		{Message{Type: TypeHealthReport}, "https://g.example", "https://g.example/events"},
 		{Message{Type: "strava_failed", StravaID: "42"}, "", ""},
 		{Message{Type: "strava_failed", StravaID: "42"}, "  ", ""},
 	}
@@ -29,12 +31,12 @@ func TestLinkFor(t *testing.T) {
 }
 
 func TestIsAlert(t *testing.T) {
-	for _, typ := range []string{"strava_failed", "session_expired", "canary_failed", "trigger_rejected"} {
+	for _, typ := range []string{"strava_failed", "session_expired", "canary_failed", "trigger_rejected", "glucose_gap"} {
 		if !IsAlert(typ) {
 			t.Errorf("%s should be an alert", typ)
 		}
 	}
-	for _, typ := range []string{TypeTest, TypeActivitySummary, TypeWeeklySummary} {
+	for _, typ := range []string{TypeTest, TypeActivitySummary, TypeWeeklySummary, TypeHealthReport} {
 		if IsAlert(typ) {
 			t.Errorf("%s is not an alert", typ)
 		}

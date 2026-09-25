@@ -24,6 +24,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/demo"
 	"github.com/MrCodeEU/glucava/internal/digest"
+	"github.com/MrCodeEU/glucava/internal/gap"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
@@ -203,6 +204,26 @@ func main() {
 		}
 		go weekly.Run(ctx)
 
+		health := &digest.Health{
+			Store: st, Loc: func() *time.Location { return time.Local }, Build: buildID,
+			Enabled: func() bool { cfg, err := st.LoadConfig(); return err == nil && cfg.MailHealth },
+			Send:    func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, m) },
+		}
+		go health.Run(ctx)
+
+		if !demoMode { // the demo source is not real data
+			go (&gap.Monitor{
+				Latest: st.LatestSampleTime, Record: st.RecordEvent, Loc: func() *time.Location { return time.Local },
+				Threshold: func() time.Duration {
+					cfg, err := st.LoadConfig()
+					if err != nil {
+						return 0
+					}
+					return time.Duration(cfg.GapAlertHours) * time.Hour
+				},
+			}).Run(ctx)
+		}
+
 		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Channels: func() []notify.Channel { return channels(st, vault) }}
 		go d.Run(ctx, 30*time.Second)
 
@@ -351,7 +372,8 @@ func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, m noti
 	if err != nil {
 		return err
 	}
-	on := (m.Type == notify.TypeActivitySummary && cfg.MailActivity) || (m.Type == notify.TypeWeeklySummary && cfg.MailWeekly)
+	on := (m.Type == notify.TypeActivitySummary && cfg.MailActivity) || (m.Type == notify.TypeWeeklySummary && cfg.MailWeekly) ||
+		(m.Type == notify.TypeHealthReport && cfg.MailHealth)
 	e := newEmail(cfg, vault, nil)
 	if !on || e == nil {
 		return nil
