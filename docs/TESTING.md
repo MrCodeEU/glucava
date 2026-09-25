@@ -39,6 +39,10 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 - [ ] Turn on **Summary after each activity**, process a new activity: exactly one summary mail. A reprocess from the UI sends none.
 - [ ] Turn on **Weekly summary** on a Monday after 08:00 with activities last week: one mail, not a second one on the next check (15 min). Turn the toggle off: nothing.
 - [ ] Turn off **Failure alerts**: a failure still shows in the Notifications list and reaches ntfy/webhook, but no mail.
+- [ ] Stop the Dexcom share (or block the source) for longer than `gap_alert_hours`: one "No glucose readings" alert, not one per check; when readings return and stop again, a new one.
+- [ ] Weekly summary in a week without activities: the short "no activities" note, once.
+- [ ] Monthly health report on the 1st after 08:00 (or temporarily set `mail_health_last` in the past via a test data dir): one mail with sensible numbers.
+- [ ] Activity summary shows the glucose chart and the weekly summary the bar chart in your real mail client (also on the phone).
 - [ ] Settings → Notifications: ntfy, webhook (check the `X-Glucava-Signature`) and email each deliver "Send test notification".
 
 ## Data

@@ -25,6 +25,7 @@ const (
 	EventSessionExpired     = "session_expired"
 	EventGlucoseUnavailable = "glucose_unavailable"
 	EventCanaryFailed       = "canary_failed"
+	EventGlucoseGap         = "glucose_gap"
 )
 
 var (

@@ -352,3 +352,41 @@ func TestExportCSV(t *testing.T) {
 		t.Errorf("samples csv:\n%s", b.String())
 	}
 }
+
+func TestLatestSampleTimeAndMailBookkeeping(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	if _, ok := s.LatestSampleTime(ctx); ok {
+		t.Error("an empty database has no latest reading")
+	}
+	_ = s.SaveSamples(ctx, "dexcom", []stats.Sample{{Time: t0, Value: 100}, {Time: t0.Add(10 * time.Minute), Value: 90}})
+	_ = s.SaveSamples(ctx, "glooko", []stats.Sample{{Time: t0.Add(5 * time.Minute), Value: 95}})
+	if got, ok := s.LatestSampleTime(ctx); !ok || !got.Equal(t0.Add(10*time.Minute)) {
+		t.Errorf("latest = %v, %v", got, ok)
+	}
+
+	if !s.WeeklyLast().IsZero() || !s.HealthLast().IsZero() {
+		t.Error("nothing sent yet")
+	}
+	when := time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
+	if err := s.SetWeeklyLast(when); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetHealthLast(when.AddDate(0, 0, 11)); err != nil {
+		t.Fatal(err)
+	}
+	if !s.WeeklyLast().Equal(when) || !s.HealthLast().Equal(when.AddDate(0, 0, 11)) {
+		t.Errorf("weekly=%v health=%v", s.WeeklyLast(), s.HealthLast())
+	}
+	cfg, _ := s.LoadConfig()
+	if cfg.GapAlertHours != 3 || !cfg.MailAlerts || cfg.MailHealth {
+		t.Errorf("defaults: %+v", cfg)
+	}
+}
+
+func TestGapEventTypeIsAccepted(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	if err := s.RecordEvent(context.Background(), jobs.Event{Type: jobs.EventGlucoseGap, Severity: "warning", Message: "gap"}); err != nil {
+		t.Fatalf("migration 008 must allow glucose_gap: %v", err)
+	}
+}

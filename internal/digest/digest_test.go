@@ -128,16 +128,23 @@ func TestWeeklySendsOncePerWeek(t *testing.T) {
 	}
 }
 
-func TestWeeklyQuietWeekSendsNothingButIsRecorded(t *testing.T) {
+func TestWeeklyQuietWeekSendsANote(t *testing.T) {
 	st := &fakeStore{}
 	now := time.Date(2026, 9, 21, 9, 0, 0, 0, vienna)
+	var sent []notify.Message
 	w := &Weekly{
 		Store: st, Enabled: func() bool { return true }, Unit: func() render.Unit { return render.MgDL },
 		Loc: func() *time.Location { return vienna }, Now: func() time.Time { return now },
-		Send: func(context.Context, notify.Message) error { t.Fatal("no mail expected"); return nil },
+		Send: func(_ context.Context, m notify.Message) error { sent = append(sent, m); return nil },
 	}
-	if ok, err := w.Once(context.Background()); ok || err != nil || st.last.IsZero() {
-		t.Errorf("ok=%v err=%v last=%v", ok, err, st.last)
+	if ok, err := w.Once(context.Background()); !ok || err != nil || len(sent) != 1 || st.last.IsZero() {
+		t.Fatalf("ok=%v err=%v sent=%d last=%v", ok, err, len(sent), st.last)
+	}
+	if m := sent[0]; len(m.Facts) != 0 || !strings.Contains(m.Body, "No activity") || m.Icon == "" || m.Type != notify.TypeWeeklySummary {
+		t.Errorf("quiet note = %+v", m)
+	}
+	if ok, _ := w.Once(context.Background()); ok || len(sent) != 1 {
+		t.Error("the quiet note was sent twice")
 	}
 }
 

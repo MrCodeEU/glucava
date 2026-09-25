@@ -7,13 +7,14 @@ const (
 	TypeTest            = "test"
 	TypeActivitySummary = "activity_summary"
 	TypeWeeklySummary   = "weekly_summary"
+	TypeHealthReport    = "health_report"
 )
 
 // IsAlert reports whether a message type is a failure alert (as opposed to a
 // test or a summary).
 func IsAlert(msgType string) bool {
 	switch msgType {
-	case TypeTest, TypeActivitySummary, TypeWeeklySummary:
+	case TypeTest, TypeActivitySummary, TypeWeeklySummary, TypeHealthReport:
 		return false
 	}
 	return true
@@ -28,8 +29,10 @@ func LinkFor(base string, m Message) (href, label string) {
 		return "", ""
 	}
 	switch m.Type {
-	case TypeWeeklySummary:
+	case TypeWeeklySummary, "glucose_gap":
 		return base + "/", "Open dashboard"
+	case TypeHealthReport:
+		return base + "/events", "See all events"
 	case "session_expired", "canary_failed":
 		return base + "/strava", "Check the Strava connection"
 	case "trigger_rejected":

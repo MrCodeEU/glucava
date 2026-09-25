@@ -423,7 +423,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"emailTo":  c.EmailTo,
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
-		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly,
+		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -455,6 +455,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 			),
 			Card(H2(g.Text("Notifications")),
 				P(Class("muted"), g.Text("Sent when something fails, for example an expired Strava session or missing glucose data.")),
+				Field("gapAlertHours", "Alert when no glucose reading arrives for (hours)", "Catches a stopped sensor share or a broken Dexcom login. 0 turns it off.", Input(ID("gapAlertHours"), Type("number"), Min("0"), Max("168"), bind("gapAlertHours"))),
 				Grid("2",
 					Div(
 						Field("ntfyURL", "ntfy topic URL", "For example https://ntfy.sh/my-topic. Leave empty to turn off.", Input(ID("ntfyURL"), Type("url"), bind("ntfyURL"))),
@@ -487,7 +488,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					H3(g.Text("What to email")),
 					Field("mailAlerts", "Failure alerts", "Expired session, failed update, missing glucose data, canary failures.", Input(ID("mailAlerts"), Type("checkbox"), bind("mailAlerts"))),
 					Field("mailActivity", "Summary after each activity", "One mail per processed activity with its glucose numbers.", Input(ID("mailActivity"), Type("checkbox"), bind("mailActivity"))),
-					Field("mailWeekly", "Weekly summary", "Every Monday morning: last week's activities and glucose numbers.", Input(ID("mailWeekly"), Type("checkbox"), bind("mailWeekly"))),
+					Field("mailWeekly", "Weekly summary", "Every Monday morning: last week's activities and glucose numbers, or a short note if there were none.", Input(ID("mailWeekly"), Type("checkbox"), bind("mailWeekly"))),
+					Field("mailHealth", "Monthly health report", "On the 1st, 08:00: activities annotated or failed, glucose data coverage, alerts of the month. Doubles as a sign that glucava is still running.", Input(ID("mailHealth"), Type("checkbox"), bind("mailHealth"))),
 					Field("publicURL", "Public URL of this web UI", "Used for links in emails, for example https://glucava.example.com. Leave empty for no links.", Input(ID("publicURL"), Type("url"), bind("publicURL"))),
 				),
 			),

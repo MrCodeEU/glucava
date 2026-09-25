@@ -28,7 +28,9 @@ Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. O
 | `internal/strava` | chromedp writer, cookie handling, activity listing, dry run |
 | `internal/poll` | finds new activities from the web session |
 | `internal/trigger`, `internal/tokens` | `POST /api/trigger` and `gst_` bearer tokens |
-| `internal/digest` | per-activity and weekly summary messages and the weekly scheduler |
+| `internal/digest` | per-activity, weekly and monthly health messages and their schedulers |
+| `internal/gap` | alerts once when no glucose reading has arrived for too long |
+| `internal/chartimg` | PNG charts for emails, drawn in Go |
 | `internal/notify` | ntfy/webhook/email channels and the outbox dispatcher |
 | `internal/secrets` | AES-256-GCM vault, key loading and rotation |
 | `internal/store` | PocketBase implementations of the interfaces |

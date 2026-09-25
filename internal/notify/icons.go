@@ -7,11 +7,13 @@ var icons = map[string]string{
 	"selector_repaired":   "\U0001F527", // wrench
 	"session_expired":     "\U0001F511", // key
 	"glucose_unavailable": "\U0001F4E1", // satellite antenna
+	"glucose_gap":         "\U0001F4F5", // no mobile phones
 	"canary_failed":       "\U0001F424", // canary-yellow chick
 	"trigger_rejected":    "\U0001F6D1", // stop sign
 	TypeTest:              "\U0001F9EA", // test tube
 	TypeActivitySummary:   "\U0001F3C5", // medal
 	TypeWeeklySummary:     "\U0001F4CA", // bar chart
+	TypeHealthReport:      "\U0001FA7A", // stethoscope
 }
 
 // IconFor returns the header icon for a message: its own Icon, else the one

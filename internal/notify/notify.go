@@ -40,6 +40,7 @@ var titles = map[string]string{
 	"session_expired":     "Strava session expired",
 	"glucose_unavailable": "Glucose data unavailable",
 	"canary_failed":       "Strava canary check failed",
+	"glucose_gap":         "No glucose readings",
 	"trigger_rejected":    "Trigger call rejected",
 }
 

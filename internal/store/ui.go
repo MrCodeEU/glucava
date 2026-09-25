@@ -33,10 +33,12 @@ type Config struct {
 	SMTPSenderName string
 	RetentionDays  int // samples and events older than this are deleted; 0 keeps them
 
-	PublicURL    string // address of this web UI, for links in notifications; empty means no links
-	MailAlerts   bool   // email failure alerts
-	MailActivity bool   // email a summary after each processed activity
-	MailWeekly   bool   // email a weekly summary
+	PublicURL     string // address of this web UI, for links in notifications; empty means no links
+	MailAlerts    bool   // email failure alerts
+	MailActivity  bool   // email a summary after each processed activity
+	MailWeekly    bool   // email a weekly summary
+	MailHealth    bool   // email a monthly health report
+	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -66,6 +68,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		RetentionDays: r.GetInt("retention_days"),
 		PublicURL:     r.GetString("public_url"), MailAlerts: r.GetBool("mail_alerts"),
 		MailActivity: r.GetBool("mail_activity"), MailWeekly: r.GetBool("mail_weekly"),
+		MailHealth: r.GetBool("mail_health"), GapAlertHours: r.GetInt("gap_alert_hours"),
 	}, nil
 }
 
@@ -97,6 +100,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("mail_alerts", c.MailAlerts)
 	r.Set("mail_activity", c.MailActivity)
 	r.Set("mail_weekly", c.MailWeekly)
+	r.Set("mail_health", c.MailHealth)
+	r.Set("gap_alert_hours", c.GapAlertHours)
 	return s.App.Save(r)
 }
 
@@ -153,22 +158,41 @@ func (s *PB) ListEvents(_ context.Context, limit int) ([]EventRow, error) {
 	return out, nil
 }
 
-// WeeklyLast returns when the weekly summary was last sent; zero if never.
-func (s *PB) WeeklyLast() time.Time {
+func (s *PB) lastSent(field string) time.Time {
 	r, err := s.settingsRecord()
 	if err != nil {
 		return time.Time{}
 	}
-	t, _ := time.Parse(time.RFC3339, r.GetString("mail_weekly_last"))
+	t, _ := time.Parse(time.RFC3339, r.GetString(field))
 	return t
 }
 
-// SetWeeklyLast records that the weekly summary went out at t.
-func (s *PB) SetWeeklyLast(t time.Time) error {
+func (s *PB) setLastSent(field string, t time.Time) error {
 	r, err := s.settingsRecord()
 	if err != nil {
 		return err
 	}
-	r.Set("mail_weekly_last", t.UTC().Format(time.RFC3339))
+	r.Set(field, t.UTC().Format(time.RFC3339))
 	return s.App.Save(r)
+}
+
+// WeeklyLast returns when the weekly summary was last sent; zero if never.
+func (s *PB) WeeklyLast() time.Time { return s.lastSent("mail_weekly_last") }
+
+// SetWeeklyLast records that the weekly summary went out at t.
+func (s *PB) SetWeeklyLast(t time.Time) error { return s.setLastSent("mail_weekly_last", t) }
+
+// HealthLast returns when the monthly health report was last sent; zero if never.
+func (s *PB) HealthLast() time.Time { return s.lastSent("mail_health_last") }
+
+// SetHealthLast records that the health report went out at t.
+func (s *PB) SetHealthLast(t time.Time) error { return s.setLastSent("mail_health_last", t) }
+
+// LatestSampleTime returns the time of the newest stored reading, from any source.
+func (s *PB) LatestSampleTime(_ context.Context) (time.Time, bool) {
+	recs, err := s.App.FindRecordsByFilter("glucose_samples", "", "-ts", 1, 0)
+	if err != nil || len(recs) == 0 {
+		return time.Time{}, false
+	}
+	return recs[0].GetDateTime("ts").Time(), true
 }

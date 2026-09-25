@@ -37,6 +37,8 @@ func (c Config) Validate() string {
 		return "The SMTP port must be between 1 and 65535."
 	case !validOptionalEmail(c.SMTPSender):
 		return "The SMTP sender address is not valid."
+	case c.GapAlertHours < 0 || c.GapAlertHours > 168:
+		return "The glucose gap alert must be between 0 and 168 hours."
 	case !validOptionalURL(c.PublicURL):
 		return "The public URL must start with http:// or https://."
 	case c.SMTPHost != "" && (c.SMTPPort == 0 || c.SMTPSender == ""):
@@ -145,6 +147,8 @@ var configKeys = map[string]configKey{
 	"mail_alerts":           boolKey(func(c *Config) *bool { return &c.MailAlerts }),
 	"mail_activity":         boolKey(func(c *Config) *bool { return &c.MailActivity }),
 	"mail_weekly":           boolKey(func(c *Config) *bool { return &c.MailWeekly }),
+	"mail_health":           boolKey(func(c *Config) *bool { return &c.MailHealth }),
+	"gap_alert_hours":       intKey(func(c *Config) *int { return &c.GapAlertHours }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.
