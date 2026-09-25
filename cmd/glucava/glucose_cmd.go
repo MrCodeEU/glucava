@@ -55,7 +55,7 @@ func glucoseCommand(app core.App, st *store.PB) *cobra.Command {
 			if len(samples) == 1 {
 				plural = ""
 			}
-			fmt.Printf("stored %d reading%s as source %q", len(samples), plural, source)
+			fmt.Printf("read %d reading%s and stored them as source %q (readings already stored are left as they are)", len(samples), plural, source)
 			if skipped > 0 {
 				fmt.Printf(" (%d rows skipped: not a glucose reading, or unparseable)", skipped)
 			}

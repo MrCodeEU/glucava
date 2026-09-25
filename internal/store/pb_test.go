@@ -340,7 +340,7 @@ func TestExportCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
-	if !strings.HasPrefix(out, "strava_id,name,") || !strings.Contains(out, `'=HYPERLINK`) || !strings.Contains(out, ",90,70,150,100,") {
+	if !strings.HasPrefix(out, "strava_id,name,") || !strings.Contains(out, `'=HYPERLINK`) || !strings.Contains(out, ",90.0,70,150,100.0,") {
 		t.Errorf("activities csv:\n%s", out)
 	}
 	b.Reset()
