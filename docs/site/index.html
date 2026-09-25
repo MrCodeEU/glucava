@@ -99,6 +99,7 @@ footer .links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
     <p class="sub">The interesting part of an automation is what happens when something breaks.</p>
     <div class="grid">
       <div class="card"><h3>Tells you when it fails</h3><p>ntfy, signed webhooks or email for a failed update, an expired Strava session or missing glucose data. A daily canary checks the edit page before a real run hits a Strava change.</p></div>
+      <div class="card"><h3>Chart photo and heart rate</h3><p>Opt in to attach a square glucose chart to the activity, styled in settings with a live preview. Heart rate is read from Strava, kept with the glucose data and drawn on the chart.</p></div>
       <div class="card"><h3>Optional summaries</h3><p>An email after each activity with a glucose chart, a weekly overview, a monthly health report as a heartbeat, and an alert if no readings arrive for hours.</p></div>
       <div class="card"><h3>Private by design</h3><p>Single user. Credentials and Strava cookies are encrypted. No admin API exposed, strict CSP, hardened container example, nothing loaded from third parties.</p></div>
       <div class="card"><h3>Scriptable</h3><p>Every setting is in the web UI and available from the CLI and the environment, so Ansible or cloud-init can set it up with no clicking.</p></div>
@@ -118,6 +119,14 @@ footer .links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
       <figure>
         <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-activity-dark.png"><img src="img/ui-activity-light.png" alt="One activity with glucose chart and the Strava block" loading="lazy"></picture>
         <figcaption>One activity: the glucose curve, and exactly what is written to Strava.</figcaption>
+      </figure>
+      <figure>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="img/chart-photo-dark.png"><img src="img/chart-photo-light.png" alt="Square chart photo with time in range, glucose curve and heart rate" loading="lazy"></picture>
+        <figcaption>The optional chart photo, sized for Strava's square thumbnail.</figcaption>
+      </figure>
+      <figure>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-settings-chart-dark.png"><img src="img/ui-settings-chart-light.png" alt="Chart photo settings with live preview" loading="lazy"></picture>
+        <figcaption>Style it in settings; the preview updates as you change options.</figcaption>
       </figure>
       <figure>
         <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-events-dark.png"><img src="img/ui-events-light.png" alt="Notifications list" loading="lazy"></picture>

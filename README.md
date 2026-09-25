@@ -22,7 +22,14 @@ All from demo mode (`make mock`), so the data is made up. The UI follows your li
 
 <p>
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-dashboard-dark.png"><img src="docs/img/ui-dashboard-light.png" alt="Dashboard: recent activities with time in range" width="49%"></picture>
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-activity-dark.png"><img src="docs/img/ui-activity-light.png" alt="One activity: glucose chart and the block written to Strava" width="49%"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-activity-dark.png"><img src="docs/img/ui-activity-light.png" alt="One activity: glucose chart, heart rate and the block written to Strava" width="49%"></picture>
+</p>
+
+The optional chart photo (square, as Strava shows it) and the settings card that styles it, with a live preview:
+
+<p>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/chart-photo-dark.png"><img src="docs/img/chart-photo-light.png" alt="Chart photo attached to a Strava activity: time in range, glucose curve and heart rate" width="32%"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-settings-chart-dark.png"><img src="docs/img/ui-settings-chart-light.png" alt="Chart photo settings with live preview" width="66%"></picture>
 </p>
 
 Notification emails (HTML with a plain-text fallback, inline charts drawn by glucava):

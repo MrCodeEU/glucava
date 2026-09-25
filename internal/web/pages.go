@@ -235,7 +235,7 @@ func ActivityBody(d ActivityData) g.Node {
 		)
 	}
 	if h := d.HR; h != nil {
-		tileList = append(tileList, Tile("Heart rate", fmt.Sprintf("%.0f / %.0f", h.Avg, h.Max), fmt.Sprintf("average / max bpm · min %.0f", h.Min)))
+		tileList = append(tileList, Tile("Heart rate", fmt.Sprintf("%.0f", h.Avg), fmt.Sprintf("bpm average · max %.0f · min %.0f", h.Max, h.Min)))
 	}
 	var tiles g.Node
 	if len(tileList) > 0 {
