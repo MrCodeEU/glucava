@@ -35,6 +35,10 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 - [ ] Canary: point `GLUCAVA_STRAVA_URL` at a page without a textarea (or block Chrome from finding the field) and set `GLUCAVA_CANARY_INTERVAL=1m`; a `canary_failed` notification arrives once, not every minute.
 - [ ] Selector override: `GLUCAVA_STRAVA_SELECTOR_DESCRIPTION='["textarea.x"]'` is tried first and the built-ins still work as fallback (`glucava strava check`).
 - [ ] Stop Dexcom sharing / use wrong credentials: `glucose_unavailable` notification.
+- [ ] Settings → Email: with **Public URL** set, alert mails have an "Open in glucava" button that lands on the right page; without it there is no such button.
+- [ ] Turn on **Summary after each activity**, process a new activity: exactly one summary mail. A reprocess from the UI sends none.
+- [ ] Turn on **Weekly summary** on a Monday after 08:00 with activities last week: one mail, not a second one on the next check (15 min). Turn the toggle off: nothing.
+- [ ] Turn off **Failure alerts**: a failure still shows in the Notifications list and reaches ntfy/webhook, but no mail.
 - [ ] Settings → Notifications: ntfy, webhook (check the `X-Glucava-Signature`) and email each deliver "Send test notification".
 
 ## Data

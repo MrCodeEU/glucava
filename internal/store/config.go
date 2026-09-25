@@ -37,6 +37,8 @@ func (c Config) Validate() string {
 		return "The SMTP port must be between 1 and 65535."
 	case !validOptionalEmail(c.SMTPSender):
 		return "The SMTP sender address is not valid."
+	case !validOptionalURL(c.PublicURL):
+		return "The public URL must start with http:// or https://."
 	case c.SMTPHost != "" && (c.SMTPPort == 0 || c.SMTPSender == ""):
 		return "SMTP needs a port and a sender address."
 	}
@@ -139,6 +141,10 @@ var configKeys = map[string]configKey{
 	"smtp_tls":              boolKey(func(c *Config) *bool { return &c.SMTPTLS }),
 	"smtp_sender_address":   strKey(func(c *Config) *string { return &c.SMTPSender }),
 	"smtp_sender_name":      strKey(func(c *Config) *string { return &c.SMTPSenderName }),
+	"public_url":            strKey(func(c *Config) *string { return &c.PublicURL }),
+	"mail_alerts":           boolKey(func(c *Config) *bool { return &c.MailAlerts }),
+	"mail_activity":         boolKey(func(c *Config) *bool { return &c.MailActivity }),
+	"mail_weekly":           boolKey(func(c *Config) *bool { return &c.MailWeekly }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

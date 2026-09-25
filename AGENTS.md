@@ -44,7 +44,7 @@ decide the approach together with the maintainer first).
   login page.
 - `internal/glucose/dexcom.go`: endpoints and payloads are from memory of
   `pydexcom`, not a live account.
-- Email delivery (`internal/notify/email.go`, needs a real SMTP server), the
+- Email delivery (`internal/notify/email.go`; verified once against Gmail, the HTML look by eye), the weekly scheduler in a real week, the
   canary against a real edit page, and the Tasker/Shortcuts flows in
   `docs/triggers.md` have only been tested against mocks.
 

@@ -425,6 +425,10 @@ type settingsSignals struct {
 	SMTPSender     string  `json:"smtpSender"`
 	SMTPSenderName string  `json:"smtpSenderName"`
 	RetentionDays  int     `json:"retentionDays"`
+	PublicURL      string  `json:"publicURL"`
+	MailAlerts     bool    `json:"mailAlerts"`
+	MailActivity   bool    `json:"mailActivity"`
+	MailWeekly     bool    `json:"mailWeekly"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -435,6 +439,7 @@ func (v settingsSignals) config() store.Config {
 		NtfyURL: v.NtfyURL, WebhookURL: v.WebhookURL, EmailTo: v.EmailTo, RetentionDays: v.RetentionDays,
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
+		PublicURL: strings.TrimSpace(v.PublicURL), MailAlerts: v.MailAlerts, MailActivity: v.MailActivity, MailWeekly: v.MailWeekly,
 	}
 }
 
@@ -466,6 +471,8 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPTLS = v.SMTPHost, v.SMTPPort, v.SMTPUsername, v.SMTPTLS
 	cfg.SMTPSender, cfg.SMTPSenderName = v.SMTPSender, v.SMTPSenderName
 	cfg.RetentionDays = v.RetentionDays
+	cfg.PublicURL, cfg.MailAlerts = strings.TrimSpace(v.PublicURL), v.MailAlerts
+	cfg.MailActivity, cfg.MailWeekly = v.MailActivity, v.MailWeekly
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

@@ -15,7 +15,14 @@ type Message struct {
 	StravaID string
 	Repaired bool
 	Time     time.Time
+
+	Facts     []Fact // label/value rows, e.g. the numbers in a summary
+	Link      string // web UI page for this message; empty when no public URL is set
+	LinkLabel string
 }
+
+// Fact is one label/value row in a message.
+type Fact struct{ Label, Value string }
 
 // Channel sends a Message somewhere.
 type Channel interface {

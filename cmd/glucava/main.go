@@ -23,12 +23,14 @@ import (
 	"github.com/MrCodeEU/glucava/internal/canary"
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/demo"
+	"github.com/MrCodeEU/glucava/internal/digest"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/poll"
+	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -93,6 +95,9 @@ func main() {
 		if err := bootstrap.EnsureSMTP(app, vault, secrets.NameSMTPPassword); err != nil {
 			return err
 		}
+		if err := bootstrap.EnsurePublicURL(app); err != nil {
+			return err
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		app.OnTerminate().BindFunc(func(te *core.TerminateEvent) error {
@@ -135,6 +140,17 @@ func main() {
 
 		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
 		queue := jobs.NewQueue(proc, tun.RetryBackoff, 64)
+		queue.OnDone = func(ctx context.Context, a jobs.Activity) {
+			set, err := st.Settings(ctx)
+			if err != nil {
+				return
+			}
+			if m, ok := digest.ActivityMessage(a, set.Unit, time.Local); ok {
+				if err := sendSummary(ctx, st, vault, m); err != nil {
+					log.Printf("notify: activity summary: %v", err)
+				}
+			}
+		}
 		go queue.Run(ctx)
 		poller := &poll.Poller{
 			Lister: lister, Queue: queue, Store: st, Signal: signal.C(), MaxAge: tun.PollLookback,
@@ -172,7 +188,20 @@ func main() {
 			}
 		}()
 
-		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Channels: func() []notify.Channel { return channels(st, vault) }}
+		weekly := &digest.Weekly{
+			Store: st, Loc: func() *time.Location { return time.Local },
+			Enabled: func() bool { cfg, err := st.LoadConfig(); return err == nil && cfg.MailWeekly },
+			Unit: func() render.Unit {
+				if set, err := st.Settings(ctx); err == nil {
+					return set.Unit
+				}
+				return render.MgDL
+			},
+			Send: func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, m) },
+		}
+		go weekly.Run(ctx)
+
+		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Channels: func() []notify.Channel { return channels(st, vault) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
@@ -291,16 +320,53 @@ func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
 		secret, _, _ := vault.Get(secrets.NameWebhookSecret)
 		out = append(out, &notify.Webhook{URL: cfg.WebhookURL, Secret: secret})
 	}
-	if cfg.EmailTo != "" && cfg.SMTPHost != "" && cfg.SMTPSender != "" {
-		pw, _, _ := vault.Get(secrets.NameSMTPPassword)
-		client := &mailer.SMTPClient{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: pw, TLS: cfg.SMTPTLS}
-		out = append(out, &notify.Email{
-			SendFunc: client.Send,
-			From:     mail.Address{Name: cfg.SMTPSenderName, Address: cfg.SMTPSender},
-			To:       cfg.EmailTo,
-		})
+	if e := newEmail(cfg, vault, func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.MailAlerts) }); e != nil {
+		out = append(out, e)
 	}
 	return out
+}
+
+// newEmail builds the email channel from settings, or returns nil when email
+// is not set up. wants picks which kinds of message it sends.
+func newEmail(cfg store.Config, vault *secrets.Vault, wants func(msgType string) bool) *notify.Email {
+	if cfg.EmailTo == "" || cfg.SMTPHost == "" || cfg.SMTPSender == "" {
+		return nil
+	}
+	pw, _, _ := vault.Get(secrets.NameSMTPPassword)
+	client := &mailer.SMTPClient{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: pw, TLS: cfg.SMTPTLS}
+	return &notify.Email{
+		SendFunc: client.Send,
+		From:     mail.Address{Name: cfg.SMTPSenderName, Address: cfg.SMTPSender},
+		To:       cfg.EmailTo,
+		Wants:    wants,
+	}
+}
+
+// sendSummary emails a summary message if that kind is switched on. Summaries
+// go to email only; ntfy and webhooks carry alerts.
+func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, m notify.Message) error {
+	cfg, err := st.LoadConfig()
+	if err != nil {
+		return err
+	}
+	on := (m.Type == notify.TypeActivitySummary && cfg.MailActivity) || (m.Type == notify.TypeWeeklySummary && cfg.MailWeekly)
+	e := newEmail(cfg, vault, nil)
+	if !on || e == nil {
+		return nil
+	}
+	m.Link, m.LinkLabel = notify.LinkFor(cfg.PublicURL, m)
+	return e.Send(ctx, m)
+}
+
+// publicLink adds a web UI link to alert messages when a public URL is set.
+func publicLink(st *store.PB) func(notify.Message) (string, string) {
+	return func(m notify.Message) (string, string) {
+		cfg, err := st.LoadConfig()
+		if err != nil {
+			return "", ""
+		}
+		return notify.LinkFor(cfg.PublicURL, m)
+	}
 }
 
 // tokenCommand adds "glucava token create|list|revoke".

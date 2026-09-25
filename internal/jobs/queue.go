@@ -18,6 +18,9 @@ var DefaultBackoff = []time.Duration{time.Minute, 3 * time.Minute, 10 * time.Min
 type Queue struct {
 	P       *Processor
 	Backoff []time.Duration // len(Backoff) retries after the first attempt
+	// OnDone, if set, is called after an activity was annotated for the first
+	// time. A forced reprocess does not call it.
+	OnDone func(ctx context.Context, a Activity)
 
 	in      chan Job
 	mu      sync.Mutex
@@ -98,6 +101,9 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		}
 	}
 	if err == nil {
+		if q.OnDone != nil && !j.Force {
+			q.OnDone(ctx, a)
+		}
 		return
 	}
 

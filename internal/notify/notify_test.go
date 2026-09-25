@@ -213,3 +213,15 @@ func TestNoRedirectsFollowed(t *testing.T) {
 		t.Errorf("err = %v, redirect target hit = %v", err, hit)
 	}
 }
+
+func TestDispatcherAddsLink(t *testing.T) {
+	ch := &fakeChannel{}
+	d, _, _ := newDispatcher([]OutboxEvent{ev("1", "strava_failed", "42")}, ch)
+	d.Link = func(m Message) (string, string) { return LinkFor("https://g.example/", m) }
+	if err := d.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ch.sent[0]; got.Link != "https://g.example/activity/42" || got.LinkLabel != "Open in glucava" {
+		t.Errorf("link = %q / %q", got.Link, got.LinkLabel)
+	}
+}

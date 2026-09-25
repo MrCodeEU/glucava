@@ -28,6 +28,7 @@ Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. O
 | `internal/strava` | chromedp writer, cookie handling, activity listing, dry run |
 | `internal/poll` | finds new activities from the web session |
 | `internal/trigger`, `internal/tokens` | `POST /api/trigger` and `gst_` bearer tokens |
+| `internal/digest` | per-activity and weekly summary messages and the weekly scheduler |
 | `internal/notify` | ntfy/webhook/email channels and the outbox dispatcher |
 | `internal/secrets` | AES-256-GCM vault, key loading and rotation |
 | `internal/store` | PocketBase implementations of the interfaces |
@@ -42,7 +43,7 @@ Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. O
 2. `Processor` loads glucose for the activity window (stored samples are the fallback when the source has aged out), computes stats, and renders a block.
 3. The Strava writer opens the edit page with the stored cookies. The merge callback first saves the original description, then replaces only the `🩸` block. The writer verifies the saved text by reloading the page.
 Before step 3 saves anything, `Processor` checks that only glucava's own block changed (`render.PreservesText`); if not, it fails with `ErrUnsafeMerge` and writes nothing.
-4. Failures become `events`; the dispatcher sends them to ntfy/webhook/email (outbox pattern, cooldown, max age). The canary records a `canary_failed` event when the edit page no longer looks right.
+4. Failures become `events`; the dispatcher sends them to ntfy/webhook/email (outbox pattern, cooldown, max age) and adds a web UI link from the public URL (`notify.LinkFor`). Summaries bypass the outbox: `Queue.OnDone` (first successful run only) and `digest.Weekly` build messages in `internal/digest` and `sendSummary` (cmd/glucava/main.go) mails them if the matching setting is on. They are email-only. The canary records a `canary_failed` event when the edit page no longer looks right.
 
 ## Conventions
 

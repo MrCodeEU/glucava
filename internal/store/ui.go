@@ -32,6 +32,11 @@ type Config struct {
 	SMTPSender     string // From address
 	SMTPSenderName string
 	RetentionDays  int // samples and events older than this are deleted; 0 keeps them
+
+	PublicURL    string // address of this web UI, for links in notifications; empty means no links
+	MailAlerts   bool   // email failure alerts
+	MailActivity bool   // email a summary after each processed activity
+	MailWeekly   bool   // email a weekly summary
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -59,6 +64,8 @@ func (s *PB) LoadConfig() (Config, error) {
 		SMTPHost: r.GetString("smtp_host"), SMTPPort: r.GetInt("smtp_port"), SMTPUsername: r.GetString("smtp_username"),
 		SMTPTLS: r.GetBool("smtp_tls"), SMTPSender: r.GetString("smtp_sender_address"), SMTPSenderName: r.GetString("smtp_sender_name"),
 		RetentionDays: r.GetInt("retention_days"),
+		PublicURL:     r.GetString("public_url"), MailAlerts: r.GetBool("mail_alerts"),
+		MailActivity: r.GetBool("mail_activity"), MailWeekly: r.GetBool("mail_weekly"),
 	}, nil
 }
 
@@ -86,6 +93,10 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("smtp_sender_address", c.SMTPSender)
 	r.Set("smtp_sender_name", c.SMTPSenderName)
 	r.Set("retention_days", c.RetentionDays)
+	r.Set("public_url", c.PublicURL)
+	r.Set("mail_alerts", c.MailAlerts)
+	r.Set("mail_activity", c.MailActivity)
+	r.Set("mail_weekly", c.MailWeekly)
 	return s.App.Save(r)
 }
 
@@ -140,4 +151,24 @@ func (s *PB) ListEvents(_ context.Context, limit int) ([]EventRow, error) {
 		}
 	}
 	return out, nil
+}
+
+// WeeklyLast returns when the weekly summary was last sent; zero if never.
+func (s *PB) WeeklyLast() time.Time {
+	r, err := s.settingsRecord()
+	if err != nil {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, r.GetString("mail_weekly_last"))
+	return t
+}
+
+// SetWeeklyLast records that the weekly summary went out at t.
+func (s *PB) SetWeeklyLast(t time.Time) error {
+	r, err := s.settingsRecord()
+	if err != nil {
+		return err
+	}
+	r.Set("mail_weekly_last", t.UTC().Format(time.RFC3339))
+	return s.App.Save(r)
 }

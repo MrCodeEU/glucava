@@ -14,9 +14,9 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 			v = "mmol/L"
 		case "dexcom_region":
 			v = "us"
-		case "smtp_tls":
+		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly":
 			v = "true"
-		case "ntfy_url", "webhook_url":
+		case "ntfy_url", "webhook_url", "public_url":
 			v = "https://x.example/y"
 		case "email_to", "smtp_sender_address":
 			v = "a@example.com"
@@ -64,6 +64,7 @@ func TestConfigValidate(t *testing.T) {
 		"smtp host":  func(c *Config) { c.SMTPHost = "h" },
 		"smtp addr":  func(c *Config) { c.SMTPSender = "nope" },
 		"pre window": func(c *Config) { c.PreMin = 999 },
+		"public url": func(c *Config) { c.PublicURL = "ftp://x" },
 	}
 	for name, mut := range bad {
 		c := valid()
