@@ -1,5 +1,8 @@
 # Glucava
 
+[![CI](https://github.com/MrCodeEU/glucava/actions/workflows/ci.yml/badge.svg)](https://github.com/MrCodeEU/glucava/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
 Free and self-hosted. After a Strava activity ends, Glucava adds your Dexcom glucose stats (time in range, min, max, average, sparkline) to its description:
 
 ```
@@ -8,6 +11,10 @@ Free and self-hosted. After a Strava activity ends, Glucava adds your Dexcom glu
 ```
 
 Strava's API is paywalled, so Glucava edits the description through a headless Chrome session with your own cookies. One Go binary (PocketBase + web UI); Chrome/Chromium must be installed.
+
+> **Not a medical device.** Glucava copies numbers from your CGM into a Strava description for your own reference. It does not measure, diagnose, alarm or advise, and it must never be used for treatment decisions or as a replacement for your CGM app's alarms. It can be wrong, late or silent (a source can be down, a timestamp off, Strava's page can change). Use at your own risk; see the warranty disclaimer in the [license](LICENSE).
+>
+> Glucava is an independent project. It is not affiliated with or endorsed by Strava, Dexcom, Abbott, Glooko or Nightscout; those names belong to their owners. Automating Strava's web UI may breach Strava's terms of service (see [SECURITY.md](SECURITY.md)); the session is your own and the volume is low, but the risk is yours.
 
 ## Screenshots
 
@@ -180,4 +187,8 @@ Register it by name in an `init()` func (see `libre.go`) and it is immediately a
 
 Either kind of contributed source, for hardware or an account type the maintainer doesn't have, is welcome but untested by CI; say so plainly in the code and docs, the same way the experimental Strava auto-login and the Libre importer are marked.
 
-License: AGPL-3.0.
+## Contributing, security, license
+
+- Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) first. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Security problems: report them privately, see [SECURITY.md](SECURITY.md).
+- License: [AGPL-3.0](LICENSE), Copyright (C) 2026 Michael Reinegger. If you run a modified version for other people over a network, the AGPL requires you to offer them your source; the web UI's footer links to it (`web.SourceURL`, change it in a fork). Third-party components are listed in [NOTICE.md](NOTICE.md).

@@ -914,3 +914,20 @@ func TestActionStravaLoginValidatesAndReportsBlocked(t *testing.T) {
 		t.Errorf("success body = %s", w.Body.String())
 	}
 }
+
+// The AGPL (section 13) requires offering the source to network users, so
+// the link must be on the sign-in page and on the signed-in pages.
+func TestSourceLinkOnEveryPage(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	for name, body := range map[string]string{
+		"login":     e.get(t, "/login", nil).Body.String(),
+		"dashboard": e.get(t, "/", c).Body.String(),
+		"settings":  e.get(t, "/settings", c).Body.String(),
+	} {
+		if !strings.Contains(body, `href="`+SourceURL+`"`) || !strings.Contains(body, "AGPL-3.0") {
+			t.Errorf("%s page has no source link", name)
+		}
+	}
+}

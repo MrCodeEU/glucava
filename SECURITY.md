@@ -1,5 +1,13 @@
 # Security policy
 
+## Supported versions
+
+Only the latest release (and `main`) gets security fixes. Glucava has no long-term-support branches.
+
+## Reporting
+
+Report privately through the **Security** tab of the repository → "Report a vulnerability". Please include the version (page footer or `/health`), what you did and what happened, without real credentials or health data. Expect an acknowledgement within a few days; this is a spare-time project, so fixes take as long as they take, and I will keep you informed. Please do not disclose publicly before a fix is available.
+
 Glucava handles glucose data, Strava session cookies and Dexcom credentials. Please report vulnerabilities privately through GitHub's "Report a vulnerability" button (Security tab), not in public issues.
 
 ## Model
