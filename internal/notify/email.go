@@ -1,10 +1,12 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net/mail"
 	"strings"
 
@@ -42,14 +44,21 @@ func (e *Email) Send(_ context.Context, m Message) error {
 	if err != nil {
 		return fmt.Errorf("notify: email: invalid recipient: %w", err)
 	}
-	return e.SendFunc(&mailer.Message{
+	msg := &mailer.Message{
 		From:    e.From,
 		To:      []mail.Address{*to},
 		Subject: m.Title,
 		Text:    emailText(m),
 		HTML:    emailHTML(m),
-	})
+	}
+	if len(m.Chart) > 0 {
+		msg.InlineAttachments = map[string]io.Reader{chartCID: bytes.NewReader(m.Chart)}
+	}
+	return e.SendFunc(msg)
 }
+
+// chartCID is the content id of the inline chart image.
+const chartCID = "chart.png"
 
 // emailText is the plain-text part: the message plus the details the HTML part shows.
 func emailText(m Message) string {
@@ -101,9 +110,13 @@ func emailHTML(m Message) string {
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2933">`)
 	fmt.Fprintf(&b, `<div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:8px;border-top:4px solid %s;overflow:hidden">`, accent)
-	fmt.Fprintf(&b, `<div style="padding:20px 24px 8px"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:%s;color:%s;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">%s</span>`, tint, accent, esc(sev))
-	fmt.Fprintf(&b, `<h1 style="margin:12px 0 0;font-size:20px;line-height:1.3">%s</h1></div>`, esc(m.Title))
+	fmt.Fprintf(&b, `<table role="presentation" style="width:100%%;border-collapse:collapse"><tr><td style="width:72px;padding:20px 0 8px 24px;vertical-align:top"><div style="width:48px;height:48px;line-height:48px;text-align:center;font-size:26px;border-radius:24px;background:%s">%s</div></td>`, tint, esc(IconFor(m)))
+	fmt.Fprintf(&b, `<td style="padding:20px 24px 8px 0;vertical-align:top"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:%s;color:%s;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">%s</span>`, tint, accent, esc(sev))
+	fmt.Fprintf(&b, `<h1 style="margin:8px 0 0;font-size:20px;line-height:1.3">%s</h1></td></tr></table>`, esc(m.Title))
 	fmt.Fprintf(&b, `<div style="padding:8px 24px 16px;font-size:15px;line-height:1.5;white-space:pre-wrap">%s</div>`, esc(m.Body))
+	if len(m.Chart) > 0 {
+		fmt.Fprintf(&b, `<div style="padding:0 24px 12px"><img src="cid:%s" alt="%s" width="472" style="display:block;width:100%%;max-width:472px;height:auto;border:1px solid #eceff1;border-radius:6px"></div>`, chartCID, esc(m.ChartAlt))
+	}
 	if len(m.Facts) > 0 {
 		b.WriteString(`<table role="presentation" style="margin:0 24px 16px;width:calc(100% - 48px);border-collapse:collapse;font-size:14px">`)
 		for _, f := range m.Facts {

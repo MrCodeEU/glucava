@@ -8,12 +8,38 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
+	"github.com/MrCodeEU/glucava/internal/stats"
 )
+
+// sportIcon picks an emoji for a Strava sport type; unknown sports get a medal.
+func sportIcon(sport string) string {
+	switch strings.ToLower(sport) {
+	case "run", "trailrun", "virtualrun":
+		return "\U0001F3C3" // runner
+	case "ride", "virtualride", "gravelride", "mountainbikeride", "ebikeride", "handcycle":
+		return "\U0001F6B4" // cyclist
+	case "swim":
+		return "\U0001F3CA" // swimmer
+	case "walk":
+		return "\U0001F6B6" // walker
+	case "hike":
+		return "\U0001F97E" // hiking boot
+	case "nordicski", "alpineski", "backcountryski":
+		return "\u26F7\uFE0F" // skier
+	case "weighttraining", "workout", "crossfit":
+		return "\U0001F3CB" // weightlifter
+	case "yoga":
+		return "\U0001F9D8" // person in lotus position
+	}
+	return "\U0001F3C5" // medal
+}
 
 func pct(v float64) string { return fmt.Sprintf("%.0f%%", v) }
 
@@ -26,8 +52,9 @@ func dur(d time.Duration) string {
 }
 
 // ActivityMessage summarizes one processed activity. ok is false when the
-// activity has no glucose summary to report.
-func ActivityMessage(a jobs.Activity, unit render.Unit, loc *time.Location) (notify.Message, bool) {
+// activity has no glucose summary to report. A glucose chart is added when
+// samples are given; a chart that cannot be drawn is left out, never an error.
+func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples []stats.Sample, loc *time.Location) (notify.Message, bool) {
 	if a.Summary == nil {
 		return notify.Message{}, false
 	}
@@ -56,10 +83,19 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, loc *time.Location) (not
 	if s.Below > 0 {
 		sev = "warning"
 	}
-	return notify.Message{
+	m := notify.Message{
 		Type: notify.TypeActivitySummary, Severity: sev, Title: "Activity summary: " + name,
-		Body: body, StravaID: a.StravaID, Facts: facts, Time: time.Now(),
-	}, true
+		Body: body, StravaID: a.StravaID, Facts: facts, Time: time.Now(), Icon: sportIcon(a.Sport),
+	}
+	if len(samples) > 0 {
+		png, err := chartimg.Glucose(chartimg.Series{Samples: samples, Range: rng, Start: a.Start, End: a.End(), Unit: unit, Loc: loc})
+		if err != nil {
+			log.Printf("digest: chart for %s: %v", a.StravaID, err)
+		} else {
+			m.Chart, m.ChartAlt = png, "Glucose during the activity"
+		}
+	}
+	return m, true
 }
 
 // WeeklyMessage summarizes the activities that started in [from, to). prev
@@ -118,11 +154,20 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	if hypo > 0 {
 		sev = "warning"
 	}
+	var bars []chartimg.Bar
+	for _, a := range cur {
+		bars = append(bars, chartimg.Bar{Label: label(a), Below: a.Summary.Below, InRange: a.Summary.TIR, Above: a.Summary.Above})
+	}
+	chart, cerr := chartimg.Bars(bars)
+	if cerr != nil {
+		log.Printf("digest: weekly chart: %v", cerr)
+	}
 	last := to.Add(-time.Second)
 	return notify.Message{
 		Type: notify.TypeWeeklySummary, Severity: sev,
 		Title: fmt.Sprintf("Weekly summary, %s – %s", from.In(loc).Format("2 Jan"), last.In(loc).Format("2 Jan")),
 		Body:  "Your glucose numbers for last week's activities.", Facts: facts, Time: time.Now(),
+		Chart: chart, ChartAlt: "Time in range per activity: green in range, red below, orange above",
 	}, true
 }
 

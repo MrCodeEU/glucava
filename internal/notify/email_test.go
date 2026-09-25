@@ -137,3 +137,36 @@ func TestEmailRendersFactsAndLink(t *testing.T) {
 		}
 	}
 }
+
+func TestEmailInlineChartAndIcon(t *testing.T) {
+	var got *mailer.Message
+	e := &Email{SendFunc: func(m *mailer.Message) error { got = m; return nil }, To: "me@example.com"}
+	if err := e.Send(context.Background(), Message{Type: "session_expired", Title: "T", Body: "b", Chart: []byte("PNG"), ChartAlt: "a <chart>"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got.InlineAttachments["chart.png"]; !ok {
+		t.Fatal("chart not attached inline")
+	}
+	for _, want := range []string{`src="cid:chart.png"`, `alt="a &lt;chart&gt;"`, "\U0001F511"} {
+		if !strings.Contains(got.HTML, want) {
+			t.Errorf("HTML missing %q", want)
+		}
+	}
+	if err := e.Send(context.Background(), Message{Type: "strava_failed", Title: "T", Icon: "X"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.InlineAttachments) != 0 || strings.Contains(got.HTML, "cid:") || !strings.Contains(got.HTML, ">X<") {
+		t.Errorf("no chart means no attachment; own icon wins: %v", got.HTML)
+	}
+}
+
+func TestIconForEveryAlertType(t *testing.T) {
+	for typ := range titles {
+		if _, ok := icons[typ]; !ok {
+			t.Errorf("no icon for %s", typ)
+		}
+	}
+	if IconFor(Message{Type: "unknown"}) == "" {
+		t.Error("fallback icon missing")
+	}
+}
