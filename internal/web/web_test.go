@@ -1026,13 +1026,13 @@ func TestActivityPageShowsHeartRateStats(t *testing.T) {
 	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "31", Name: "Run", Start: at, Duration: time.Hour, Status: jobs.StatusDone,
 		HeartRate: []chartimg.HRPoint{{Time: at.Add(time.Minute), BPM: 120}, {Time: at.Add(2 * time.Minute), BPM: 160}}})
 	body := e.get(t, "/activity/31", c).Body.String()
-	for _, want := range []string{">140 / 160<", "average / max bpm", "min 120"} {
+	for _, want := range []string{">140<", "bpm average", "max 160", "min 120"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("activity page lacks %q", want)
 		}
 	}
 	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "32", Name: "Run", Start: at, Duration: time.Hour, Status: jobs.StatusDone})
-	if body := e.get(t, "/activity/32", c).Body.String(); strings.Contains(body, "average / max bpm") {
+	if body := e.get(t, "/activity/32", c).Body.String(); strings.Contains(body, "bpm average") {
 		t.Error("heart rate tiles shown for an activity without heart rate")
 	}
 }
