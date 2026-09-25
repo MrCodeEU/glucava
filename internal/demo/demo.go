@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -112,6 +113,28 @@ func (w *Writer) UploadPhoto(ctx context.Context, _, _ string, _ []byte) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// HeartRate implements jobs.HRSource with a made-up but plausible curve.
+func (w *Writer) HeartRate(ctx context.Context, id string, start time.Time) ([]stats.HRSample, error) {
+	select {
+	case <-time.After(w.Delay / 3):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	n, _ := strconv.Atoi(id)
+	return heartRate(start, 45*time.Minute, n), nil
+}
+
+// heartRate is a warm-up, a steady effort with some wobble, and a cool-down.
+func heartRate(start time.Time, dur time.Duration, seed int) []stats.HRSample {
+	var out []stats.HRSample
+	for m := 0.0; m <= dur.Minutes(); m += 0.5 {
+		frac := m / dur.Minutes()
+		bpm := 118 + 52*math.Min(1, frac*6) - 30*math.Max(0, frac-0.9)*10 + 6*math.Sin(m/2+float64(seed))
+		out = append(out, stats.HRSample{Time: start.Add(time.Duration(m * float64(time.Minute))), BPM: math.Round(bpm)})
+	}
+	return out
 }
 
 // Session is a SessionChecker that always succeeds after a short pause.
@@ -230,6 +253,7 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		if sum, ok := stats.Summarize(smp, rng); ok {
 			a.Summary = &sum
 		}
+		a.HeartRate = heartRate(start, dur, i)
 		if err := st.SaveActivity(ctx, a); err != nil {
 			return err
 		}

@@ -411,3 +411,20 @@ func TestHeartRateStoredAndNeverCleared(t *testing.T) {
 		t.Errorf("heart rate = %+v", got)
 	}
 }
+
+func TestActivitiesCSVHasHeartRateColumns(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	at := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	_ = s.SaveActivity(ctx, &jobs.Activity{StravaID: "9", Start: at, Duration: time.Hour, Status: jobs.StatusDone,
+		HeartRate: []chartimg.HRPoint{{Time: at.Add(time.Minute), BPM: 120}, {Time: at.Add(2 * time.Minute), BPM: 160}}})
+	_ = s.SaveActivity(ctx, &jobs.Activity{StravaID: "10", Start: at, Duration: time.Hour, Status: jobs.StatusDone})
+	var b strings.Builder
+	if err := s.ExportActivities(&b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "processed_utc,hr_avg,hr_max,hr_min") || !strings.Contains(out, ",140,160,120") {
+		t.Errorf("csv = %s", out)
+	}
+}

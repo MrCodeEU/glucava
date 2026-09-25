@@ -16,6 +16,7 @@ import (
 	_ "github.com/pocketbase/pocketbase/migrations" // registers the system migrations
 
 	"github.com/MrCodeEU/glucava/internal/bus"
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/migrations"
@@ -1014,5 +1015,24 @@ func TestChartAgainNeedsTheSettingAndQueues(t *testing.T) {
 	}
 	if len(e.jobs.got) != 1 || !e.jobs.got[0].Activity.RetryChart || !e.jobs.got[0].Force {
 		t.Errorf("queued jobs = %+v", e.jobs.got)
+	}
+}
+
+func TestActivityPageShowsHeartRateStats(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	at := time.Now().Add(-3 * time.Hour).UTC()
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "31", Name: "Run", Start: at, Duration: time.Hour, Status: jobs.StatusDone,
+		HeartRate: []chartimg.HRPoint{{Time: at.Add(time.Minute), BPM: 120}, {Time: at.Add(2 * time.Minute), BPM: 160}}})
+	body := e.get(t, "/activity/31", c).Body.String()
+	for _, want := range []string{">140 / 160<", "average / max bpm", "min 120"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("activity page lacks %q", want)
+		}
+	}
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "32", Name: "Run", Start: at, Duration: time.Hour, Status: jobs.StatusDone})
+	if body := e.get(t, "/activity/32", c).Body.String(); strings.Contains(body, "average / max bpm") {
+		t.Error("heart rate tiles shown for an activity without heart rate")
 	}
 }

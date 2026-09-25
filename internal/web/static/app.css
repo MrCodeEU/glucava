@@ -53,6 +53,10 @@ main { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 24px 16
 [data-component="grid"] { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 16px; }
 [data-component="grid"][data-cols="2"] { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 [data-component="grid"] > [data-component="card"] { margin-bottom: 0; }
+[data-component="grid"][data-cols="photo"] { grid-template-columns: minmax(0, 460px) minmax(0, 1fr); align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack > [data-component="card"] { margin-bottom: 0; }
+@media (max-width: 760px) { [data-component="grid"][data-cols="photo"] { grid-template-columns: minmax(0, 1fr); } }
 [data-tile] .label { color: var(--ink-2); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
 [data-tile] .value { font-size: 1.9rem; font-weight: 700; line-height: 1.2; }
 [data-tile] .sub { color: var(--ink-2); font-size: .85rem; }

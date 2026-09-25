@@ -37,6 +37,11 @@ func chartConfig(cfg store.Config, q map[string][]string) store.Config {
 	flag("activity", &cfg.ChartActivity)
 	flag("dots", &cfg.ChartDots)
 	flag("hr", &cfg.ChartHR)
+	if v, ok := get("pre"); ok {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 240 {
+			cfg.ChartPreMin = n
+		}
+	}
 	if v, ok := get("line"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= 4 {
 			cfg.ChartLine = n
@@ -76,7 +81,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg = chartConfig(cfg, r.URL.Query())
-	pre, post := time.Duration(cfg.PreMin)*time.Minute, time.Duration(cfg.PostMin)*time.Minute
+	pre, post := time.Duration(max(cfg.PreMin, cfg.ChartPreMin))*time.Minute, time.Duration(cfg.PostMin)*time.Minute
 
 	var (
 		samples    []stats.Sample
@@ -128,7 +133,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 // sampleCurve is a made-up run for previews when no real readings exist yet.
 func sampleCurve(now time.Time) (samples []stats.Sample, start, end time.Time) {
 	start = now.Truncate(time.Hour).Add(-3 * time.Hour)
-	for i := -3; i < 30; i++ {
+	for i := -9; i < 30; i++ {
 		v := 115 + 55*math.Sin(float64(i)/6) + 25*math.Sin(float64(i)/2.3)
 		samples = append(samples, stats.Sample{Time: start.Add(time.Duration(i) * 5 * time.Minute), Value: v})
 	}

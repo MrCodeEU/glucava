@@ -86,7 +86,9 @@ type Settings struct {
 	PollInterval time.Duration // how often the poller checks Strava
 	ChartImage   bool          // also attach a glucose chart photo
 	ChartStyle   chartimg.Style
-	ChartHR      bool // draw the activity's heart rate on the chart
+	ChartHR      bool          // draw the activity's heart rate on the chart
+	ChartPre     time.Duration // glucose lead-in shown on the chart, on top of Pre
+	HRRead       bool          // read heart rate from Strava
 }
 
 // Event is an entry for the notification outbox.

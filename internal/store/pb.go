@@ -56,6 +56,8 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 	}.ChartStyle()
 	out.ChartHR = r.GetBool("chart_hr")
+	out.HRRead = r.GetBool("hr_read")
+	out.ChartPre = time.Duration(r.GetInt("chart_pre_minutes")) * time.Minute
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
 	out.Post = time.Duration(r.GetInt("post_minutes")) * time.Minute
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {

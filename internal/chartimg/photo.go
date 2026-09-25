@@ -24,10 +24,7 @@ import (
 )
 
 // HRPoint is one heart rate reading.
-type HRPoint struct {
-	Time time.Time
-	BPM  float64
-}
+type HRPoint = stats.HRSample
 
 // PhotoData is what Photo draws: a square card for the Strava feed, which
 // crops every photo to a square.
@@ -274,10 +271,14 @@ func Photo(d PhotoData) ([]byte, error) {
 		label{lg - mx, 96, when(d, t0, t1), 28, false, th.muted, 2},
 	)
 	if sum != nil {
+		numW := 0.0
+		if f, err := face(true, 150); err == nil { // width of the big number, so the caption never overlaps it
+			numW = float64((&font.Drawer{Face: f}).MeasureString(fmt.Sprintf("%.0f%%", sum.TIR)).Round())
+		}
 		labels = append(labels,
 			label{mx - 4, 238, fmt.Sprintf("%.0f%%", sum.TIR), 150, true, th.strong, 0},
-			label{mx + 330, 190, "time in range", 34, true, th.strong, 0},
-			label{mx + 330, 232, fmt.Sprintf("target %s-%s %s", render.Value(d.Range.Low, d.Unit), render.Value(d.Range.High, d.Unit), d.Unit), 28, false, th.muted, 0},
+			label{mx + numW + 36, 190, "time in range", 34, true, th.strong, 0},
+			label{mx + numW + 36, 232, fmt.Sprintf("target %s-%s %s", render.Value(d.Range.Low, d.Unit), render.Value(d.Range.High, d.Unit), d.Unit), 28, false, th.muted, 0},
 		)
 	}
 

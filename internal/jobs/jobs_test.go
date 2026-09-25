@@ -534,7 +534,7 @@ func (w *hrWriter) HeartRate(context.Context, string, time.Time) ([]chartimg.HRP
 func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
 	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 130}, {Time: start.Add(time.Minute), BPM: 140}}}
 	q, st := chartSetup(w, true)
-	st.set.ChartHR = true
+	st.set.HRRead = true
 	runOne(t, q, Job{Activity: activity()})
 	if w.asks != 1 || len(st.acts["42"].HeartRate) != 2 || len(w.photos) != 1 {
 		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
@@ -551,7 +551,7 @@ func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
 func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
 	w := &hrWriter{err: errors.New("streams down")}
 	q, st := chartSetup(w, true)
-	st.set.ChartHR = true
+	st.set.HRRead = true
 	runOne(t, q, Job{Activity: activity()})
 	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
 		t.Errorf("activity = %+v photos=%d", a, len(w.photos))
@@ -561,5 +561,32 @@ func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
 	runOne(t, q2, Job{Activity: activity()})
 	if off.asks != 0 {
 		t.Error("heart rate fetched although chart_hr is off")
+	}
+}
+
+func TestChartLeadInDoesNotChangeTheNumbers(t *testing.T) {
+	early := stats.Sample{Time: start.Add(-20 * time.Minute), Value: 300}
+	src := &fakeSource{samples: append([]stats.Sample{early}, readings()...)}
+	w := &photoWriter{}
+	st := newStore()
+	st.set.ChartImage, st.set.ChartPre = true, 30*time.Minute
+	q := NewQueue(&Processor{Store: st, Source: src, SourceName: "dexcom", Writer: w}, []time.Duration{time.Millisecond}, 8)
+	runOne(t, q, Job{Activity: activity()})
+	a := st.acts["42"]
+	if a.Summary == nil || a.Summary.Max != 160 || a.Summary.Count != 4 {
+		t.Errorf("the lead-in leaked into the statistics: %+v", a.Summary)
+	}
+	if len(w.photos) != 1 {
+		t.Errorf("photos = %d", len(w.photos))
+	}
+}
+
+func TestHeartRateReadWithoutTheChart(t *testing.T) {
+	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 131}}}
+	q, st := chartSetup(w, false) // chart off
+	st.set.HRRead = true
+	runOne(t, q, Job{Activity: activity()})
+	if w.asks != 1 || len(st.acts["42"].HeartRate) != 1 || len(w.photos) != 0 {
+		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
 	}
 }

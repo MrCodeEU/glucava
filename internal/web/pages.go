@@ -194,6 +194,7 @@ type ActivityData struct {
 	Samples []stats.Sample
 	Cfg     store.Config
 	Block   string // description block that was or would be written
+	HR      *stats.HRSummary
 	Events  []store.EventRow
 	Loc     *time.Location
 	Now     time.Time
@@ -224,16 +225,27 @@ func ActivityBody(d ActivityData) g.Node {
 	a := d.Act
 	unit := render.Unit(d.Cfg.Unit)
 
-	var tiles g.Node
+	var tileList []g.Node
 	if s := a.Summary; s != nil {
-		tiles = Grid("",
+		tileList = append(tileList,
 			Tile("Time in range", fmt.Sprintf("%.0f%%", s.TIR), fmt.Sprintf("%.0f%% below · %.0f%% above", s.Below, s.Above)),
 			Tile("Average", render.Value(s.Avg, unit), string(unit)),
 			Tile("Min / Max", render.Value(s.Min, unit)+" / "+render.Value(s.Max, unit), string(unit)),
 			Tile("Readings", fmt.Sprint(s.Count), fmt.Sprintf("start %s → end %s", render.Value(s.Start, unit), render.Value(s.End, unit))),
 		)
 	}
+	if h := d.HR; h != nil {
+		tileList = append(tileList, Tile("Heart rate", fmt.Sprintf("%.0f / %.0f", h.Avg, h.Max), fmt.Sprintf("average / max bpm · min %.0f", h.Min)))
+	}
+	var tiles g.Node
+	if len(tileList) > 0 {
+		tiles = Grid("", tileList...)
+	}
 
+	cols := "2"
+	if d.Cfg.ChartImage {
+		cols = "photo"
+	}
 	return Div(ID("activity-body"),
 		g.If(a.Status == jobs.StatusFailed && a.Error != "",
 			Notice("error", Strong(g.Text("This activity failed. ")), g.Text(a.Error))),
@@ -241,31 +253,37 @@ func ActivityBody(d ActivityData) g.Node {
 		g.If(a.Status == jobs.StatusProcessing && a.Error == "", Notice("", Strong(g.Text("Working on it. ")), g.Text("Starting the browser and writing to Strava usually takes under a minute; this page updates by itself."))),
 		g.If(a.Status == jobs.StatusProcessing && a.Error != "", Notice("warning", Strong(g.Text("Not finished yet. ")), g.Text(a.Error))),
 		g.If(tiles != nil, tiles),
-		g.If(d.Cfg.ChartImage, Card(H2(g.Text("Chart photo for Strava")),
-			P(Class("muted"), g.Text("What glucava attaches to the activity, with your current chart settings.")),
-			Img(Alt("Glucose chart as attached to Strava"), Src("/chart/"+a.StravaID+".png"),
-				g.Attr("style", "max-width:100%;height:auto;border-radius:8px")),
-		)),
+		// The chart photo is square, so it sits beside the text cards instead
+		// of stretching across the page.
+		Grid(cols,
+			g.If(d.Cfg.ChartImage, Card(H2(g.Text("Chart photo for Strava")),
+				Img(Alt("Glucose chart as attached to Strava"), Src("/chart/"+a.StravaID+".png"),
+					g.Attr("style", "display:block;width:100%;height:auto;border-radius:8px")),
+				P(Class("muted"), g.Text("What glucava attaches, with your current chart settings.")),
+			)),
+			Div(Class("stack"),
+				Card(H2(g.Text("Strava description block")),
+					g.If(d.Block != "", Pre(g.Text(d.Block))),
+					g.If(d.Block == "", P(Class("muted"), g.Text("Nothing to show yet: no glucose readings are stored for this activity."))),
+					P(Class("muted"), g.Text("This block is added to the description on Strava. Your own text there is kept."))),
+				Card(H2(g.Text("Processing")),
+					Dl(append(comp("dl"),
+						Dt(g.Text("Status")), Dd(StatusBadge(a.Status)),
+						Dt(g.Text("Attempts")), Dd(g.Textf("%d", a.Attempts)),
+						g.If(d.Cfg.ChartImage, Dt(g.Text("Chart photo"))),
+						g.If(d.Cfg.ChartImage, Dd(g.Text(map[bool]string{true: "sent once", false: "not sent"}[a.ChartUploaded]))),
+						g.If(d.Cfg.HRRead, Dt(g.Text("Heart rate"))),
+						g.If(d.Cfg.HRRead, Dd(g.Text(map[bool]string{true: "stored", false: "not read yet"}[len(a.HeartRate) > 0]))),
+						Dt(g.Text("Strava ID")), Dd(Code(g.Text(a.StravaID))),
+					)...),
+					eventList(d.Events, d.Loc, d.Now),
+				),
+			),
+		),
 		Card(H2(g.Text("Glucose")), GlucoseChart(ChartData{
 			Samples: d.Samples, Unit: unit, Loc: d.Loc, Start: a.Start, End: a.End(),
 			Range: stats.Range{Low: d.Cfg.RangeLow, High: d.Cfg.RangeHigh},
 		})),
-		Grid("2",
-			Card(H2(g.Text("Strava description block")),
-				g.If(d.Block != "", Pre(g.Text(d.Block))),
-				g.If(d.Block == "", P(Class("muted"), g.Text("Nothing to show yet: no glucose readings are stored for this activity."))),
-				P(Class("muted"), g.Text("This block is added to the description on Strava. Your own text there is kept."))),
-			Card(H2(g.Text("Processing")),
-				Dl(append(comp("dl"),
-					Dt(g.Text("Status")), Dd(StatusBadge(a.Status)),
-					Dt(g.Text("Attempts")), Dd(g.Textf("%d", a.Attempts)),
-					g.If(d.Cfg.ChartImage, Dt(g.Text("Chart photo"))),
-					g.If(d.Cfg.ChartImage, Dd(g.Text(map[bool]string{true: "sent once", false: "not sent"}[a.ChartUploaded]))),
-					Dt(g.Text("Strava ID")), Dd(Code(g.Text(a.StravaID))),
-				)...),
-				eventList(d.Events, d.Loc, d.Now),
-			),
-		),
 	)
 }
 
@@ -435,7 +453,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
-		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR,
+		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -474,11 +492,13 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 							Option(Value("light"), g.Text("Light")), Option(Value("dark"), g.Text("Dark")))),
 						Field("chartSize", "Size", "Strava shows the photo as a square. Large is 1620 px, otherwise 1080 px.", Select(ID("chartSize"), bind("chartSize"),
 							Option(Value("standard"), g.Text("Standard (1080 px)")), Option(Value("large"), g.Text("Large (1620 px)")))),
+						Field("chartPre", "Glucose before the activity (minutes)", "How far back the chart starts. Only the chart uses this; the numbers use the window under Glucose and timing.", Input(ID("chartPre"), Type("number"), Min("0"), Max("240"), bind("chartPre"))),
 						Field("chartLine", "Line thickness (1 to 4)", "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
 						Field("chartBand", "Shade the target range", "", Input(ID("chartBand"), Type("checkbox"), bind("chartBand"))),
 						Field("chartActivity", "Shade the activity", "", Input(ID("chartActivity"), Type("checkbox"), bind("chartActivity"))),
 						Field("chartDots", "Mark out-of-range readings", "", Input(ID("chartDots"), Type("checkbox"), bind("chartDots"))),
-						Field("chartHR", "Show heart rate", "Draws your heart rate on a second axis. It is read from Strava when the chart is first attached, so the preview shows it for activities that were already processed with the chart on.", Input(ID("chartHR"), Type("checkbox"), bind("chartHR"))),
+						Field("hrRead", "Read heart rate from Strava", "Fetched when an activity is processed (one extra page load) and kept, for the numbers on the activity page and in emails, and for the chart.", Input(ID("hrRead"), Type("checkbox"), bind("hrRead"))),
+						Field("chartHR", "Show heart rate on the chart", "Draws your heart rate on a second axis. It is read from Strava when the chart is first attached, so the preview shows it for activities that were already processed with the chart on.", Input(ID("chartHR"), Type("checkbox"), bind("chartHR"))),
 					),
 					Div(
 						Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
@@ -653,5 +673,5 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 // chartPreviewExpr builds the preview image address from the form signals, so
 // the image reloads whenever an option changes.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
-	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR" +
+	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&pre=' + $chartPre" +
 	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh"

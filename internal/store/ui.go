@@ -46,6 +46,8 @@ type Config struct {
 	ChartDots     bool   // mark out-of-range readings
 	ChartLine     int    // curve thickness, 1 to 4
 	ChartHR       bool   // draw heart rate on the chart
+	ChartPreMin   int    // minutes of glucose before the activity on the chart
+	HRRead        bool   // read heart rate from Strava for stats and charts
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 }
 
@@ -80,6 +82,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartImage: r.GetBool("chart_image"), ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"),
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
 		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
+		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
 	}, nil
 }
 
@@ -121,6 +124,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_dots", c.ChartDots)
 	r.Set("chart_line", c.ChartLine)
 	r.Set("chart_hr", c.ChartHR)
+	r.Set("chart_pre_minutes", c.ChartPreMin)
+	r.Set("hr_read", c.HRRead)
 	return s.App.Save(r)
 }
 

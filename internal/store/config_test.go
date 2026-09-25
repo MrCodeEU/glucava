@@ -14,7 +14,7 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 			v = "mmol/L"
 		case "dexcom_region":
 			v = "us"
-		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr":
+		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr", "hr_read":
 			v = "true"
 		case "chart_theme":
 			v = "dark"
@@ -49,7 +49,7 @@ func TestConfigSetRejectsBadInput(t *testing.T) {
 }
 
 func valid() Config {
-	return Config{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", ChartTheme: "light", ChartSize: "standard", ChartLine: 2}
+	return Config{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", ChartTheme: "light", ChartSize: "standard", ChartLine: 2, ChartPreMin: 30}
 }
 
 func TestConfigValidate(t *testing.T) {

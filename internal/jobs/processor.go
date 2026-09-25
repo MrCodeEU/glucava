@@ -38,11 +38,18 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		return fmt.Errorf("load settings: %w", err)
 	}
 	from, to := a.Start.Add(-set.Pre), a.End().Add(set.Post)
+	// The chart may open earlier than the statistics do. Fetch the wider window,
+	// and compute everything else on the narrower one.
+	fetchFrom := from
+	if set.ChartImage && a.Start.Add(-set.ChartPre).Before(fetchFrom) {
+		fetchFrom = a.Start.Add(-set.ChartPre)
+	}
 
-	samples, err := p.samples(ctx, from, to)
+	chartSamples, err := p.samples(ctx, fetchFrom, to)
 	if err != nil {
 		return err
 	}
+	samples := within(chartSamples, from, to)
 	sum, ok := stats.Summarize(samples, set.Range)
 	if !ok {
 		return ErrNoData
@@ -53,6 +60,9 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 			a.Original = prev.Original
 		}
 		a.ChartUploaded = !a.RetryChart && (a.ChartUploaded || prev.ChartUploaded)
+		if len(a.HeartRate) == 0 {
+			a.HeartRate = prev.HeartRate
+		}
 	}
 
 	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
@@ -89,16 +99,19 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	}
 
 	a.Summary = &sum
+	if set.HRRead && len(a.HeartRate) == 0 {
+		p.fetchHeartRate(ctx, a)
+	}
 	switch {
 	case !set.ChartImage:
 	case a.ChartUploaded:
 		log.Printf("jobs: activity %s: chart photo skipped, one was attached before", a.StravaID)
 	default:
 		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
-		if err := p.uploadChart(ctx, a, set, samples); err != nil {
+		if err := p.uploadChart(ctx, a, set, chartSamples); err != nil {
 			return err
 		}
-		log.Printf("jobs: activity %s: chart photo attached (unverified: Strava's answer is not checked)", a.StravaID)
+		log.Printf("jobs: activity %s: chart photo attached and confirmed on the edit page", a.StravaID)
 	}
 
 	a.Status = StatusDone
@@ -113,9 +126,6 @@ func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, 
 	pw, ok := p.Writer.(PhotoWriter)
 	if !ok {
 		return nil
-	}
-	if set.ChartHR && len(a.HeartRate) == 0 {
-		p.fetchHeartRate(ctx, a)
 	}
 	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, HR: a.HeartRate, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
 	if err != nil {
@@ -189,4 +199,15 @@ func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
 	}
 	log.Printf("jobs: activity %s: %d heart rate points for the chart", a.StravaID, len(pts))
 	a.HeartRate = pts
+}
+
+// within returns the samples inside [from, to].
+func within(in []stats.Sample, from, to time.Time) []stats.Sample {
+	out := make([]stats.Sample, 0, len(in))
+	for _, s := range in {
+		if !s.Time.Before(from) && !s.Time.After(to) {
+			out = append(out, s)
+		}
+	}
+	return out
 }

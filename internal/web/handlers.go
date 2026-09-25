@@ -120,6 +120,9 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 			d.Act.Summary = &sum
 		}
 	}
+	if hs, ok := stats.SummarizeHR(act.HeartRate, act.Start, act.End()); ok {
+		d.HR = &hs
+	}
 	evs, err := s.Store.ListEvents(ctx, 200)
 	if err != nil {
 		return nil, err
@@ -492,6 +495,8 @@ type settingsSignals struct {
 	ChartDots      bool    `json:"chartDots"`
 	ChartLine      int     `json:"chartLine"`
 	ChartHR        bool    `json:"chartHR"`
+	ChartPre       int     `json:"chartPre"`
+	HRRead         bool    `json:"hrRead"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -506,6 +511,7 @@ func (v settingsSignals) config() store.Config {
 		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
 		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
+		ChartPreMin: v.ChartPre, HRRead: v.HRRead,
 	}
 }
 
@@ -542,7 +548,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.MailHealth, cfg.GapAlertHours = v.MailHealth, v.GapAlertHours
 	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
-	cfg.ChartHR = v.ChartHR
+	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

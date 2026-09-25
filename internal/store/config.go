@@ -27,6 +27,8 @@ func (c Config) Validate() string {
 		return "Chart theme must be light or dark."
 	case c.ChartSize != "standard" && c.ChartSize != "large":
 		return "Chart size must be standard or large."
+	case c.ChartPreMin < 0 || c.ChartPreMin > 240:
+		return "Chart lead-in must be between 0 and 240 minutes."
 	case c.ChartLine < 1 || c.ChartLine > 4:
 		return "Chart line thickness must be between 1 and 4."
 	case c.PollMin < 1 || c.PollMin > 1440:
@@ -165,6 +167,8 @@ var configKeys = map[string]configKey{
 	"chart_dots":            boolKey(func(c *Config) *bool { return &c.ChartDots }),
 	"chart_line":            intKey(func(c *Config) *int { return &c.ChartLine }),
 	"chart_hr":              boolKey(func(c *Config) *bool { return &c.ChartHR }),
+	"chart_pre_minutes":     intKey(func(c *Config) *int { return &c.ChartPreMin }),
+	"hr_read":               boolKey(func(c *Config) *bool { return &c.HRRead }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.
