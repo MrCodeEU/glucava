@@ -101,12 +101,15 @@ func (m *mock) handler() http.Handler {
 		if m.noTextarea {
 			field = `<p>Something else</p>`
 		}
-		thumbs := strings.Repeat(`<img src="data:,">`, m.photoPosts)
-		script := `<script>document.querySelector('input[type=file]').addEventListener('change',function(){var i=document.createElement('img');document.querySelector('.MediaUploader--thumbs').appendChild(i)})</script>`
+		items := make([]string, m.photoPosts)
+		for i := range items {
+			items[i] = `{"id":1}`
+		}
+		script := `<script>document.querySelector('input[type=file]').addEventListener('change',function(){fetch('/photos/metadata',{method:'PUT'}).then(function(){return fetch('/storage/x.jpg',{method:'PUT'})})})</script>`
 		if m.noThumb {
 			script = ""
 		}
-		fileInput := `<div class="MediaUploader--dropzone--sS1mw"><input type="file" name="photo" accept multiple></div><div class="MediaUploader--thumbs">` + thumbs + `</div>` + script
+		fileInput := `<div data-react-class="MediaUploader" data-react-props='{"media":[` + strings.Join(items, ",") + `]}'><div class="MediaUploader--dropzone--sS1mw"><input type="file" name="photo" accept multiple></div></div>` + script
 		if m.noFile {
 			fileInput = ""
 		}
@@ -114,6 +117,9 @@ func (m *mock) handler() http.Handler {
 		fmt.Fprintf(w, `<!doctype html><html><body><form method="post" action="/activities/42" enctype="multipart/form-data"><input name="x" value="1">%s%s
 			<button type="submit">Save</button></form></body></html>`, field, fileInput)
 	})
+	for _, path := range []string{"/photos/metadata", "/storage/x.jpg"} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	}
 	mux.HandleFunc("/activities/42", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			_ = r.ParseMultipartForm(8 << 20)
@@ -428,7 +434,7 @@ func TestUploadPhotoThatNeverShowsUpFails(t *testing.T) {
 	w := newWriter(t, m, goodCookies, nil)
 	w.cfg.UploadWait = 700 * time.Millisecond
 	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
-	if err == nil || !strings.Contains(err.Error(), "did not show up in the uploader") {
+	if err == nil || !strings.Contains(err.Error(), "did not send the photo") {
 		t.Errorf("err = %v", err)
 	}
 	if m.posts != 0 {
@@ -442,7 +448,7 @@ func TestUploadPhotoNotKeptBySaveFails(t *testing.T) {
 	w.cfg.UploadWait = time.Second
 	w.cfg.LocateTimeout = 800 * time.Millisecond
 	err := w.UploadPhoto(context.Background(), "42", "glucava.png", []byte("x"))
-	if err == nil || !strings.Contains(err.Error(), "shows no new photo") {
+	if err == nil || !strings.Contains(err.Error(), "lists no new photo") {
 		t.Errorf("err = %v", err)
 	}
 }

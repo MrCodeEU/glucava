@@ -216,23 +216,16 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 	})
 }
 
-// UploadPhoto implements jobs.PhotoWriter. It attaches png to the activity by
-// choosing it in the edit page's file input and saving the form.
+// UploadPhoto implements jobs.PhotoWriter. It hands png to the edit page's
+// media uploader the way a chosen file arrives (see photoInjectJS), waits for
+// the uploader to send it to Strava's storage, saves the form, and checks that
+// the reopened edit page lists one more photo. Anything short of that is an
+// error, and none of those errors is retried: the photo may have arrived.
 func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []byte) error {
 	if !idRe.MatchString(stravaID) {
 		return fmt.Errorf("strava: invalid activity id %q", stravaID)
 	}
 	editURL := w.cfg.BaseURL + "/activities/" + stravaID + "/edit"
-
-	dir, err := os.MkdirTemp("", "glucava-photo-")
-	if err != nil {
-		return err
-	}
-	defer removeDir(dir)
-	file := filepath.Join(dir, filepath.Base(name))
-	if err := os.WriteFile(file, png, 0o600); err != nil {
-		return err
-	}
 
 	return w.withBrowser(ctx, func(ctx context.Context) error {
 		descSel, err := w.openEdit(ctx, editURL)
@@ -243,39 +236,95 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 		if err != nil {
 			return err
 		}
-		before, err := mediaCount(ctx)
+		before, err := mediaOnPage(ctx)
 		if err != nil {
-			return err
+			return permanentErr{err}
 		}
 		net := watchRequests(ctx)
 
 		w.pause()
-		if err := chromedp.Run(ctx, chromedp.SetUploadFiles(photoSel, []string{file}, chromedp.ByQuery)); err != nil {
-			return fmt.Errorf("strava: choose photo: %w", err)
+		if res, err := evalString(ctx, photoInjectJS("input-change-event", photoSel, png)); err != nil || res != "ok" {
+			return permanentErr{fmt.Errorf("strava: hand the photo to the uploader: %v %s", err, res)}
 		}
-		// The uploader sends the file as soon as it is chosen and shows a
-		// thumbnail. Wait for that, so saving does not race the upload.
-		if err := w.waitMedia(ctx, before, w.cfg.UploadWait); err != nil {
-			log.Printf("strava: photo did not show up in the uploader; requests seen: %s; page: %s", net.String(), photoState(ctx))
-			return permanentErr{fmt.Errorf("strava: the photo did not show up in the uploader within %s (nothing was saved; the page's uploader may have changed): %w", w.cfg.UploadWait, err)}
+		// The uploader sends the file to storage as soon as it has it. Saving
+		// before that finishes would drop it.
+		if err := w.waitUploaded(ctx, net, w.cfg.UploadWait); err != nil {
+			log.Printf("strava: photo upload did not finish; requests seen: %s; page: %s", net.filtered(), photoState(ctx))
+			return permanentErr{fmt.Errorf("strava: the uploader did not send the photo within %s (nothing was saved; the page's uploader may have changed)", w.cfg.UploadWait)}
 		}
-		log.Printf("strava: photo accepted by the uploader; requests seen: %s", net.String())
 
 		w.pause()
 		if err := w.save(ctx, descSel, editURL); err != nil {
 			return err
 		}
 
-		// Confirm the activity now has the media: open the edit page again.
-		if _, err := w.openEdit(ctx, editURL); err != nil {
-			return err
-		}
-		if err := w.waitMedia(ctx, before, w.cfg.LocateTimeout); err != nil {
-			log.Printf("strava: after saving, requests seen: %s; reopened page: %s", net.String(), photoState(ctx))
-			return permanentErr{errors.New("strava: saved, but the reopened edit page shows no new photo; check the activity on Strava before trying again, or a second copy may be added")}
+		// Confirm: the reopened edit page lists the photo among the activity's media.
+		deadline := time.Now().Add(w.cfg.LocateTimeout)
+		for {
+			if _, err := w.openEdit(ctx, editURL); err != nil {
+				return err
+			}
+			if n, err := mediaOnPage(ctx); err == nil && n > before {
+				break
+			}
+			if time.Now().After(deadline) {
+				log.Printf("strava: after saving, requests seen: %s; reopened page: %s", net.filtered(), photoState(ctx))
+				return permanentErr{errors.New("strava: saved, but the reopened edit page lists no new photo; check the activity on Strava before trying again, or a second copy may be added")}
+			}
+			if err := sleep(ctx, 2*time.Second); err != nil {
+				return err
+			}
 		}
 		return w.exportCookies(ctx)
 	})
+}
+
+// mediaOnPage returns how many photos and videos the edit page lists for the
+// activity, read from the props of its React media uploader.
+func mediaOnPage(ctx context.Context) (int, error) {
+	s, err := evalString(ctx, `(function(){
+	  const el=document.querySelector('[data-react-class="MediaUploader"]');
+	  if(!el)return 'no uploader';
+	  try{const m=JSON.parse(el.getAttribute('data-react-props')).media;
+	      return Array.isArray(m)?String(m.length):'no media list'}catch(e){return 'bad props'}})()`)
+	if err != nil {
+		return 0, err
+	}
+	n, cerr := strconv.Atoi(s)
+	if cerr != nil {
+		return 0, fmt.Errorf("strava: cannot read the activity's media from the edit page (%s)", s)
+	}
+	return n, nil
+}
+
+// waitUploaded polls until the uploader has registered the photo and sent it
+// to storage.
+func (w *Writer) waitUploaded(ctx context.Context, net *requestLog, max time.Duration) error {
+	deadline := time.Now().Add(max)
+	for !net.uploaded() {
+		if time.Now().After(deadline) {
+			return errors.New("no upload")
+		}
+		if err := sleep(ctx, 300*time.Millisecond); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uploaded reports whether two PUTs succeeded, one of them to /photos/metadata:
+// the uploader registering the photo, then sending its bytes to storage.
+func (l *requestLog) uploaded() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	ok, meta := 0, false
+	for _, line := range l.lines {
+		if strings.HasPrefix(line, "PUT ") && strings.HasSuffix(line, "-> 200") {
+			ok++
+			meta = meta || strings.Contains(line, "/photos/metadata")
+		}
+	}
+	return ok >= 2 && meta
 }
 
 // permanentErr marks a failure that the job queue must not retry: an upload
@@ -431,39 +480,6 @@ func (l *requestLog) reset() {
 	defer l.mu.Unlock()
 	l.lines = nil
 	l.byID = map[network.RequestID]int{}
-}
-
-// mediaSignal counts what a new thumbnail would add: images on the page and
-// everything inside the media uploader.
-const mediaSignal = `(function(){return document.querySelectorAll('img').length+document.querySelectorAll('[class*="MediaUploader"] *').length})()`
-
-func mediaCount(ctx context.Context) (int, error) {
-	s, err := evalString(ctx, `String(`+mediaSignal+`)`)
-	if err != nil {
-		return 0, err
-	}
-	n, _ := strconv.Atoi(s)
-	return n, nil
-}
-
-// waitMedia polls until the media signal is above before.
-func (w *Writer) waitMedia(ctx context.Context, before int, max time.Duration) error {
-	deadline := time.Now().Add(max)
-	for {
-		n, err := mediaCount(ctx)
-		if err != nil {
-			return err
-		}
-		if n > before {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("page media count stayed at %d", n)
-		}
-		if err := sleep(ctx, 300*time.Millisecond); err != nil {
-			return err
-		}
-	}
 }
 
 // requestLog remembers the uploads the page makes, for diagnosing a photo that
