@@ -50,6 +50,7 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	if lo, hi := r.GetFloat("range_low"), r.GetFloat("range_high"); lo > 0 && hi > lo {
 		out.Range = stats.Range{Low: lo, High: hi}
 	}
+	out.ChartImage = r.GetBool("chart_image")
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
 	out.Post = time.Duration(r.GetInt("post_minutes")) * time.Minute
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {
@@ -81,6 +82,8 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 		Status:   r.GetString("status"),
 		Error:    r.GetString("error"),
 		Attempts: r.GetInt("attempts"),
+
+		ChartUploaded: r.GetBool("chart_uploaded"),
 	}
 	if r.GetBool("has_original") {
 		o := r.GetString("original_description")
@@ -115,6 +118,9 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 	r.Set("status", a.Status)
 	r.Set("error", a.Error)
 	r.Set("attempts", a.Attempts)
+	if a.ChartUploaded { // never clear: the photo cannot be removed again
+		r.Set("chart_uploaded", true)
+	}
 	if a.Summary != nil {
 		r.Set("summary", a.Summary)
 	} else {

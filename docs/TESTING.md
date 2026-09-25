@@ -60,3 +60,12 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 - [ ] `/_/` and `/api/collections` are not reachable (PocketBase blocked).
 - [ ] Cookie is `HttpOnly`, and `Secure` behind your TLS proxy; login is rate limited after repeated failures.
 - [ ] No secret appears in the container logs (`docker logs`) after all of the above.
+
+## Chart photo (opt-in)
+
+Use a throwaway activity you own. This writes a photo to a real Strava activity and cannot be undone by glucava (delete it in Strava).
+
+- [ ] `glucava strava inspect <id>` shows a matching "photo:" line and lists the file input(s).
+- [ ] Turn `chart_image` on, process the activity: the chart photo appears once, description text intact.
+- [ ] Reprocess: no second photo.
+- [ ] Note whether the photo replaced the map as the cover, and whether the upload needs longer than the default 6 s wait.

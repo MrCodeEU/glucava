@@ -103,6 +103,17 @@ func (w *Writer) UpdateDescription(ctx context.Context, id string, merge func(st
 	return nil
 }
 
+// UploadPhoto implements jobs.PhotoWriter. Nothing is stored; the demo only
+// shows the step happening.
+func (w *Writer) UploadPhoto(ctx context.Context, _, _ string, _ []byte) error {
+	select {
+	case <-time.After(w.Delay / 2):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // Session is a SessionChecker that always succeeds after a short pause.
 type Session struct{}
 

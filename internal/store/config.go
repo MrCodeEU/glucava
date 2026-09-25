@@ -149,6 +149,7 @@ var configKeys = map[string]configKey{
 	"mail_weekly":           boolKey(func(c *Config) *bool { return &c.MailWeekly }),
 	"mail_health":           boolKey(func(c *Config) *bool { return &c.MailHealth }),
 	"gap_alert_hours":       intKey(func(c *Config) *int { return &c.GapAlertHours }),
+	"chart_image":           boolKey(func(c *Config) *bool { return &c.ChartImage }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

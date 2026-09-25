@@ -14,7 +14,7 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 			v = "mmol/L"
 		case "dexcom_region":
 			v = "us"
-		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health":
+		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image":
 			v = "true"
 		case "ntfy_url", "webhook_url", "public_url":
 			v = "https://x.example/y"

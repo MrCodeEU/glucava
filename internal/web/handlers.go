@@ -431,6 +431,7 @@ type settingsSignals struct {
 	MailWeekly     bool    `json:"mailWeekly"`
 	MailHealth     bool    `json:"mailHealth"`
 	GapAlertHours  int     `json:"gapAlertHours"`
+	ChartImage     bool    `json:"chartImage"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -442,7 +443,7 @@ func (v settingsSignals) config() store.Config {
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
 		PublicURL: strings.TrimSpace(v.PublicURL), MailAlerts: v.MailAlerts, MailActivity: v.MailActivity, MailWeekly: v.MailWeekly,
-		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours,
+		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
 	}
 }
 
@@ -477,6 +478,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PublicURL, cfg.MailAlerts = strings.TrimSpace(v.PublicURL), v.MailAlerts
 	cfg.MailActivity, cfg.MailWeekly = v.MailActivity, v.MailWeekly
 	cfg.MailHealth, cfg.GapAlertHours = v.MailHealth, v.GapAlertHours
+	cfg.ChartImage = v.ChartImage
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

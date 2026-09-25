@@ -38,6 +38,7 @@ type Config struct {
 	MailActivity  bool   // email a summary after each processed activity
 	MailWeekly    bool   // email a weekly summary
 	MailHealth    bool   // email a monthly health report
+	ChartImage    bool   // attach a glucose chart photo to the Strava activity
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 }
 
@@ -69,6 +70,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		PublicURL:     r.GetString("public_url"), MailAlerts: r.GetBool("mail_alerts"),
 		MailActivity: r.GetBool("mail_activity"), MailWeekly: r.GetBool("mail_weekly"),
 		MailHealth: r.GetBool("mail_health"), GapAlertHours: r.GetInt("gap_alert_hours"),
+		ChartImage: r.GetBool("chart_image"),
 	}, nil
 }
 
@@ -102,6 +104,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("mail_weekly", c.MailWeekly)
 	r.Set("mail_health", c.MailHealth)
 	r.Set("gap_alert_hours", c.GapAlertHours)
+	r.Set("chart_image", c.ChartImage)
 	return s.App.Save(r)
 }
 

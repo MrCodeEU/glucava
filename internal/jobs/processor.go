@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -46,8 +47,11 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		return ErrNoData
 	}
 
-	if prev, perr := p.Store.Activity(ctx, a.StravaID); perr == nil && prev != nil && a.Original == nil {
-		a.Original = prev.Original
+	if prev, perr := p.Store.Activity(ctx, a.StravaID); perr == nil && prev != nil {
+		if a.Original == nil {
+			a.Original = prev.Original
+		}
+		a.ChartUploaded = a.ChartUploaded || prev.ChartUploaded
 	}
 
 	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
@@ -83,9 +87,35 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		return err
 	}
 
+	a.Summary = &sum
+	if set.ChartImage && !a.ChartUploaded {
+		if err := p.uploadChart(ctx, a, set, samples); err != nil {
+			return err
+		}
+	}
+
 	a.Status = StatusDone
 	a.Error = ""
-	a.Summary = &sum
+	return p.Store.SaveActivity(ctx, a)
+}
+
+// uploadChart attaches the glucose chart as a photo, once per activity. The
+// description is already written at this point, so a failure here is retried
+// without touching the text again (the merge is idempotent).
+func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, samples []stats.Sample) error {
+	pw, ok := p.Writer.(PhotoWriter)
+	if !ok {
+		return nil
+	}
+	png, err := chartimg.Glucose(chartimg.Series{Samples: samples, Range: set.Range, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local})
+	if err != nil {
+		return fmt.Errorf("draw chart: %w", err)
+	}
+	if err := pw.UploadPhoto(ctx, a.StravaID, "glucose.png", png); err != nil {
+		return fmt.Errorf("upload chart: %w", err)
+	}
+	a.ChartUploaded = true
+	// Persist right away: if the final save fails, a retry must not attach it again.
 	return p.Store.SaveActivity(ctx, a)
 }
 

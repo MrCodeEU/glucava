@@ -59,6 +59,10 @@ type Activity struct {
 	// block. Nil means it has not been captured yet; an empty string is a valid
 	// value for an activity that had no description.
 	Original *string
+
+	// ChartUploaded is set once the chart photo is on the activity. It is
+	// never cleared, so a reprocess does not attach a second photo.
+	ChartUploaded bool
 }
 
 // End returns the activity end time.
@@ -72,6 +76,7 @@ type Settings struct {
 	Post  time.Duration // glucose window after the end
 
 	PollInterval time.Duration // how often the poller checks Strava
+	ChartImage   bool          // also attach a glucose chart photo
 }
 
 // Event is an entry for the notification outbox.
@@ -102,4 +107,10 @@ type Store interface {
 // merge and saves the result. It returns ErrSessionExpired if the login is gone.
 type Writer interface {
 	UpdateDescription(ctx context.Context, stravaID string, merge func(existing string) string) error
+}
+
+// PhotoWriter is implemented by a Writer that can also attach a picture to the
+// activity. The chart is optional, so the Processor checks for it at run time.
+type PhotoWriter interface {
+	UploadPhoto(ctx context.Context, stravaID, name string, png []byte) error
 }

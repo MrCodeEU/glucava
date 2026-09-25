@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ func (e *SelectorError) Error() string {
 // the real page, and prefer stable attributes such as name and aria-label.
 type Selectors struct {
 	Description []string
+	Photo       []string // the file input that takes a picture
 	Save        []string // used when the description field has no form with a submit button
 }
 
@@ -61,6 +63,12 @@ var DefaultSelectors = Selectors{
 		// stable id; picking "the textarea that isn't that one" works
 		// regardless of locale, as long as the page has exactly these two.
 		`textarea:not(#activity_private_note)`,
+	},
+	// Unverified: the photo control on the real edit page has not been
+	// inspected yet. "glucava strava inspect" lists the file inputs it finds.
+	Photo: []string{
+		`input[type="file"][accept*="image"]`,
+		`input[type="file"]`,
 	},
 	Save: []string{
 		`form button[type="submit"]`,
@@ -87,6 +95,7 @@ type Config struct {
 	Pause          func()         // called between steps to look less robotic; nil means no pause
 	Timeout        time.Duration  // whole run; default 2 minutes
 	LocateTimeout  time.Duration  // wait for an element; default 15 seconds
+	UploadWait     time.Duration  // pause after choosing the photo so the upload can finish; default 6 seconds
 	SaveTimeout    time.Duration  // wait for the page to leave /edit after saving; default 15 seconds
 	StartTimeout   time.Duration  // wait for Chrome to come up; default 60 seconds (chromedp's own 20 is too short on a busy or slow host)
 }
@@ -97,7 +106,10 @@ type Writer struct {
 	mu  sync.Mutex // one browser at a time: Strava sees a single session
 }
 
-var _ jobs.Writer = (*Writer)(nil)
+var (
+	_ jobs.Writer      = (*Writer)(nil)
+	_ jobs.PhotoWriter = (*Writer)(nil)
+)
 
 // NewWriter returns a Writer with defaults applied.
 func NewWriter(cfg Config) *Writer {
@@ -114,11 +126,17 @@ func NewWriter(cfg Config) *Writer {
 	if cfg.SaveTimeout <= 0 {
 		cfg.SaveTimeout = 15 * time.Second
 	}
+	if cfg.UploadWait <= 0 {
+		cfg.UploadWait = 6 * time.Second
+	}
 	if cfg.StartTimeout <= 0 {
 		cfg.StartTimeout = 60 * time.Second
 	}
 	if len(cfg.Selectors.Description) == 0 {
 		cfg.Selectors.Description = DefaultSelectors.Description
+	}
+	if len(cfg.Selectors.Photo) == 0 {
+		cfg.Selectors.Photo = DefaultSelectors.Photo
 	}
 	if len(cfg.Selectors.Save) == 0 {
 		cfg.Selectors.Save = DefaultSelectors.Save
@@ -180,6 +198,48 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 		}
 		if normalize(got) != normalize(want) {
 			return errors.New("strava: verification failed: saved description differs from the intended text")
+		}
+		return w.exportCookies(ctx)
+	})
+}
+
+// UploadPhoto implements jobs.PhotoWriter. It attaches png to the activity by
+// choosing it in the edit page's file input and saving the form.
+func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []byte) error {
+	if !idRe.MatchString(stravaID) {
+		return fmt.Errorf("strava: invalid activity id %q", stravaID)
+	}
+	editURL := w.cfg.BaseURL + "/activities/" + stravaID + "/edit"
+
+	dir, err := os.MkdirTemp("", "glucava-photo-")
+	if err != nil {
+		return err
+	}
+	defer removeDir(dir)
+	file := filepath.Join(dir, filepath.Base(name))
+	if err := os.WriteFile(file, png, 0o600); err != nil {
+		return err
+	}
+
+	return w.withBrowser(ctx, func(ctx context.Context) error {
+		descSel, err := w.openEdit(ctx, editURL)
+		if err != nil {
+			return err
+		}
+		photoSel, err := w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo)
+		if err != nil {
+			return err
+		}
+		w.pause()
+		if err := chromedp.Run(ctx, chromedp.SetUploadFiles(photoSel, []string{file}, chromedp.ByQuery)); err != nil {
+			return fmt.Errorf("strava: choose photo: %w", err)
+		}
+		if err := sleep(ctx, w.cfg.UploadWait); err != nil {
+			return err
+		}
+		w.pause()
+		if err := w.save(ctx, descSel, editURL); err != nil {
+			return err
 		}
 		return w.exportCookies(ctx)
 	})

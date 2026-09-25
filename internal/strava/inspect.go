@@ -30,7 +30,9 @@ type Report struct {
 	SaveMethod          string // "form-button", "selector", "form-submit" or empty
 	Textareas           []ElementInfo
 	Buttons             []ElementInfo
-	HTML                string // set only when includeHTML is true
+	FileInputs          []ElementInfo // where a photo could be attached
+	PhotoSelector       string        // empty when no Photo candidate matched
+	HTML                string        // set only when includeHTML is true
 }
 
 // Inspect opens the edit page and reports what it finds, without changing anything.
@@ -72,9 +74,11 @@ func (w *Writer) Inspect(ctx context.Context, stravaID string, includeHTML bool)
 		var inv struct {
 			Textareas []ElementInfo `json:"textareas"`
 			Buttons   []ElementInfo `json:"buttons"`
+			Files     []ElementInfo `json:"files"`
 		}
 		if err := json.Unmarshal([]byte(raw), &inv); err == nil {
-			rep.Textareas, rep.Buttons = inv.Textareas, inv.Buttons
+			rep.Textareas, rep.Buttons, rep.FileInputs = inv.Textareas, inv.Buttons, inv.Files
+			rep.PhotoSelector, _ = evalString(ctx, `(function(c){for(const s of c){try{if(document.querySelector(s))return s}catch(e){}}return ""})(`+jsJSON(w.cfg.Selectors.Photo)+`)`)
 		}
 		if includeHTML {
 			rep.HTML, _ = evalString(ctx, `document.documentElement.outerHTML`)
@@ -109,7 +113,16 @@ func (r *Report) String() string {
 	}
 	list("textareas", r.Textareas)
 	list("buttons", r.Buttons)
+	list("file inputs", r.FileInputs)
+	fmt.Fprintf(&b, "photo:       %s\n", photoOrNone(r.PhotoSelector))
 	return b.String()
+}
+
+func photoOrNone(s string) string {
+	if s == "" {
+		return "NOT FOUND with the configured selectors (chart upload would fail)"
+	}
+	return "matched " + s
 }
 
 func orNone(s string) string {
@@ -123,7 +136,8 @@ const inventoryJS = `JSON.stringify((function(){
   const info=e=>({tag:e.tagName.toLowerCase(),id:e.id||'',name:e.getAttribute('name')||'',type:e.getAttribute('type')||'',
     label:e.getAttribute('aria-label')||e.getAttribute('placeholder')||'',text:(e.innerText||e.value||'').trim().slice(0,40)});
   return {textareas:[...document.querySelectorAll('textarea')].map(info),
-          buttons:[...document.querySelectorAll('button,input[type=submit],input[type=button]')].map(info)};
+          buttons:[...document.querySelectorAll('button,input[type=submit],input[type=button]')].map(info),
+          files:[...document.querySelectorAll('input[type=file]')].map(info)};
 })())`
 
 // probeSaveJS mirrors the lookup in save() without clicking anything.

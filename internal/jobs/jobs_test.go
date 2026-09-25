@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -49,6 +50,7 @@ func (m *memStore) SaveActivity(_ context.Context, a *Activity) error {
 	if a.Original == nil { // like the real store, never clear a stored backup
 		a.Original = m.acts[a.StravaID].Original
 	}
+	a.ChartUploaded = a.ChartUploaded || m.acts[a.StravaID].ChartUploaded // never cleared, like the real store
 	m.acts[a.StravaID] = *a
 	m.savedCalls++
 	return nil
@@ -401,5 +403,68 @@ func TestOnDoneNotCalledOnFailure(t *testing.T) {
 	runOne(t, q, Job{Activity: activity()})
 	if called {
 		t.Error("OnDone ran for a failed activity")
+	}
+}
+
+type photoWriter struct {
+	fakeWriter
+	photos [][]byte
+	err    error
+}
+
+func (w *photoWriter) UploadPhoto(_ context.Context, _, _ string, png []byte) error {
+	if w.err != nil {
+		return w.err
+	}
+	w.photos = append(w.photos, png)
+	return nil
+}
+
+func chartSetup(w Writer, on bool) (*Queue, *memStore) {
+	st := newStore()
+	st.set.ChartImage = on
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w}
+	return NewQueue(p, []time.Duration{time.Millisecond, time.Millisecond}, 8), st
+}
+
+func TestChartUploadedOnceAndOnlyWhenEnabled(t *testing.T) {
+	w := &photoWriter{}
+	q, st := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	if len(w.photos) != 1 || !bytes.HasPrefix(w.photos[0], []byte("\x89PNG")) || !st.acts["42"].ChartUploaded {
+		t.Fatalf("photos=%d uploaded=%v", len(w.photos), st.acts["42"].ChartUploaded)
+	}
+	// A reprocess must not attach a second copy.
+	runOne(t, q, Job{Activity: activity(), Force: true})
+	if len(w.photos) != 1 {
+		t.Errorf("photos after reprocess = %d, want 1", len(w.photos))
+	}
+
+	off := &photoWriter{}
+	q2, st2 := chartSetup(off, false)
+	runOne(t, q2, Job{Activity: activity()})
+	if len(off.photos) != 0 || st2.acts["42"].ChartUploaded {
+		t.Error("chart uploaded although the setting is off")
+	}
+}
+
+func TestChartFailureFailsTheRunButKeepsDescription(t *testing.T) {
+	w := &photoWriter{err: errors.New("no file input")}
+	w.desc = "My run"
+	q, st := chartSetup(w, true)
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusFailed || a.ChartUploaded || !strings.Contains(a.Error, "upload chart") {
+		t.Fatalf("activity = %+v", a)
+	}
+	if !strings.Contains(w.desc, render.Prefix) {
+		t.Errorf("description lost: %q", w.desc)
+	}
+}
+
+func TestChartSkippedForWriterWithoutPhotos(t *testing.T) {
+	q, st := chartSetup(&fakeWriter{}, true)
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || a.ChartUploaded {
+		t.Errorf("activity = %+v", a)
 	}
 }

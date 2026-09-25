@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,9 @@ type mock struct {
 	posts       int
 	ignorePosts bool // simulate a save the server silently drops
 	noTextarea  bool
+	noFile      bool // the edit page has no photo input
+	photo       []byte
+	photoPosts  int
 	rotate      bool // send a new session cookie on GET
 
 	loginMode string // "", "challenge" or "wrong": how /login/submit behaves
@@ -95,15 +99,24 @@ func (m *mock) handler() http.Handler {
 		if m.noTextarea {
 			field = `<p>Something else</p>`
 		}
+		fileInput := `<input type="file" name="photo" accept="image/*">`
+		if m.noFile {
+			fileInput = ""
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!doctype html><html><body><form method="post" action="/activities/42"><input name="x" value="1">%s
-			<button type="submit">Save</button></form></body></html>`, field)
+		fmt.Fprintf(w, `<!doctype html><html><body><form method="post" action="/activities/42" enctype="multipart/form-data"><input name="x" value="1">%s%s
+			<button type="submit">Save</button></form></body></html>`, field, fileInput)
 	})
 	mux.HandleFunc("/activities/42", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			_ = r.ParseForm()
+			_ = r.ParseMultipartForm(8 << 20)
 			m.mu.Lock()
 			m.posts++
+			if f, _, err := r.FormFile("photo"); err == nil {
+				m.photo, _ = io.ReadAll(f)
+				m.photoPosts++
+				_ = f.Close()
+			}
 			if !m.ignorePosts {
 				m.description = r.Form.Get("activity[description]")
 			}
@@ -365,5 +378,38 @@ func TestStartTimeoutDefaultsAndOverrides(t *testing.T) {
 	}
 	if got := NewWriter(Config{StartTimeout: 5 * time.Second}).cfg.StartTimeout; got != 5*time.Second {
 		t.Errorf("explicit StartTimeout = %v, want 5s", got)
+	}
+}
+
+func TestUploadPhoto(t *testing.T) {
+	m := &mock{description: "My run"}
+	w := newWriter(t, m, goodCookies, nil)
+	w.cfg.UploadWait = 100 * time.Millisecond
+
+	png := []byte("\x89PNG\r\n\x1a\nfake")
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", png); err != nil {
+		t.Fatal(err)
+	}
+	if string(m.photo) != string(png) || m.photoPosts != 1 {
+		t.Errorf("server got %d bytes in %d posts, want %d", len(m.photo), m.photoPosts, len(png))
+	}
+	if m.description != "My run" {
+		t.Errorf("description changed to %q", m.description)
+	}
+}
+
+func TestUploadPhotoWithoutFileInput(t *testing.T) {
+	w := newWriter(t, &mock{description: "x", noFile: true}, goodCookies, nil)
+	w.cfg.UploadWait = 100 * time.Millisecond
+	var se *SelectorError
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.As(err, &se) || se.Key != "photo" {
+		t.Errorf("err = %v, want a photo SelectorError", err)
+	}
+}
+
+func TestUploadPhotoSessionExpired(t *testing.T) {
+	w := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil)
+	if err := w.UploadPhoto(context.Background(), "42", "glucose.png", []byte("x")); !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("err = %v", err)
 	}
 }

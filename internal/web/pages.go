@@ -423,7 +423,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"emailTo":  c.EmailTo,
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
-		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours,
+		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -443,6 +443,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("postMin", "Minutes after end", "Also how long to wait after an activity before processing it.", Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
 					)...),
 					Field("pollMin", "Check Strava every (minutes)", "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
+					Field("chartImage", "Attach a glucose chart to the activity", "Adds the chart as a photo on Strava, once per activity. Experimental: photos cannot be removed again by glucava, and a first photo can replace the map as the activity's cover.", Input(ID("chartImage"), Type("checkbox"), bind("chartImage"))),
 				),
 				Card(H2(g.Text("Dexcom Share")),
 					P(Class("muted"), g.Text("Turn on Dexcom Share in the Dexcom app first. The account is the one that owns the sensor.")),
