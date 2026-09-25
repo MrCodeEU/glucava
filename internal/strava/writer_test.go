@@ -446,3 +446,25 @@ func TestUploadPhotoNotKeptBySaveFails(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestProbePhotoReportsAndNeverSaves(t *testing.T) {
+	m := &mock{description: "x"}
+	w := newWriter(t, m, goodCookies, nil)
+	p, err := w.ProbePhoto(context.Background(), "42", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.After <= p.Before || !strings.Contains(p.State, "MediaUploader") || len(p.Screenshot) == 0 {
+		t.Errorf("probe = %+v", p)
+	}
+	if m.posts != 0 {
+		t.Errorf("probe saved the form %d times", m.posts)
+	}
+}
+
+func TestPhotoFailuresAreNotRetried(t *testing.T) {
+	var p interface{ Permanent() bool }
+	if !errors.As(permanentErr{errors.New("x")}, &p) || !p.Permanent() {
+		t.Error("permanentErr must be permanent")
+	}
+}

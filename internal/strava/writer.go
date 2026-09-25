@@ -251,8 +251,8 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 		// The uploader sends the file as soon as it is chosen and shows a
 		// thumbnail. Wait for that, so saving does not race the upload.
 		if err := w.waitMedia(ctx, before, w.cfg.UploadWait); err != nil {
-			log.Printf("strava: photo did not show up in the uploader; requests seen: %s", net.String())
-			return fmt.Errorf("strava: the photo did not show up in the uploader within %s (nothing was saved; the page's uploader may have changed): %w", w.cfg.UploadWait, err)
+			log.Printf("strava: photo did not show up in the uploader; requests seen: %s; page: %s", net.String(), photoState(ctx))
+			return permanentErr{fmt.Errorf("strava: the photo did not show up in the uploader within %s (nothing was saved; the page's uploader may have changed): %w", w.cfg.UploadWait, err)}
 		}
 		log.Printf("strava: photo accepted by the uploader; requests seen: %s", net.String())
 
@@ -266,10 +266,98 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 			return err
 		}
 		if err := w.waitMedia(ctx, before, w.cfg.LocateTimeout); err != nil {
-			return errors.New("strava: saved, but the reopened edit page shows no new photo; check the activity on Strava before retrying, or a second copy may be added")
+			log.Printf("strava: after saving, requests seen: %s; reopened page: %s", net.String(), photoState(ctx))
+			return permanentErr{errors.New("strava: saved, but the reopened edit page shows no new photo; check the activity on Strava before trying again, or a second copy may be added")}
 		}
 		return w.exportCookies(ctx)
 	})
+}
+
+// permanentErr marks a failure that the job queue must not retry: an upload
+// that may or may not have arrived is not safe to repeat blindly.
+type permanentErr struct{ error }
+
+func (permanentErr) Permanent() bool { return true }
+func (e permanentErr) Unwrap() error { return e.error }
+
+// photoStateJS describes the uploader area for diagnosing a photo that does not
+// arrive: its markup, dialogs, visible buttons and the first images.
+const photoStateJS = `JSON.stringify((function(){
+  const cut=(s,n)=>(s||'').replace(/\s+/g,' ').trim().slice(0,n);
+  const up=document.querySelector('[class*="MediaUploader"]');
+  const box=up&&(up.parentElement&&up.parentElement.parentElement||up.parentElement||up);
+  const vis=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);
+  return {url:location.pathname,
+    uploader:box?cut(box.outerHTML,2500):'(no MediaUploader element)',
+    dialogs:[...document.querySelectorAll('[role=dialog],dialog')].filter(vis).map(e=>cut(e.innerText,300)),
+    buttons:[...document.querySelectorAll('button')].filter(vis).map(e=>cut(e.innerText||e.getAttribute('aria-label'),40)).filter(Boolean).slice(0,30),
+    images:[...document.querySelectorAll('img')].slice(0,12).map(e=>cut(e.currentSrc||e.src,90))}
+})())`
+
+func photoState(ctx context.Context) string {
+	s, err := evalString(ctx, photoStateJS)
+	if err != nil {
+		return "(could not read the page: " + err.Error() + ")"
+	}
+	return s
+}
+
+// PhotoProbe is the result of ProbePhoto.
+type PhotoProbe struct {
+	Selector   string
+	Before     int
+	After      int
+	Requests   string
+	State      string
+	Screenshot []byte
+}
+
+// ProbePhoto is a dry run of the photo upload: it chooses png in the uploader
+// on the edit page, waits, and reports what the page did. It never saves the
+// form. Note that the uploader itself may already send the file to Strava.
+func (w *Writer) ProbePhoto(ctx context.Context, stravaID string, png []byte) (*PhotoProbe, error) {
+	if !idRe.MatchString(stravaID) {
+		return nil, fmt.Errorf("strava: invalid activity id %q", stravaID)
+	}
+	editURL := w.cfg.BaseURL + "/activities/" + stravaID + "/edit"
+	dir, err := os.MkdirTemp("", "glucava-photo-")
+	if err != nil {
+		return nil, err
+	}
+	defer removeDir(dir)
+	file := filepath.Join(dir, "probe.png")
+	if err := os.WriteFile(file, png, 0o600); err != nil {
+		return nil, err
+	}
+	out := &PhotoProbe{}
+	err = w.withBrowser(ctx, func(ctx context.Context) error {
+		if _, err := w.openEdit(ctx, editURL); err != nil {
+			return err
+		}
+		if out.Selector, err = w.locate(ctx, "photo", editURL, w.cfg.Selectors.Photo); err != nil {
+			return err
+		}
+		if out.Before, err = mediaCount(ctx); err != nil {
+			return err
+		}
+		net := watchRequests(ctx)
+		if err := chromedp.Run(ctx, chromedp.SetUploadFiles(out.Selector, []string{file}, chromedp.ByQuery)); err != nil {
+			return err
+		}
+		_ = w.waitMedia(ctx, out.Before, 10*time.Second)
+		if err := sleep(ctx, 4*time.Second); err != nil { // let a slow upload show its requests
+			return err
+		}
+		out.After, _ = mediaCount(ctx)
+		out.Requests = net.String()
+		out.State = photoState(ctx)
+		_ = chromedp.Run(ctx, chromedp.FullScreenshot(&out.Screenshot, 80))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // mediaSignal counts what a new thumbnail would add: images on the page and
