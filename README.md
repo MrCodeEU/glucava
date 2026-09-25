@@ -9,6 +9,23 @@ Free, self-hosted alternative to Ando. After a Strava activity ends, Glucava add
 
 Strava's API is paywalled, so Glucava edits the description through a headless Chrome session with your own cookies. One Go binary (PocketBase + web UI); Chrome/Chromium must be installed.
 
+## Screenshots
+
+All from demo mode (`make mock`), so the data is made up. The UI follows your light or dark preference.
+
+<p>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-dashboard-dark.png"><img src="docs/img/ui-dashboard-light.png" alt="Dashboard: recent activities with time in range" width="49%"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/img/ui-activity-dark.png"><img src="docs/img/ui-activity-light.png" alt="One activity: glucose chart and the block written to Strava" width="49%"></picture>
+</p>
+
+Notification emails (HTML with a plain-text fallback, inline charts drawn by glucava):
+
+<p>
+<img src="docs/img/mail-activity.png" alt="Activity summary email" width="32%">
+<img src="docs/img/mail-weekly.png" alt="Weekly summary email" width="32%">
+<img src="docs/img/mail-alert.png" alt="Alert email" width="32%">
+</p>
+
 ## Quick start
 
 ```sh

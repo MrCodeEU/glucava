@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glucava: your glucose on your Strava activities</title>
+<meta name="description" content="Self-hosted and open source: Glucava adds time in range, min, max, average and a sparkline from your CGM to every Strava activity.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Glucava">
+<meta property="og:description" content="Your glucose numbers, on your Strava activities. Self-hosted, open source.">
+<meta property="og:image" content="https://mrcodeeu.github.io/glucava/img/ui-activity-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #191c22; --ink-2: #5b6472; --line: #e3e6ea;
+  --brand: #e5484d; --brand-ink: #ffffff; --ok: #1f9d5a; --code: #eef0f3;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0e1116; --card: #161a21; --ink: #e8eaee; --ink-2: #9aa3b0; --line: #262c36; --brand: #f0585d; --code: #1c212a; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--brand); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+header.top { display: flex; align-items: center; gap: 16px; padding: 18px 0; }
+header.top .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: inherit; text-decoration: none; }
+header.top .brand img { width: 28px; height: 28px; }
+header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: .95rem; }
+header.top nav a { color: var(--ink-2); text-decoration: none; }
+header.top nav a:hover { color: var(--ink); }
+.hero { padding: 48px 0 32px; text-align: center; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.15; margin: 0 0 16px; letter-spacing: -.02em; }
+.hero p.lead { font-size: 1.15rem; color: var(--ink-2); max-width: 640px; margin: 0 auto 28px; }
+.example { display: inline-block; text-align: left; background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; font: .95rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 28px; }
+.buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn { display: inline-block; padding: 10px 20px; border-radius: 8px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+section { padding: 40px 0; }
+section h2 { font-size: 1.6rem; margin: 0 0 8px; letter-spacing: -.01em; }
+section p.sub { color: var(--ink-2); margin: 0 0 24px; max-width: 700px; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.card p { margin: 0; color: var(--ink-2); font-size: .95rem; }
+.steps { counter-reset: s; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.steps .card { position: relative; padding-top: 44px; }
+.steps .card::before { counter-increment: s; content: counter(s); position: absolute; top: 14px; left: 20px; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #fff; font-weight: 700; font-size: .85rem; display: grid; place-items: center; }
+figure { margin: 0; }
+figure img { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+figcaption { margin-top: 8px; font-size: .9rem; color: var(--ink-2); }
+.shots { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.shots figure.wide { grid-column: 1 / -1; }
+.mails { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: start; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; font: .88rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.note { border-left: 4px solid var(--brand); background: var(--card); border-radius: 0 10px 10px 0; padding: 14px 18px; color: var(--ink-2); }
+.note strong { color: var(--ink); }
+footer { padding: 32px 0 48px; color: var(--ink-2); font-size: .9rem; border-top: 1px solid var(--line); margin-top: 24px; }
+footer .links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
+@media (max-width: 560px) { header.top nav { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><img src="favicon.svg" alt="">glucava</a>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#screens">Screenshots</a>
+      <a href="#start">Quick start</a>
+      <a href="https://github.com/MrCodeEU/glucava">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Your glucose, on your Strava activities.</h1>
+    <p class="lead">After a run, Glucava adds your time in range, lowest, highest and average glucose, plus a sparkline, to the activity description. Self-hosted, open source, and your health data stays on your own server.</p>
+    <div class="example">🩸 TIR 92% | min 78 | max 164 | avg 112 mg/dL<br>▁▂▃▃▄▅▄▃▃▂▂▃</div>
+    <div class="buttons">
+      <a class="btn primary" href="#start">Get started</a>
+      <a class="btn" href="https://github.com/MrCodeEU/glucava">View on GitHub</a>
+    </div>
+  </div>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <p class="sub">One small service that runs next to your other self-hosted things.</p>
+    <div class="steps">
+      <div class="card"><h3>You finish an activity</h3><p>Glucava notices it by polling Strava, or immediately when your phone calls its trigger endpoint (Tasker, Apple Shortcuts).</p></div>
+      <div class="card"><h3>It fetches your glucose</h3><p>Readings come from Dexcom Share and are kept in your own database, so older activities can be processed later. Libre, Glooko and Nightscout exports can be imported.</p></div>
+      <div class="card"><h3>It writes one block</h3><p>Only its own 🩸 block is added or replaced. Before every write it checks that your own text stays byte for byte the same, and it keeps your original to restore.</p></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>Built to be left alone</h2>
+    <p class="sub">The interesting part of an automation is what happens when something breaks.</p>
+    <div class="grid">
+      <div class="card"><h3>Tells you when it fails</h3><p>ntfy, signed webhooks or email for a failed update, an expired Strava session or missing glucose data. A daily canary checks the edit page before a real run hits a Strava change.</p></div>
+      <div class="card"><h3>Optional summaries</h3><p>An email after each activity with a glucose chart, a weekly overview, a monthly health report as a heartbeat, and an alert if no readings arrive for hours.</p></div>
+      <div class="card"><h3>Private by design</h3><p>Single user. Credentials and Strava cookies are encrypted. No admin API exposed, strict CSP, hardened container example, nothing loaded from third parties.</p></div>
+      <div class="card"><h3>Scriptable</h3><p>Every setting is in the web UI and available from the CLI and the environment, so Ansible or cloud-init can set it up with no clicking.</p></div>
+      <div class="card"><h3>Your data, your rules</h3><p>Retention setting, CSV export, delete-all, backup and restore drill. Readings never leave your server except for the Strava description you asked for.</p></div>
+      <div class="card"><h3>Open source</h3><p>AGPL-3.0, one Go binary (PocketBase and a server-rendered UI). Adding a glucose source or importer is one small function.</p></div>
+    </div>
+  </section>
+
+  <section id="screens">
+    <h2>Screenshots</h2>
+    <p class="sub">These come from demo mode, so all data is made up. The UI follows your light or dark preference.</p>
+    <div class="shots">
+      <figure class="wide">
+        <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-dashboard-dark.png"><img src="img/ui-dashboard-light.png" alt="Dashboard with recent activities and time in range" loading="lazy"></picture>
+        <figcaption>Recent activities with time in range, lows and status.</figcaption>
+      </figure>
+      <figure>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-activity-dark.png"><img src="img/ui-activity-light.png" alt="One activity with glucose chart and the Strava block" loading="lazy"></picture>
+        <figcaption>One activity: the glucose curve, and exactly what is written to Strava.</figcaption>
+      </figure>
+      <figure>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="img/ui-events-dark.png"><img src="img/ui-events-light.png" alt="Notifications list" loading="lazy"></picture>
+        <figcaption>Everything glucava told you about, and whether it was delivered.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="mail">
+    <h2>Emails that are worth opening</h2>
+    <p class="sub">HTML with a plain-text fallback, an icon per kind, an inline chart drawn by glucava itself, and a link back to the right page.</p>
+    <div class="mails">
+      <figure><img src="img/mail-activity.png" alt="Activity summary email with a glucose chart" loading="lazy"><figcaption>Summary after an activity</figcaption></figure>
+      <figure><img src="img/mail-weekly.png" alt="Weekly summary email with a time in range bar chart" loading="lazy"><figcaption>Weekly summary</figcaption></figure>
+      <figure><img src="img/mail-alert.png" alt="Alert email for an expired Strava session" loading="lazy"><figcaption>An alert</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="start">
+    <h2>Quick start</h2>
+    <p class="sub">Docker, plus a TLS reverse proxy in front. Full guide, including scripted setup, in the README.</p>
+<pre>git clone https://github.com/MrCodeEU/glucava &amp;&amp; cd glucava
+docker build -t glucava .
+docker run -d --name glucava -p 127.0.0.1:8090:8090 -v glucava:/data \
+  -e GLUCAVA_ADMIN_EMAIL=you@example.com \
+  -e GLUCAVA_ADMIN_PASSWORD='long-random-password' \
+  -e GLUCAVA_SECRET_KEY="$(openssl rand -base64 32)" glucava</pre>
+    <p>Then sign in, add your Dexcom Share credentials and your Strava cookies, and run <code>glucava strava check</code>. Try it first without any account: <code>make mock</code> starts a demo with made-up data.</p>
+  </section>
+
+  <section id="limits">
+    <h2>Honest limits</h2>
+    <div class="note">
+      <p><strong>Not a medical device.</strong> Glucava copies numbers from your CGM into a Strava description for your own reference. It does not measure, diagnose, alarm or advise, and must never be used for treatment decisions or as a replacement for your CGM app's alarms.</p>
+      <p><strong>Strava has no free API.</strong> Glucava edits the description through a headless Chrome session with your own cookies. That may breach Strava's terms of service; the session is yours and the volume is low, but the risk is yours. Strava can also change its page, which is what the canary is for.</p>
+      <p><strong>Live source:</strong> Dexcom Share today. Libre, Glooko and Nightscout exports can be imported. Not affiliated with or endorsed by Strava, Dexcom, Abbott, Glooko or Nightscout.</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="links">
+      <a href="https://github.com/MrCodeEU/glucava">Source code</a>
+      <a href="https://github.com/MrCodeEU/glucava/blob/main/README.md">Documentation</a>
+      <a href="https://github.com/MrCodeEU/glucava/blob/main/SECURITY.md">Security</a>
+      <a href="https://github.com/MrCodeEU/glucava/blob/main/CONTRIBUTING.md">Contributing</a>
+      <a href="https://github.com/MrCodeEU/glucava/blob/main/LICENSE">AGPL-3.0</a>
+    </div>
+    Copyright © 2026 Michael Reinegger. Free software under the GNU Affero General Public License.
+  </footer>
+</div>
+</body>
+</html>
