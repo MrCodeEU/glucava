@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-26
+
+### Fixed
+- The container image now runs glucava under `tini`. Chrome leaves child processes behind after every Strava check; as PID 1 glucava never reaped them, so they piled up as zombies (about eight per check) until the container hit its process limit and every check failed with "chrome failed to start: Cannot fork". If you run the binary as PID 1 yourself, start the container with `--init`.
+
+### Added
+- A startup warning when glucava runs as PID 1 without an init, and a plain hint in the failed-check message when Chrome cannot start because the container is out of processes.
+
 ## [0.1.1] - 2026-09-26
 
 ### Added

@@ -815,6 +815,9 @@ func (w *Writer) withFreshBrowser(ctx context.Context, fn func(context.Context) 
 		if out := strings.TrimSpace(chromeOut.String()); out != "" {
 			err = fmt.Errorf("%w (chrome: %s)", err, out)
 		}
+		if strings.Contains(err.Error(), "Resource temporarily unavailable") || strings.Contains(err.Error(), "Cannot fork") {
+			err = fmt.Errorf("%w; the container is out of processes: leftover Chrome processes are probably not being reaped (run with an init, e.g. --init) or pids_limit is too low", err)
+		}
 		return fmt.Errorf("strava: start browser: %w", err)
 	}
 	return fn(bctx)
