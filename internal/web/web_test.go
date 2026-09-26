@@ -430,6 +430,11 @@ func TestTokenFlow(t *testing.T) {
 		t.Fatalf("no token in response: %s", body)
 	}
 	tok := body[i : i+47]
+	for _, want := range []string{"Authorization: Bearer " + tok, "/api/trigger", "curl -i -X POST", "Copy"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("token reveal is missing %q", want)
+		}
+	}
 	if ok, _ := e.srv.Tokens.Verify(tok); !ok {
 		t.Error("created token does not verify")
 	}

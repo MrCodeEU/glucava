@@ -623,11 +623,26 @@ func revokeButton(name string) g.Node {
 	return BtnSized("danger", "sm", "Revoke", post("/actions/tokens/revoke/"+url.PathEscape(name)))
 }
 
-// SecretReveal shows a new token once.
-func SecretReveal(name, token string) g.Node {
+// CopyRow shows a value with a button that copies it.
+func CopyRow(label, value string) g.Node {
+	return Div(Class("copyrow"),
+		Span(Class("muted"), g.Text(label)),
+		Code(g.Text(value)),
+		BtnSized("", "sm", "Copy", g.Attr("data-on:click",
+			fmt.Sprintf("navigator.clipboard.writeText('%s'); evt.currentTarget.textContent = 'Copied'", jsQuote(value)))),
+	)
+}
+
+// SecretReveal shows a new token once, with the values a phone app needs.
+func SecretReveal(name, token, endpoint string) g.Node {
+	header := "Bearer " + token
 	return Div(ID("token-reveal"), Div(append(comp("secretbox"),
 		P(Strong(g.Textf("Token “%s” created. Copy it now; it is not shown again.", name))),
-		Code(g.Text(token)),
+		CopyRow("Token", token),
+		CopyRow("URL (POST)", endpoint),
+		CopyRow("Header", "Authorization: "+header),
+		CopyRow("Test", fmt.Sprintf("curl -i -X POST -H 'Authorization: %s' %s", header, endpoint)),
+		P(Class("muted"), g.Text("A working call answers 202, and “Last used” in the list below changes.")),
 	)...))
 }
 
@@ -646,12 +661,18 @@ func TokensPage(pd PageData, list []tokens.Info, baseURL string, loc *time.Locat
 		),
 		TokenList(list, loc),
 		Card(H2(g.Text("How to call it")),
-			P(g.Text("Send a POST request with the token. The call only asks glucava to check Strava now; it carries no other data.")),
-			Pre(g.Textf("curl -X POST %s \\\n  -H \"Authorization: Bearer <token>\"", endpoint)),
+			P(g.Text("Send a POST request with the token. The call only asks glucava to check Strava now; it carries no other data. “Last used” in the list above shows whether your phone's call arrived.")),
+			Pre(g.Textf("curl -i -X POST %s \\\n  -H \"Authorization: Bearer <token>\"", endpoint)),
 			H2(g.Text("Android (Tasker)")),
-			P(g.Text("Create a profile with the event “Notification” for the Strava app, and let it run an HTTP Request action: method POST, the URL above, header Authorization: Bearer <token>. HTTP Shortcuts and MacroDroid work the same way.")),
+			Ol(
+				Li(g.Text("Task: Net → HTTP Request. Method POST, URL and header as above, empty body, timeout 30. Run it once by hand and check “Last used”.")),
+				Li(g.Text("Profile: Event → UI → Notification, owner application Strava, no filter yet. Link it to the task.")),
+				Li(g.Text("After Strava's next “activity saved” notification, look at Tasker's run log. If the profile also fires for kudos or comments, add a title or text filter with the wording you see there.")),
+				Li(g.Text("Tasker needs notification access and unrestricted battery use.")),
+			),
+			P(Class("muted"), g.Text("HTTP Shortcuts and MacroDroid work the same way: trigger on a Strava notification, then send the request.")),
 			H2(g.Text("iPhone (Shortcuts)")),
-			P(g.Text("Build a shortcut with the action “Get Contents of URL” (method POST, the header above) and start it from a Personal Automation. iOS cannot start automations from another app's notification, so use a trigger such as “Workout ends” or “Time of day”. This has not been tested yet.")),
+			P(g.Text("Personal automation → Workout → Ends (or App → Strava → Is Closed), set to Run Immediately. Actions: Wait 30 seconds, then Get Contents of URL with method POST and the header above. iOS cannot react to another app's notification. This has not been tested yet.")),
 			P(Class("muted"), g.Text("Without any trigger, polling still picks up new activities on the interval from Settings.")),
 		),
 	)

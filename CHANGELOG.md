@@ -4,6 +4,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Tokens page: a new token comes with copy buttons for the URL, the header and a ready `curl` test with the token filled in, and the phone setup steps are shorter and concrete (Tasker task, profile, notification filter; iOS automation).
+
 ## [0.1.2] - 2026-09-26
 
 ### Fixed
