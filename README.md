@@ -82,7 +82,7 @@ Put a TLS reverse proxy in front. Then:
 
 | Variable | Meaning |
 |---|---|
-| `GLUCAVA_ADMIN_EMAIL`, `GLUCAVA_ADMIN_PASSWORD` | first user, created on start |
+| `GLUCAVA_ADMIN_EMAIL`, `GLUCAVA_ADMIN_PASSWORD` | first user, created on start only while no user exists; change it later under Settings → Account or with `glucava user` |
 | `GLUCAVA_DEXCOM_USERNAME`, `GLUCAVA_DEXCOM_PASSWORD`, `GLUCAVA_DEXCOM_REGION` | Dexcom Share login, stored on first start if no credential is stored yet (alternative to `make dexcom`); safe to remove afterwards |
 | `GLUCAVA_RETENTION_DAYS` | readings/events retention in days (0 = forever); overrides the UI setting on every start, not just the first |
 | `GLUCAVA_PUBLIC_URL` | address of the web UI, e.g. `https://glucava.example.com`; used for links in emails. Seeds the **Public URL** setting while none is saved |
