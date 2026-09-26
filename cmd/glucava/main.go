@@ -69,6 +69,9 @@ func main() {
 		if err != nil {
 			return err
 		}
+		if os.Getpid() == 1 {
+			log.Printf("warning: glucava is PID 1 without an init, so Chrome's leftover processes are never reaped and will fill the container's pids limit; start the container with --init (compose: init: true) or use the official image, which has one")
+		}
 		if err := os.Chmod(app.DataDir(), 0o700); err != nil {
 			log.Printf("chmod data dir: %v", err)
 		}

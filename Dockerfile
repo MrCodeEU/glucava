@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.buildID=${VERSION}"
 
 FROM debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
 RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium ca-certificates fonts-noto-color-emoji \
+ && apt-get install -y --no-install-recommends chromium ca-certificates fonts-noto-color-emoji tini \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 10001 glucava \
  && mkdir /data && chown glucava /data
@@ -25,5 +25,7 @@ VOLUME /data
 EXPOSE 8090
 # The slim image has no curl, so the binary checks itself.
 HEALTHCHECK --interval=30s --timeout=6s --start-period=30s --retries=3 CMD ["glucava", "healthcheck"]
-ENTRYPOINT ["glucava"]
+# tini reaps the processes Chrome leaves behind; as PID 1 glucava would not, and
+# they pile up as zombies until the container hits its pids limit.
+ENTRYPOINT ["tini", "--", "glucava"]
 CMD ["serve", "--dir", "/data", "--http", "0.0.0.0:8090"]
