@@ -20,17 +20,39 @@ type loginBucket struct {
 	count int
 }
 
-// user returns the signed-in user's email from the auth cookie.
-func (s *Server) user(r *http.Request) (string, bool) {
+// userRecord returns the signed-in user's record from the auth cookie.
+func (s *Server) userRecord(r *http.Request) (*core.Record, bool) {
 	c, err := r.Cookie(authCookie)
 	if err != nil || c.Value == "" {
-		return "", false
+		return nil, false
 	}
 	rec, err := s.App.FindAuthRecordByToken(c.Value, core.TokenTypeAuth)
 	if err != nil || rec.Collection().Name != "users" {
+		return nil, false
+	}
+	return rec, true
+}
+
+// user returns the signed-in user's email from the auth cookie.
+func (s *Server) user(r *http.Request) (string, bool) {
+	rec, ok := s.userRecord(r)
+	if !ok {
 		return "", false
 	}
 	return rec.Email(), true
+}
+
+// startSession sets a fresh auth cookie for rec.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, rec *core.Record) error {
+	token, err := rec.NewAuthToken()
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: authCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Secure: s.Proxies.Secure(r), MaxAge: migrations.SessionSeconds,
+	})
+	return nil
 }
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -60,15 +82,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.html(w, http.StatusUnauthorized, LoginPage(s.Build, "Wrong email or password.", email))
 		return
 	}
-	token, err := rec.NewAuthToken()
-	if err != nil {
+	if err := s.startSession(w, r, rec); err != nil {
 		http.Error(w, "cannot create session", http.StatusInternalServerError)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: authCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
-		Secure: s.Proxies.Secure(r), MaxAge: migrations.SessionSeconds,
-	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

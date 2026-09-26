@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net/mail"
 	"os"
 	"strings"
 
@@ -16,36 +17,113 @@ import (
 
 const minPasswordLen = 12
 
-// userCommand adds "glucava user set-password <email>". The password comes from
-// stdin so it stays out of the process list and shell history. Changing it also
-// invalidates every existing login.
+// theUser finds the account to change. With no email given and exactly one
+// user, that user is meant: glucava has a single web UI account, so a typo in
+// the seeded email should not lock you out of fixing it.
+func theUser(app core.App, email string) (*core.Record, error) {
+	if email != "" {
+		rec, err := app.FindAuthRecordByEmail("users", email)
+		if err != nil {
+			return nil, errors.New("no user with that email (run \"glucava user show\" to see the account)")
+		}
+		return rec, nil
+	}
+	all, err := app.FindAllRecords("users")
+	if err != nil {
+		return nil, err
+	}
+	switch len(all) {
+	case 0:
+		return nil, errors.New("there is no user yet")
+	case 1:
+		return all[0], nil
+	}
+	return nil, errors.New("more than one user exists; give the email")
+}
+
+func readPassword(cmd *cobra.Command) (string, error) {
+	pass, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	pass = strings.TrimRight(pass, "\r\n")
+	if pass == "" && err != nil {
+		return "", fmt.Errorf("read password from stdin: %w", err)
+	}
+	if len(pass) < minPasswordLen {
+		return "", fmt.Errorf("password must be at least %d characters", minPasswordLen)
+	}
+	return pass, nil
+}
+
+// userCommand adds "glucava user show|set-email|set-password". The password
+// comes from stdin so it stays out of the process list and shell history.
+// Changing the email or password also invalidates every existing login.
 func userCommand(app core.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "user", Short: "Manage the web UI account",
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return app.RunAppMigrations() },
 	}
 	cmd.AddCommand(&cobra.Command{
-		Use: "set-password <email>", Short: "Set a new password (read from stdin) and sign out all sessions",
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			pass, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-			pass = strings.TrimRight(pass, "\r\n")
-			if pass == "" && err != nil {
-				return fmt.Errorf("read password from stdin: %w", err)
-			}
-			if len(pass) < minPasswordLen {
-				return fmt.Errorf("password must be at least %d characters", minPasswordLen)
-			}
-			rec, err := app.FindAuthRecordByEmail("users", args[0])
+		Use: "show", Short: "Print the email of the web UI account",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			all, err := app.FindAllRecords("users")
 			if err != nil {
-				return errors.New("no user with that email")
+				return err
+			}
+			for _, rec := range all {
+				fmt.Fprintln(cmd.OutOrStdout(), rec.Email())
+			}
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use: "set-email <new email> [current email]", Short: "Change the account email and sign out all sessions",
+		Long: "The current email may be left out while there is exactly one user.",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, err := mail.ParseAddress(args[0])
+			if err != nil || a.Address != args[0] {
+				return errors.New("that is not a valid email address")
+			}
+			cur := ""
+			if len(args) == 2 {
+				cur = args[1]
+			}
+			rec, err := theUser(app, cur)
+			if err != nil {
+				return err
+			}
+			rec.SetEmail(args[0])
+			rec.RefreshTokenKey()
+			if err := app.Save(rec); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "email changed; all sessions signed out")
+			return nil
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use: "set-password [email]", Short: "Set a new password (read from stdin) and sign out all sessions",
+		Long: "The email may be left out while there is exactly one user.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pass, err := readPassword(cmd)
+			if err != nil {
+				return err
+			}
+			email := ""
+			if len(args) == 1 {
+				email = args[0]
+			}
+			rec, err := theUser(app, email)
+			if err != nil {
+				return err
 			}
 			rec.SetPassword(pass)
 			rec.RefreshTokenKey() // old cookies stop working
 			if err := app.Save(rec); err != nil {
 				return err
 			}
-			fmt.Println("password changed; all sessions signed out")
+			fmt.Fprintln(cmd.OutOrStdout(), "password changed; all sessions signed out")
 			return nil
 		},
 	})

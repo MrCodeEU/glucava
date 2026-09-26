@@ -127,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/process", s.actionProcessActivity)
 	page("POST /actions/restore/{id}", s.actionRestore)
 	page("POST /actions/settings", s.actionSettings)
+	page("POST /actions/account", s.actionAccount)
 	page("POST /actions/notify/test", s.actionNotifyTest)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
 	page("POST /actions/strava/test", s.actionStravaTest)

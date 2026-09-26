@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-26
+
+### Added
+- Settings → Account: change the sign-in email and password from the web UI. It asks for the current password (a wrong one counts as a failed login), signs out every other browser and keeps you signed in.
+- `glucava user show` and `glucava user set-email`; `glucava user set-password` no longer needs the email while there is exactly one user, so a mistyped seed email can be fixed.
+
+### Fixed
+- The cookie that ends a session is now `Secure` behind an HTTPS proxy, like the one that starts it (CodeQL).
+- The Dexcom source cache compares credentials directly instead of hashing them (CodeQL).
+
 ## [0.1.0] - 2026-09-25
 
 First public release.
