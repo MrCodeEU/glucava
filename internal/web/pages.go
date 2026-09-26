@@ -381,10 +381,16 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 
 // SettingsData feeds the settings page.
 type SettingsData struct {
+	AccountEmail                                                       string
 	Cfg                                                                store.Config
 	HasDexcomPassword, HasNtfyToken, HasWebhookSecret, HasSMTPPassword bool
 	ImportFormats                                                      []string // importers.Names(); empty hides the import card
 	ImportOK, ImportErr                                                string   // one-shot flash after /actions/glucose/import redirects back
+}
+
+// AccountEmail shows the signed-in address; it is patched after a change.
+func AccountEmail(email string) g.Node {
+	return P(ID("account-email"), g.Text("Signed in as "), Strong(g.Text(email)))
 }
 
 // secretHelp describes whether a secret field has a stored value.
@@ -559,6 +565,16 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Script(Src("/static/glucose-import.js")),
 			)),
+			Card(g.Attr("data-signals", `{"accountCurrent":"","accountEmail":"","accountNew":"","accountConfirm":""}`),
+				H2(g.Text("Account")),
+				AccountEmail(d.AccountEmail),
+				P(Class("muted"), g.Text("Change the email or the password you sign in to this page with. Both need your current password, and every other browser is signed out. Leave a field empty to keep it.")),
+				Field("accountCurrent", "Current password", "", Input(ID("accountCurrent"), Type("password"), AutoComplete("current-password"), bind("accountCurrent"))),
+				Field("accountEmail", "New email", "", Input(ID("accountEmail"), Type("email"), AutoComplete("off"), bind("accountEmail"))),
+				Field("accountNew", "New password", "At least 12 characters.", Input(ID("accountNew"), Type("password"), AutoComplete("new-password"), bind("accountNew"))),
+				Field("accountConfirm", "Repeat the new password", "", Input(ID("accountConfirm"), Type("password"), AutoComplete("new-password"), bind("accountConfirm"))),
+				Btn("", "Change account", post("/actions/account")),
+			),
 			Card(H2(g.Text("Your data")),
 				P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),
 				Field("retentionDays", "Keep readings and events for (days)", "", Input(ID("retentionDays"), Type("number"), Min("0"), Max("3650"), bind("retentionDays"))),

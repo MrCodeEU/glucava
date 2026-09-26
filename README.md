@@ -155,7 +155,7 @@ glucava secrets status --dev=false --dir /data     # set/unset per secret, never
 
 ## Maintenance
 
-- `glucava user set-password <email>` reads the new password (12+ characters) from stdin and signs out every session. Logout also invalidates the session server-side. Logins last 3 days.
+- Change the sign-in email or password under **Settings → Account** (needs the current password). From the command line: `glucava user show` prints the account email, `glucava user set-email <new>` changes it, and `glucava user set-password` reads the new password (12+ characters) from stdin. The email may be left out while there is exactly one user. All of these sign out every other session. Logout also invalidates the session server-side. Logins last 3 days.
 - `glucava secrets rotate-key` re-encrypts stored secrets with a fresh key. Stop the server and back up the data dir first.
 - Settings → **Your data**: retention (default 365 days for readings and events; 0 keeps them), CSV export of readings and activities, and delete-all. `glucava data purge --yes` does the same from the shell. Activities are kept by retention because they log what was written to Strava.
 - Only one user account can exist.

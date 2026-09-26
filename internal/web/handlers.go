@@ -164,8 +164,9 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
 	q := r.URL.Query()
+	email, _ := s.user(r)
 	s.html(w, http.StatusOK, SettingsPage(s.page(r, "Settings", "settings"), SettingsData{
-		Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
+		AccountEmail: email, Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
 	}))
