@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -99,7 +98,7 @@ type dexcomSource struct {
 
 	mu  sync.Mutex
 	cur *glucose.DexcomShare
-	key [32]byte
+	key [3]string // base URL, user, password the current source was built with
 }
 
 func (d *dexcomSource) Samples(ctx context.Context, from, to time.Time) ([]stats.Sample, error) {
@@ -130,7 +129,7 @@ func (d *dexcomSource) client() (*glucose.DexcomShare, error) {
 		base = u
 	}
 
-	key := sha256.Sum256([]byte(base + "\x00" + user + "\x00" + pass))
+	key := [3]string{base, user, pass}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.cur == nil || d.key != key {
