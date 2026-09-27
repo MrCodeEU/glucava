@@ -24,6 +24,15 @@ const Prefix = "🩸 "
 // for gofmt to silently rewrite it back into.
 const sentinel = "\xe2\x80\x8b\xe2\x81\xa0"
 
+// endSentinel closes a Glucava block: two different invisible code points
+// (U+2062 INVISIBLE TIMES, U+2064 INVISIBLE PLUS), appended with no newline
+// right after the block's own last visible character. removeBlocks matches
+// on it to find exactly where a block ends, rather than guessing from shape
+// (a line that merely "looks like" a sparkline) — closing the one real gap
+// in the shape heuristic: a coincidence in the user's own next line. Also
+// written as explicit UTF-8 bytes, for the same reason as sentinel above.
+const endSentinel = "\xe2\x81\xa2\xe2\x81\xa4"
+
 // blockMarker is what Merge and Strip match to recognise a Glucava block
 // written by this version.
 const blockMarker = sentinel + Prefix + "TIR "
@@ -69,10 +78,10 @@ func Block(sum stats.Summary, samples []stats.Sample, opt Options) string {
 		sentinel, Prefix, sum.TIR, num(sum.Min, opt.Unit), num(sum.Max, opt.Unit), num(sum.Avg, opt.Unit), opt.Unit)
 	if w > 0 {
 		if sp := stats.Sparkline(samples, w); sp != "" {
-			return line + "\n" + sp
+			return line + "\n" + sp + endSentinel
 		}
 	}
-	return line
+	return line + endSentinel
 }
 
 // Value formats a glucose value given in mg/dL for display in unit u.
@@ -86,14 +95,20 @@ func Value(v float64, u Unit) string {
 func num(v float64, u Unit) string { return Value(v, u) }
 
 // removeBlocks returns lines with every Glucava block removed, and how many
-// were found. A block is a line starting with blockMarker, plus the line
-// right after it if that line is only sparkline characters (Block's own
-// shape: one line, or that line plus a sparkline). Bounding it this way,
-// rather than to the next blank line, is deliberate: Strava's own editor has
-// been observed collapsing blank lines between saves, and looping here means
-// several duplicate blocks left over from that (already-written, before this
-// fix) are all cleaned up the next time this activity is processed, not just
-// the first one found.
+// were found. A block is a line starting with blockMarker (or
+// legacyBlockMarker), bounded either by endSentinel — on that same line, or
+// the line right after it — or, only when neither line carries endSentinel
+// at all (a block written before it existed), by the old shape-based guess:
+// the next line counts as part of the block if it looks like a sparkline.
+// The lookahead never goes past the second line, matching the two shapes
+// Block() actually produces (one line, or that line plus a sparkline), so a
+// missing endSentinel can never make this eat unrelated text further down.
+//
+// A boundary that does not depend on the next blank line is deliberate:
+// Strava's own editor has been observed collapsing blank lines between
+// saves, and looping here means several duplicate blocks left over from that
+// (already-written, before that fix) are all cleaned up the next time this
+// activity is processed, not just the first one found.
 func removeBlocks(lines []string) ([]string, int) {
 	out := make([]string, 0, len(lines))
 	found := 0
@@ -103,8 +118,13 @@ func removeBlocks(lines []string) ([]string, int) {
 			continue
 		}
 		found++
-		if i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]) {
+		switch {
+		case strings.Contains(lines[i], endSentinel):
+			// one line; already bounded.
+		case i+1 < len(lines) && strings.Contains(lines[i+1], endSentinel):
 			i++
+		case i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]):
+			i++ // legacy block, no endSentinel anywhere: fall back to the old guess
 		}
 	}
 	return out, found

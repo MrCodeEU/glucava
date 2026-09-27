@@ -21,7 +21,7 @@ func fixture(vals ...float64) ([]stats.Sample, stats.Summary) {
 func TestBlockMgdl(t *testing.T) {
 	s, sum := fixture(100, 120, 140, 160)
 	got := Block(sum, s, Options{SparkWidth: 4})
-	want := sentinel + "🩸 TIR 100% | min 100 | max 160 | avg 130 mg/dL\n▁▃▆█"
+	want := sentinel + "🩸 TIR 100% | min 100 | max 160 | avg 130 mg/dL\n▁▃▆█" + endSentinel
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -30,7 +30,7 @@ func TestBlockMgdl(t *testing.T) {
 func TestBlockMmol(t *testing.T) {
 	s, sum := fixture(90.08, 180)
 	got := Block(sum, s, Options{Unit: MmolL, SparkWidth: -1})
-	want := sentinel + "🩸 TIR 100% | min 5.0 | max 10.0 | avg 7.5 mmol/L"
+	want := sentinel + "🩸 TIR 100% | min 5.0 | max 10.0 | avg 7.5 mmol/L" + endSentinel
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -222,5 +222,46 @@ func TestSentinelIsInvisibleAndUnique(t *testing.T) {
 	}
 	if !strings.HasPrefix(strings.TrimPrefix(block, sentinel), Prefix) {
 		t.Errorf("the visible text right after the sentinel changed: %q", block)
+	}
+}
+
+// TestMergeDoesNotEatUserLineThatLooksLikeASparkline is the concrete gap
+// endSentinel closes: without it, a block's end was only ever guessed from
+// shape, so a coincidence in the user's own very next line (one made only of
+// the same block-drawing characters a real sparkline uses) would be
+// mistaken for part of the block and eaten by Strip/Merge, even though
+// Block() never actually attached it.
+func TestMergeDoesNotEatUserLineThatLooksLikeASparkline(t *testing.T) {
+	s, sum := fixture(100, 120, 140, 160)
+	block := Block(sum, s, Options{SparkWidth: -1}) // no real sparkline from Block itself
+	existing := block + "\n▁▂▃ my own progress bar, not a sparkline"
+
+	stripped := Strip(existing)
+	if stripped != "▁▂▃ my own progress bar, not a sparkline" {
+		t.Fatalf("the user's own line was eaten: %q", stripped)
+	}
+
+	newBlock := Block(sum, s, Options{SparkWidth: -1})
+	merged := Merge(existing, newBlock)
+	if !strings.Contains(merged, "my own progress bar") {
+		t.Errorf("the user's own line was lost on merge: %q", merged)
+	}
+	if strings.Count(merged, blockMarker) != 1 {
+		t.Errorf("expected exactly one block: %q", merged)
+	}
+}
+
+// TestRemoveBlocksNeverScansPastTheSecondLineWithoutAnEndSentinel guards the
+// safety property endSentinel relies on: a block that somehow lost its end
+// marker (case not currently reachable through Block(), but the bound must
+// hold regardless) must never eat more than one line past its start, so a
+// missing end sentinel can only under-bound a block, never run away through
+// the rest of the user's text.
+func TestRemoveBlocksNeverScansPastTheSecondLineWithoutAnEndSentinel(t *testing.T) {
+	broken := blockMarker + "1% | min 1 | max 1 | avg 1 mg/dL" // no endSentinel anywhere
+	existing := broken + "\nsome text\nmore text\neven more"
+	got := Strip(existing)
+	if got != "some text\nmore text\neven more" {
+		t.Errorf("scanned past the first line: %q", got)
 	}
 }

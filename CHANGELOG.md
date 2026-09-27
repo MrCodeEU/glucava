@@ -13,7 +13,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ### Fixed
 - An activity interrupted mid-run by a restart (host reboot, crash) used to sit forever: the poller skips any activity it already has a record for, and nothing ever finished that record. Startup now resets and re-queues anything left at "processing". Root cause of a real incident: a scheduled host reboot interrupted a Strava write, and the poller silently never saw that activity again.
 - The poller now always logs its outcome, including "nothing new", instead of only when it queued something, so a stuck poll is visible in the logs.
-- The block written to a Strava description now carries two invisible Unicode code points as a fingerprint, so recognising it no longer depends on the 🩸 emoji or the wording "TIR " alone — either of which another app, or a coincidence, could share. A block written by 0.1.2 or earlier is still recognised by its old text and gets the fingerprint on its next reprocess, so no existing activity needs any action.
+- The block written to a Strava description now carries two invisible Unicode code points as a fingerprint at its start, and two more at its end, so finding it no longer depends on the 🩸 emoji or the wording "TIR " alone (either of which another app, or a coincidence, could share) or on guessing its end from shape (a line that merely looks like a sparkline). A block written by 0.1.2 or earlier is still recognised by its old text and bound, and gets the fingerprint on its next reprocess, so no existing activity needs any action.
 
 ## [0.1.2] - 2026-09-26
 
