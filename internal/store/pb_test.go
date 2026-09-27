@@ -41,6 +41,9 @@ func TestSettingsDefaultsFromMigration(t *testing.T) {
 	if set.Unit != render.MgDL || set.Range != stats.DefaultRange || set.Post != 30*time.Minute || set.Pre != 0 || set.PollInterval != 10*time.Minute {
 		t.Errorf("settings = %+v", set)
 	}
+	if set.PostBuffer != 5*time.Minute {
+		t.Errorf("PostBuffer default = %v, want 5m (migration 013)", set.PostBuffer)
+	}
 }
 
 func TestActivityRoundTripAndUpsert(t *testing.T) {
@@ -426,5 +429,82 @@ func TestActivitiesCSVHasHeartRateColumns(t *testing.T) {
 	out := b.String()
 	if !strings.Contains(out, "processed_utc,hr_avg,hr_max,hr_min") || !strings.Contains(out, ",140,160,120") {
 		t.Errorf("csv = %s", out)
+	}
+}
+
+func TestRecoverStuckResetsProcessingAndReturnsThem(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	for _, seed := range []jobs.Activity{
+		{StravaID: "p1", Start: t0, Duration: time.Hour, Status: jobs.StatusProcessing, Error: "attempt 1 failed"},
+		{StravaID: "d1", Start: t0, Duration: time.Hour, Status: jobs.StatusDone},
+		{StravaID: "f1", Start: t0, Duration: time.Hour, Status: jobs.StatusFailed},
+	} {
+		seed := seed
+		if err := s.SaveActivity(ctx, &seed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stuck, err := s.RecoverStuck(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stuck) != 1 || stuck[0].StravaID != "p1" || stuck[0].Status != jobs.StatusPending {
+		t.Fatalf("stuck = %+v", stuck)
+	}
+	got, _ := s.Activity(ctx, "p1")
+	if got.Status != jobs.StatusPending || got.Error != "" {
+		t.Errorf("not persisted: %+v", got)
+	}
+	for _, id := range []string{"d1", "f1"} {
+		if got, _ := s.Activity(ctx, id); got.Status == jobs.StatusPending {
+			t.Errorf("%s should not have been touched", id)
+		}
+	}
+	// idempotent: nothing left stuck on a second call
+	if stuck2, err := s.RecoverStuck(ctx); err != nil || len(stuck2) != 0 {
+		t.Errorf("second call = %+v, %v", stuck2, err)
+	}
+}
+
+func TestDueForBufferFiltersDoneAndUnbuffered(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	for _, seed := range []jobs.Activity{
+		{StravaID: "ready", Start: t0, Duration: time.Hour, Status: jobs.StatusDone},
+		{StravaID: "buffered", Start: t0, Duration: time.Hour, Status: jobs.StatusDone, BufferDone: true},
+		{StravaID: "pending", Start: t0, Duration: time.Hour, Status: jobs.StatusPending},
+		{StravaID: "old", Start: t0.Add(-48 * time.Hour), Duration: time.Hour, Status: jobs.StatusDone},
+	} {
+		seed := seed
+		if err := s.SaveActivity(ctx, &seed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	due, err := s.DueForBuffer(ctx, t0.Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 || due[0].StravaID != "ready" {
+		t.Fatalf("due = %+v", due)
+	}
+}
+
+func TestBufferDoneRoundTripsAndNeverClears(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	a := &jobs.Activity{StravaID: "b1", Start: t0, Duration: time.Hour, Status: jobs.StatusDone, BufferDone: true}
+	if err := s.SaveActivity(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Activity(ctx, "b1"); !got.BufferDone {
+		t.Fatalf("BufferDone not persisted: %+v", got)
+	}
+	again := &jobs.Activity{StravaID: "b1", Start: t0, Duration: time.Hour, Status: jobs.StatusDone}
+	if err := s.SaveActivity(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Activity(ctx, "b1"); !got.BufferDone {
+		t.Errorf("BufferDone was cleared by a save that did not set it: %+v", got)
 	}
 }

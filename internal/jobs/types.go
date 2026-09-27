@@ -71,6 +71,10 @@ type Activity struct {
 
 	// HeartRate is the activity's heart rate, thinned, once fetched. Never cleared.
 	HeartRate []chartimg.HRPoint
+
+	// BufferDone marks that the delayed automatic reprocess (PostBuffer) has
+	// run for this activity, so it only happens once.
+	BufferDone bool
 }
 
 // End returns the activity end time.
@@ -89,6 +93,7 @@ type Settings struct {
 	ChartHR      bool          // draw the activity's heart rate on the chart
 	ChartPre     time.Duration // glucose lead-in shown on the chart, on top of Pre
 	HRRead       bool          // read heart rate from Strava
+	PostBuffer   time.Duration // delay after Post before one automatic reprocess; 0 disables it
 }
 
 // Event is an entry for the notification outbox.

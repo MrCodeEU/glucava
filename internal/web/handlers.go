@@ -498,6 +498,7 @@ type settingsSignals struct {
 	ChartHR        bool    `json:"chartHR"`
 	ChartPre       int     `json:"chartPre"`
 	HRRead         bool    `json:"hrRead"`
+	PostBuffer     int     `json:"postBuffer"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -512,7 +513,7 @@ func (v settingsSignals) config() store.Config {
 		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
 		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
-		ChartPreMin: v.ChartPre, HRRead: v.HRRead,
+		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer,
 	}
 }
 
@@ -550,6 +551,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
 	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
+	cfg.PostBufferMin = v.PostBuffer
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

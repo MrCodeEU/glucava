@@ -8,17 +8,45 @@ import (
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
-// Prefix starts the first line of the block, shown to the reader.
+// Prefix starts the visible first line of the block, shown to the reader.
 const Prefix = "🩸 "
 
-// blockMarker is what Merge and Strip actually match on to recognise a
-// previous Glucava block. It is deliberately more specific than Prefix: the
-// emoji alone collides with any other app that also starts a line with a
-// blood drop (observed in the wild: another integration's own summary starts "🩸 Avg :
-// ..."), which made Strip and Merge mistake someone else's text for ours and
-// either eat or leave duplicates of it. TIR is the fixed word Block() always
-// writes right after Prefix, so this string only ever matches our own line.
-const blockMarker = Prefix + "TIR "
+// sentinel is an invisible fingerprint (zero width space + word joiner)
+// Block() puts at the very start of its line, before Prefix. It renders as
+// nothing, so it changes nothing the reader sees, but it does not depend on
+// wording or emoji another app could plausibly also use — unlike the emoji
+// alone, or even "🩸 TIR ", both of which are just text a copycat or a
+// coincidence could reproduce. Two invisible code points together, in this
+// exact order, at the exact start of a line, are not something any other app
+// is going to emit by accident.
+// Written as explicit UTF-8 bytes (U+200B, then U+2060), not \u escapes or
+// the literal characters, so the source carries no raw invisible code point
+// for gofmt to silently rewrite it back into.
+const sentinel = "\xe2\x80\x8b\xe2\x81\xa0"
+
+// endSentinel closes a Glucava block: two different invisible code points
+// (U+2062 INVISIBLE TIMES, U+2064 INVISIBLE PLUS), appended with no newline
+// right after the block's own last visible character. removeBlocks matches
+// on it to find exactly where a block ends, rather than guessing from shape
+// (a line that merely "looks like" a sparkline) — closing the one real gap
+// in the shape heuristic: a coincidence in the user's own next line. Also
+// written as explicit UTF-8 bytes, for the same reason as sentinel above.
+const endSentinel = "\xe2\x81\xa2\xe2\x81\xa4"
+
+// blockMarker is what Merge and Strip match to recognise a Glucava block
+// written by this version.
+const blockMarker = sentinel + Prefix + "TIR "
+
+// legacyBlockMarker matches a block written before the sentinel existed
+// (0.1.2 and earlier: text only, no invisible fingerprint). Matching it too
+// means an activity processed by an older version is still recognised and
+// upgraded to the new marker the next time it is reprocessed, rather than
+// getting a second block appended beside the one already on Strava.
+const legacyBlockMarker = Prefix + "TIR "
+
+func hasBlockPrefix(l string) bool {
+	return strings.HasPrefix(l, blockMarker) || strings.HasPrefix(l, legacyBlockMarker)
+}
 
 // Unit is the glucose display unit.
 type Unit string
@@ -46,14 +74,14 @@ func Block(sum stats.Summary, samples []stats.Sample, opt Options) string {
 		w = sparkW
 	}
 
-	line := fmt.Sprintf("%sTIR %.0f%% | min %s | max %s | avg %s %s",
-		Prefix, sum.TIR, num(sum.Min, opt.Unit), num(sum.Max, opt.Unit), num(sum.Avg, opt.Unit), opt.Unit)
+	line := fmt.Sprintf("%s%sTIR %.0f%% | min %s | max %s | avg %s %s",
+		sentinel, Prefix, sum.TIR, num(sum.Min, opt.Unit), num(sum.Max, opt.Unit), num(sum.Avg, opt.Unit), opt.Unit)
 	if w > 0 {
 		if sp := stats.Sparkline(samples, w); sp != "" {
-			return line + "\n" + sp
+			return line + "\n" + sp + endSentinel
 		}
 	}
-	return line
+	return line + endSentinel
 }
 
 // Value formats a glucose value given in mg/dL for display in unit u.
@@ -67,25 +95,36 @@ func Value(v float64, u Unit) string {
 func num(v float64, u Unit) string { return Value(v, u) }
 
 // removeBlocks returns lines with every Glucava block removed, and how many
-// were found. A block is a line starting with blockMarker, plus the line
-// right after it if that line is only sparkline characters (Block's own
-// shape: one line, or that line plus a sparkline). Bounding it this way,
-// rather than to the next blank line, is deliberate: Strava's own editor has
-// been observed collapsing blank lines between saves, and looping here means
-// several duplicate blocks left over from that (already-written, before this
-// fix) are all cleaned up the next time this activity is processed, not just
-// the first one found.
+// were found. A block is a line starting with blockMarker (or
+// legacyBlockMarker), bounded either by endSentinel — on that same line, or
+// the line right after it — or, only when neither line carries endSentinel
+// at all (a block written before it existed), by the old shape-based guess:
+// the next line counts as part of the block if it looks like a sparkline.
+// The lookahead never goes past the second line, matching the two shapes
+// Block() actually produces (one line, or that line plus a sparkline), so a
+// missing endSentinel can never make this eat unrelated text further down.
+//
+// A boundary that does not depend on the next blank line is deliberate:
+// Strava's own editor has been observed collapsing blank lines between
+// saves, and looping here means several duplicate blocks left over from that
+// (already-written, before that fix) are all cleaned up the next time this
+// activity is processed, not just the first one found.
 func removeBlocks(lines []string) ([]string, int) {
 	out := make([]string, 0, len(lines))
 	found := 0
 	for i := 0; i < len(lines); i++ {
-		if !strings.HasPrefix(lines[i], blockMarker) {
+		if !hasBlockPrefix(lines[i]) {
 			out = append(out, lines[i])
 			continue
 		}
 		found++
-		if i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]) {
+		switch {
+		case strings.Contains(lines[i], endSentinel):
+			// one line; already bounded.
+		case i+1 < len(lines) && strings.Contains(lines[i+1], endSentinel):
 			i++
+		case i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]):
+			i++ // legacy block, no endSentinel anywhere: fall back to the old guess
 		}
 	}
 	return out, found
@@ -119,7 +158,7 @@ func Merge(existing, block string) string {
 
 	start := -1
 	for i, l := range lines {
-		if strings.HasPrefix(l, blockMarker) {
+		if hasBlockPrefix(l) {
 			start = i
 			break
 		}

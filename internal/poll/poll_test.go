@@ -175,3 +175,68 @@ func TestRunPollsOnSignalAndStops(t *testing.T) {
 		t.Fatal("Run did not stop")
 	}
 }
+
+type fakeBufferStore struct {
+	fakeStore
+	postBuffer time.Duration
+}
+
+func (s *fakeBufferStore) Settings(context.Context) (jobs.Settings, error) {
+	return jobs.Settings{Unit: render.MgDL, Range: stats.DefaultRange, Post: 30 * time.Minute, PostBuffer: s.postBuffer}, nil
+}
+
+type fakeBufferSource struct{ due []jobs.Activity }
+
+func (b *fakeBufferSource) DueForBuffer(context.Context, time.Time, int) ([]jobs.Activity, error) {
+	return b.due, nil
+}
+
+func TestBufferReprocessesOnceWhenDue(t *testing.T) {
+	s := &fakeBufferStore{fakeStore: fakeStore{known: map[string]jobs.Activity{}}, postBuffer: 5 * time.Minute}
+	b := &fakeBufferSource{due: []jobs.Activity{
+		act("due", 40*time.Minute),     // end+post(30)+buffer(5) = 35 min ago: due
+		act("not-yet", 32*time.Minute), // end+post+buffer = 27 min ago: not due yet
+	}}
+	q := &fakeQueue{}
+	p := &Poller{Lister: &fakeLister{}, Queue: q, Store: s, Buffer: b, Now: func() time.Time { return now }}
+
+	if _, err := p.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.got) != 1 || q.got[0].Activity.StravaID != "due" {
+		t.Fatalf("got %+v", q.got)
+	}
+	if !q.got[0].Force {
+		t.Error("a delayed reprocess must force past the existing done record")
+	}
+	if !q.got[0].Activity.BufferDone {
+		t.Error("BufferDone must be set before enqueue, so it is only ever queued once")
+	}
+}
+
+func TestBufferDisabledWhenZero(t *testing.T) {
+	s := &fakeBufferStore{fakeStore: fakeStore{known: map[string]jobs.Activity{}}, postBuffer: 0}
+	b := &fakeBufferSource{due: []jobs.Activity{act("due", 2*time.Hour)}}
+	q := &fakeQueue{}
+	p := &Poller{Lister: &fakeLister{}, Queue: q, Store: s, Buffer: b, Now: func() time.Time { return now }}
+
+	if _, err := p.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.got) != 0 {
+		t.Errorf("PostBuffer=0 must disable the pass: %+v", q.got)
+	}
+}
+
+func TestBufferNilSourceIsSkipped(t *testing.T) {
+	s := &fakeBufferStore{fakeStore: fakeStore{known: map[string]jobs.Activity{}}, postBuffer: 5 * time.Minute}
+	q := &fakeQueue{}
+	p := &Poller{Lister: &fakeLister{}, Queue: q, Store: s, Now: func() time.Time { return now }} // Buffer left nil
+
+	if _, err := p.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.got) != 0 {
+		t.Errorf("nil Buffer must be a no-op: %+v", q.got)
+	}
+}

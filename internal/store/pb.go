@@ -60,6 +60,7 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	out.ChartPre = time.Duration(r.GetInt("chart_pre_minutes")) * time.Minute
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
 	out.Post = time.Duration(r.GetInt("post_minutes")) * time.Minute
+	out.PostBuffer = time.Duration(r.GetInt("post_buffer_minutes")) * time.Minute
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {
 		out.PollInterval = time.Duration(m) * time.Minute
 	}
@@ -91,6 +92,7 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 		Attempts: r.GetInt("attempts"),
 
 		ChartUploaded: r.GetBool("chart_uploaded"),
+		BufferDone:    r.GetBool("buffer_done"),
 	}
 	if r.GetBool("has_original") {
 		o := r.GetString("original_description")
@@ -130,6 +132,9 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 	r.Set("attempts", a.Attempts)
 	if a.ChartUploaded { // never clear: the photo cannot be removed again
 		r.Set("chart_uploaded", true)
+	}
+	if a.BufferDone { // never clear: the delayed reprocess runs at most once
+		r.Set("buffer_done", true)
 	}
 	if a.Summary != nil {
 		r.Set("summary", a.Summary)
