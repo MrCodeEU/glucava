@@ -49,6 +49,7 @@ type Config struct {
 	ChartPreMin   int    // minutes of glucose before the activity on the chart
 	HRRead        bool   // read heart rate from Strava for stats and charts
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
+	PostBufferMin int    // minutes after the glucose window closes to reprocess once more; 0 disables it
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -83,6 +84,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
 		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
+		PostBufferMin: r.GetInt("post_buffer_minutes"),
 	}, nil
 }
 
@@ -126,12 +128,57 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_hr", c.ChartHR)
 	r.Set("chart_pre_minutes", c.ChartPreMin)
 	r.Set("hr_read", c.HRRead)
+	r.Set("post_buffer_minutes", c.PostBufferMin)
 	return s.App.Save(r)
 }
 
 // ListActivities returns activities newest first by start time.
 func (s *PB) ListActivities(_ context.Context, limit int) ([]jobs.Activity, error) {
 	recs, err := s.App.FindRecordsByFilter("activities", "", "-start_time", limit, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]jobs.Activity, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, activityFromRecord(r))
+	}
+	return out, nil
+}
+
+// RecoverStuck resets activities left at "processing" back to "pending" and
+// returns them. A record only stays at that status while a worker holds it in
+// memory; after a restart nothing does. The poller leaves any known activity
+// alone regardless of status (so it never double-processes one the queue is
+// already working on), so without this an activity interrupted mid-run (e.g.
+// by a host reboot) would sit invisible to both the poller and a retry,
+// forever. The caller re-enqueues what comes back. Called once at startup.
+func (s *PB) RecoverStuck(_ context.Context) ([]jobs.Activity, error) {
+	recs, err := s.App.FindRecordsByFilter("activities", "status = {:status}", "", 0, 0,
+		dbx.Params{"status": jobs.StatusProcessing})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]jobs.Activity, 0, len(recs))
+	for _, r := range recs {
+		r.Set("status", jobs.StatusPending)
+		r.Set("error", "")
+		if err := s.App.Save(r); err != nil {
+			return nil, err
+		}
+		a := activityFromRecord(r)
+		a.Status = jobs.StatusPending
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// DueForBuffer returns done activities not yet reprocessed once by the
+// PostBuffer delay, started at or after since. The poller filters by end
+// time + Post + PostBuffer itself, since that needs Settings.
+func (s *PB) DueForBuffer(_ context.Context, since time.Time, limit int) ([]jobs.Activity, error) {
+	recs, err := s.App.FindRecordsByFilter("activities",
+		"status = {:status} && buffer_done = false && start_time >= {:since}",
+		"-start_time", limit, 0, dbx.Params{"status": jobs.StatusDone, "since": since})
 	if err != nil {
 		return nil, err
 	}

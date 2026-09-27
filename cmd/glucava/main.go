@@ -162,9 +162,19 @@ func main() {
 				}
 			}
 		}
+		if stuck, err := st.RecoverStuck(ctx); err != nil {
+			log.Printf("recover stuck activities: %v", err)
+		} else if len(stuck) > 0 {
+			log.Printf("recovered %d activity(ies) left mid-run by a previous restart; reprocessing", len(stuck))
+			for _, a := range stuck {
+				if _, err := queue.Enqueue(jobs.Job{Activity: a}); err != nil {
+					log.Printf("re-enqueue %s: %v", a.StravaID, err)
+				}
+			}
+		}
 		go queue.Run(ctx)
 		poller := &poll.Poller{
-			Lister: lister, Queue: queue, Store: st, Signal: signal.C(), MaxAge: tun.PollLookback,
+			Lister: lister, Queue: queue, Store: st, Buffer: st, Signal: signal.C(), MaxAge: tun.PollLookback,
 			Interval: func() time.Duration {
 				set, err := st.Settings(ctx)
 				if err != nil {

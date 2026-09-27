@@ -33,6 +33,8 @@ func (c Config) Validate() string {
 		return "Chart line thickness must be between 1 and 4."
 	case c.PollMin < 1 || c.PollMin > 1440:
 		return "The polling interval must be between 1 and 1440 minutes."
+	case c.PostBufferMin < 0 || c.PostBufferMin > 180:
+		return "The delayed reprocess buffer must be between 0 and 180 minutes."
 	case c.RetentionDays < 0 || c.RetentionDays > 3650:
 		return "Retention must be between 0 and 3650 days."
 	case c.DexcomRegion != "us" && c.DexcomRegion != "ous" && c.DexcomRegion != "jp":
@@ -169,6 +171,7 @@ var configKeys = map[string]configKey{
 	"chart_hr":              boolKey(func(c *Config) *bool { return &c.ChartHR }),
 	"chart_pre_minutes":     intKey(func(c *Config) *int { return &c.ChartPreMin }),
 	"hr_read":               boolKey(func(c *Config) *bool { return &c.HRRead }),
+	"post_buffer_minutes":   intKey(func(c *Config) *int { return &c.PostBufferMin }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

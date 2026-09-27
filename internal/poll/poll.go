@@ -22,6 +22,12 @@ type Enqueuer interface {
 	Enqueue(j jobs.Job) (bool, error)
 }
 
+// BufferSource lists done activities not yet reprocessed by the delayed
+// PostBuffer pass. *store.PB satisfies it; leaving it nil disables the pass.
+type BufferSource interface {
+	DueForBuffer(ctx context.Context, since time.Time, limit int) ([]jobs.Activity, error)
+}
+
 // Poller checks Strava on an interval and whenever Signal fires.
 //
 // An activity is queued when all of these hold:
@@ -38,6 +44,7 @@ type Poller struct {
 	Limit    int                  // activities to fetch; default 20
 	MaxAge   time.Duration        // default 24 hours
 	Now      func() time.Time
+	Buffer   BufferSource // optional; see BufferSource
 
 	sessionReported bool // an expired session was reported and no poll has succeeded since
 
@@ -84,6 +91,7 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 
 	now := p.now()
 	queued := 0
+	buffered := 0
 	for _, a := range acts {
 		end := a.End()
 		if now.Sub(end) > maxAge {
@@ -107,6 +115,25 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 			queued++
 		}
 	}
+
+	if p.Buffer != nil && set.PostBuffer > 0 {
+		due, err := p.Buffer.DueForBuffer(ctx, now.Add(-maxAge), 50)
+		if err != nil {
+			log.Printf("poll: delayed reprocess: %v", err)
+		}
+		for _, a := range due {
+			if now.Before(a.End().Add(set.Post + set.PostBuffer)) {
+				continue // not due yet; the next poll checks again
+			}
+			a.BufferDone = true // set before enqueue: handle() saves whatever the job carries
+			if ok, err := p.Queue.Enqueue(jobs.Job{Activity: a, Force: true}); err == nil && ok {
+				buffered++
+			}
+		}
+	}
+	if buffered > 0 {
+		log.Printf("poll: queued %d activities for a delayed reprocess", buffered)
+	}
 	return queued, nil
 }
 
@@ -118,8 +145,8 @@ func (p *Poller) Run(ctx context.Context) {
 				return
 			}
 			log.Printf("poll: %v", err)
-		} else if n > 0 {
-			log.Printf("poll: queued %d new activities", n)
+		} else {
+			log.Printf("poll: checked, %d new", n)
 		}
 
 		wait := 10 * time.Minute

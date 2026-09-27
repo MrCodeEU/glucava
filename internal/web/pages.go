@@ -459,7 +459,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
-		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead,
+		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -479,6 +479,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("postMin", "Minutes after end", "Also how long to wait after an activity before processing it.", Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
 					)...),
 					Field("pollMin", "Check Strava every (minutes)", "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
+					Field("postBuffer", "Reprocess once more after (minutes)", "Catches glucose readings that had not arrived yet the first time. 0 turns it off.", Input(ID("postBuffer"), Type("number"), Min("0"), Max("180"), bind("postBuffer"))),
 				),
 				Card(H2(g.Text("Dexcom Share")),
 					P(Class("muted"), g.Text("Turn on Dexcom Share in the Dexcom app first. The account is the one that owns the sensor.")),

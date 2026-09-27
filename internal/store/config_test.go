@@ -57,19 +57,20 @@ func TestConfigValidate(t *testing.T) {
 		t.Fatalf("valid config rejected: %s", msg)
 	}
 	bad := map[string]func(*Config){
-		"unit":       func(c *Config) { c.Unit = "x" },
-		"range":      func(c *Config) { c.RangeHigh = 60 },
-		"poll":       func(c *Config) { c.PollMin = 0 },
-		"retention":  func(c *Config) { c.RetentionDays = -1 },
-		"region":     func(c *Config) { c.DexcomRegion = "mars" },
-		"ntfy":       func(c *Config) { c.NtfyURL = "javascript:alert(1)" },
-		"email":      func(c *Config) { c.EmailTo = "nope" },
-		"smtp port":  func(c *Config) { c.SMTPPort = 70000 },
-		"smtp host":  func(c *Config) { c.SMTPHost = "h" },
-		"smtp addr":  func(c *Config) { c.SMTPSender = "nope" },
-		"pre window": func(c *Config) { c.PreMin = 999 },
-		"public url": func(c *Config) { c.PublicURL = "ftp://x" },
-		"gap alert":  func(c *Config) { c.GapAlertHours = 500 },
+		"unit":        func(c *Config) { c.Unit = "x" },
+		"range":       func(c *Config) { c.RangeHigh = 60 },
+		"poll":        func(c *Config) { c.PollMin = 0 },
+		"retention":   func(c *Config) { c.RetentionDays = -1 },
+		"region":      func(c *Config) { c.DexcomRegion = "mars" },
+		"ntfy":        func(c *Config) { c.NtfyURL = "javascript:alert(1)" },
+		"email":       func(c *Config) { c.EmailTo = "nope" },
+		"smtp port":   func(c *Config) { c.SMTPPort = 70000 },
+		"smtp host":   func(c *Config) { c.SMTPHost = "h" },
+		"smtp addr":   func(c *Config) { c.SMTPSender = "nope" },
+		"pre window":  func(c *Config) { c.PreMin = 999 },
+		"public url":  func(c *Config) { c.PublicURL = "ftp://x" },
+		"gap alert":   func(c *Config) { c.GapAlertHours = 500 },
+		"post buffer": func(c *Config) { c.PostBufferMin = 999 },
 	}
 	for name, mut := range bad {
 		c := valid()

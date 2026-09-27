@@ -65,6 +65,7 @@ Put a TLS reverse proxy in front. Then:
 ## Usage
 
 - **Polling:** Settings → poll interval. New activities from the last 24 h are processed once.
+- **Delayed reprocess:** Settings → "Reprocess once more after (minutes)" (`post_buffer_minutes`, default 5, 0 turns it off). Dexcom Share can lag a few minutes behind the wall clock, so the very last readings of an activity's window are sometimes still missing when the glucose window first closes and processing runs. This automatically reprocesses the activity once more after the buffer, refreshing the stats and the description text with whatever readings have arrived since (a chart photo already attached is not re-uploaded). It never fires twice for the same activity.
 - **Push trigger:** create a token on the **Tokens** page (shown once), then call it from Tasker or Apple Shortcuts when the Strava notification arrives:
   `curl -X POST -H "Authorization: Bearer gst_..." https://host/api/trigger`
   See [docs/triggers.md](docs/triggers.md) for Tasker, HTTP Shortcuts/MacroDroid, and Apple Shortcuts setup.
@@ -147,7 +148,7 @@ printf '%s\n' "$SMTP_APP_PASSWORD" | glucava secrets set smtp_password --dev=fal
 glucava secrets status --dev=false --dir /data     # set/unset per secret, never the values
 ```
 
-- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name`, `public_url`, `mail_alerts`, `mail_activity`, `mail_weekly`, `mail_health`, `gap_alert_hours`, `chart_image`, `chart_theme`, `chart_size`, `chart_band`, `chart_activity`, `chart_dots`, `chart_line`, `chart_hr`, `chart_pre_minutes`, `hr_read` (`glucava config list` is authoritative).
+- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name`, `public_url`, `mail_alerts`, `mail_activity`, `mail_weekly`, `mail_health`, `gap_alert_hours`, `chart_image`, `chart_theme`, `chart_size`, `chart_band`, `chart_activity`, `chart_dots`, `chart_line`, `chart_hr`, `chart_pre_minutes`, `hr_read`, `post_buffer_minutes` (`glucava config list` is authoritative).
 - Settings you pass in one call are validated together, so related keys (`smtp_host` with `smtp_sender_address`) can come in any order. An invalid batch changes nothing and exits non-zero.
 - Secrets: `dexcom_password`, `ntfy_token`, `webhook_secret`, `smtp_password`. Strava cookies: `glucava strava cookies import`. Trigger tokens: `glucava token create <name>`.
 - `GLUCAVA_RETENTION_DAYS`, when set, still overrides `retention_days` at every server start.
