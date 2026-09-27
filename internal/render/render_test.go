@@ -290,3 +290,56 @@ func TestMergeRecognisesACustomWordedBlock(t *testing.T) {
 		t.Errorf("expected exactly one block: %q", got)
 	}
 }
+
+// TestDefaultTemplateMatchesBlock is the guard for the template engine's
+// core promise: DefaultTemplate must reproduce Block()'s exact output,
+// byte for byte, for both units and with and without a sparkline. Anyone
+// switching a deployment from the old hardcoded Block() onto the new
+// template path (with DefaultTemplate) must see no change on Strava.
+func TestDefaultTemplateMatchesBlock(t *testing.T) {
+	s, sum := fixture(60, 70, 100, 180, 200)
+	for _, opt := range []Options{
+		{Unit: MgDL},
+		{Unit: MmolL},
+		{Unit: MgDL, SparkWidth: -1},
+		{Unit: MgDL, SparkWidth: 4},
+	} {
+		want := Block(sum, s, opt)
+		got, err := RenderBlock(DefaultTemplate, sum, s, opt)
+		if err != nil {
+			t.Fatalf("opt=%+v: %v", opt, err)
+		}
+		if got != want {
+			t.Errorf("opt=%+v:\ngot  %q\nwant %q", opt, got, want)
+		}
+	}
+}
+
+// TestRenderBlockCustomTemplate exercises a template that uses fields
+// outside the default wording (GMI, StdDev, round()), to prove the engine
+// is not just able to reproduce the default.
+func TestRenderBlockCustomTemplate(t *testing.T) {
+	s, sum := fixture(60, 70, 100, 180, 200)
+	tmpl := `GMI {{.GMI}}% | stddev {{.StdDev}} | avg {{round .Sum.Avg 1}}`
+	got, err := RenderBlock(tmpl, sum, s, Options{Unit: MgDL, SparkWidth: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sentinel + "GMI 6% | stddev 57 | avg 122.0" + endSentinel
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestRenderBlockBadTemplateErrors documents that a broken template fails
+// loudly (parse or execute error) rather than silently producing garbage
+// that would then get written to Strava.
+func TestRenderBlockBadTemplateErrors(t *testing.T) {
+	s, sum := fixture(60, 70, 100, 180, 200)
+	if _, err := RenderBlock("{{.NoSuchField}}", sum, s, Options{}); err == nil {
+		t.Error("expected an error for an unknown field")
+	}
+	if _, err := RenderBlock("{{.TIR", sum, s, Options{}); err == nil {
+		t.Error("expected an error for unclosed template syntax")
+	}
+}
