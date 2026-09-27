@@ -81,7 +81,18 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		}
 	}
 
-	block := render.Block(sum, samples, render.Options{Unit: set.Unit})
+	tmpl := set.DescriptionTemplate
+	if tmpl == "" {
+		tmpl = render.DefaultTemplate
+	}
+	block, terr := render.RenderBlock(tmpl, sum, samples, render.Options{Unit: set.Unit})
+	if terr != nil {
+		// Validate (see store.Config.Validate) is meant to catch this before
+		// it is ever saved, so this should not happen; if it does anyway,
+		// fall back to the default rather than skip writing the description.
+		log.Printf("jobs: description template invalid, using the default instead: %v", terr)
+		block, _ = render.RenderBlock(render.DefaultTemplate, sum, samples, render.Options{Unit: set.Unit})
+	}
 	var backupErr error
 	unsafe := false
 	err = p.Writer.UpdateDescription(ctx, a.StravaID, func(existing string) string {

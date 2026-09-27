@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
+	"github.com/MrCodeEU/glucava/internal/render"
 )
 
 // Validate returns a message for the first problem with c, or "". It is the
@@ -55,6 +56,10 @@ func (c Config) Validate() string {
 		return "The public URL must start with http:// or https://."
 	case c.SMTPHost != "" && (c.SMTPPort == 0 || c.SMTPSender == ""):
 		return "SMTP needs a port and a sender address."
+	case c.DescriptionTemplate != "":
+		if err := render.CheckTemplate(c.DescriptionTemplate); err != nil {
+			return "Description template: " + err.Error()
+		}
 	}
 	return ""
 }
@@ -172,6 +177,7 @@ var configKeys = map[string]configKey{
 	"chart_pre_minutes":     intKey(func(c *Config) *int { return &c.ChartPreMin }),
 	"hr_read":               boolKey(func(c *Config) *bool { return &c.HRRead }),
 	"post_buffer_minutes":   intKey(func(c *Config) *int { return &c.PostBufferMin }),
+	"description_template":  strKey(func(c *Config) *string { return &c.DescriptionTemplate }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

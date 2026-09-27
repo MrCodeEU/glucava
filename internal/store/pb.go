@@ -64,6 +64,7 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	if m := r.GetInt("poll_interval_minutes"); m > 0 {
 		out.PollInterval = time.Duration(m) * time.Minute
 	}
+	out.DescriptionTemplate = r.GetString("description_template")
 	return out, nil
 }
 

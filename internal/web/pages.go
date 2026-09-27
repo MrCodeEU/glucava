@@ -398,6 +398,7 @@ type SettingsData struct {
 	HasDexcomPassword, HasNtfyToken, HasWebhookSecret, HasSMTPPassword bool
 	ImportFormats                                                      []string // importers.Names(); empty hides the import card
 	ImportOK, ImportErr                                                string   // one-shot flash after /actions/glucose/import redirects back
+	DescPreview                                                        string   // rendered preview of Cfg.DescriptionTemplate (or the default), before any edit
 }
 
 // AccountEmail shows the signed-in address; it is patched after a change.
@@ -472,6 +473,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
 		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
+		"descTemplate": c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -522,6 +524,24 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Div(
 						Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
 							g.Attr("data-attr:src", chartPreviewExpr)),
+					),
+				),
+			),
+			Card(H2(g.Text("Description text")),
+				P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
+					"(Go text/template syntax: {{.TIR}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
+					"{{if .Sparkline}}...{{end}} to only show a line when it's there). The preview below updates as you type, using your latest activity or sample data.")),
+				Field("descPreset", "Preset", "Selecting one replaces the template below; keep editing afterwards to customize it further.",
+					g.El("select", append([]g.Node{ID("descPreset"), bind("descPreset"), g.Attr("data-on:change", descPresetChangeExpr),
+						Option(Value("custom"), g.Text("Custom"))}, presetOptions()...)...)),
+				Grid("2",
+					Div(
+						Field("descTemplate", "Template", "", Textarea(ID("descTemplate"), Rows("6"), bind("descTemplate"),
+							g.Attr("data-on:input__debounce.400ms", descPreviewExpr), g.Attr("spellcheck", "false"))),
+					),
+					Div(
+						Label(g.Text("Preview")),
+						Pre(ID("descPreviewBox"), g.Attr("data-text", "$descPreview")),
 					),
 				),
 			),
@@ -725,3 +745,48 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
 	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&pre=' + $chartPre" +
 	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh"
+
+// descPreviewExpr asks the server to re-render the description preview
+// whenever the template text changes (debounced on the textarea's own
+// data-on:input, see SettingsPage).
+const descPreviewExpr = "@get('/preview/description.txt?tmpl=' + encodeURIComponent($descTemplate) + " +
+	"'&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh)"
+
+// descPresetChangeExpr fills the template textarea with the chosen preset's
+// text (evalTemplateByID, generated below) and re-runs the preview, unless
+// "custom" is picked, which leaves whatever is already there alone.
+var descPresetChangeExpr = buildDescPresetChangeExpr()
+
+func buildDescPresetChangeExpr() string {
+	var b strings.Builder
+	for i, p := range render.Presets {
+		if i > 0 {
+			b.WriteString(" else ")
+		}
+		fmt.Fprintf(&b, "if ($descPreset === %q) { $descTemplate = %q; }", p.ID, p.Template)
+	}
+	b.WriteString("; " + descPreviewExpr)
+	return b.String()
+}
+
+// presetOptions lists the built-in description templates as <option>s.
+func presetOptions() []g.Node {
+	opts := make([]g.Node, len(render.Presets))
+	for i, p := range render.Presets {
+		opts[i] = Option(Value(p.ID), g.Text(p.Name+" — "+p.Description))
+	}
+	return opts
+}
+
+// descPresetIDFor reports which preset (if any) tmpl matches exactly, so the
+// dropdown reflects a saved custom template correctly on page load: "custom"
+// for anything else, including empty (which renders as DefaultTemplate but
+// was never explicitly picked as the "default" preset).
+func descPresetIDFor(tmpl string) string {
+	for _, p := range render.Presets {
+		if p.Template == tmpl {
+			return p.ID
+		}
+	}
+	return "custom"
+}

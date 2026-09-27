@@ -44,6 +44,32 @@ func TestSettingsDefaultsFromMigration(t *testing.T) {
 	if set.PostBuffer != 5*time.Minute {
 		t.Errorf("PostBuffer default = %v, want 5m (migration 013)", set.PostBuffer)
 	}
+	if set.DescriptionTemplate != "" {
+		t.Errorf("DescriptionTemplate default = %q, want empty (migration 015)", set.DescriptionTemplate)
+	}
+}
+
+// TestDescriptionTemplateRoundTrips is the store-layer half of the custom
+// description template: SaveConfig must persist it and Settings (what the
+// pipeline actually reads) must return the same text back.
+func TestDescriptionTemplateRoundTrips(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.DescriptionTemplate = "TIR {{.TIR}}% custom"
+	if err := s.SaveConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadConfig()
+	if err != nil || got.DescriptionTemplate != c.DescriptionTemplate {
+		t.Fatalf("LoadConfig = %q, %v", got.DescriptionTemplate, err)
+	}
+	set, err := s.Settings(context.Background())
+	if err != nil || set.DescriptionTemplate != c.DescriptionTemplate {
+		t.Fatalf("Settings.DescriptionTemplate = %q, %v", set.DescriptionTemplate, err)
+	}
 }
 
 func TestActivityRoundTripAndUpsert(t *testing.T) {

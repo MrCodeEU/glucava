@@ -169,6 +169,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		AccountEmail: email, Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
+		DescPreview: s.previewDescriptionText(r.Context(), cfg.DescriptionTemplate, cfg),
 	}))
 }
 
@@ -538,6 +539,7 @@ type settingsSignals struct {
 	ChartPre       int     `json:"chartPre"`
 	HRRead         bool    `json:"hrRead"`
 	PostBuffer     int     `json:"postBuffer"`
+	DescTemplate   string  `json:"descTemplate"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -553,6 +555,7 @@ func (v settingsSignals) config() store.Config {
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
 		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer,
+		DescriptionTemplate: v.DescTemplate,
 	}
 }
 
@@ -591,6 +594,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
 	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
 	cfg.PostBufferMin = v.PostBuffer
+	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return
