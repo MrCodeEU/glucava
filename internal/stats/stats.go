@@ -32,11 +32,24 @@ type Summary struct {
 	Count      int
 	Min, Max   float64
 	Avg        float64
+	StdDev     float64 // population standard deviation of the samples, in mg/dL
+	CV         float64 // coefficient of variation, percent: StdDev / Avg * 100
+	GMI        float64 // Glucose Management Indicator, percent: an estimated A1C from the average glucose (ADA/ATTD formula, mg/dL input)
 	TIR        float64 // percent of samples inside the range, 0-100
 	Below      float64 // percent below Low
 	Above      float64 // percent above High
+	VeryLow    float64 // percent below 54 mg/dL: clinical "level 2" hypoglycemia, fixed threshold regardless of Range
+	VeryHigh   float64 // percent above 250 mg/dL: clinical "level 2" hyperglycemia, fixed threshold regardless of Range
 	Start, End float64 // first and last value
 }
+
+// veryLowThreshold and veryHighThreshold are the standard ATTD/ADA
+// consensus thresholds for clinically significant hypo- and
+// hyperglycemia ("level 2"), independent of the user's own target Range.
+const (
+	veryLowThreshold  = 54.0
+	veryHighThreshold = 250.0
+)
 
 // Summarize returns statistics for samples. ok is false when samples is empty.
 func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
@@ -50,7 +63,7 @@ func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
 	s.Min = math.Inf(1)
 	s.Max = math.Inf(-1)
 	var sum float64
-	var in, below, above int
+	var in, below, above, veryLow, veryHigh int
 	for _, p := range sorted {
 		sum += p.Value
 		s.Min = math.Min(s.Min, p.Value)
@@ -63,14 +76,34 @@ func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
 		default:
 			in++
 		}
+		if p.Value < veryLowThreshold {
+			veryLow++
+		}
+		if p.Value > veryHighThreshold {
+			veryHigh++
+		}
 	}
 	n := float64(s.Count)
 	s.Avg = sum / n
 	s.TIR = float64(in) / n * 100
 	s.Below = float64(below) / n * 100
 	s.Above = float64(above) / n * 100
+	s.VeryLow = float64(veryLow) / n * 100
+	s.VeryHigh = float64(veryHigh) / n * 100
 	s.Start = sorted[0].Value
 	s.End = sorted[len(sorted)-1].Value
+
+	var sqDiff float64
+	for _, p := range sorted {
+		d := p.Value - s.Avg
+		sqDiff += d * d
+	}
+	s.StdDev = math.Sqrt(sqDiff / n)
+	if s.Avg > 0 {
+		s.CV = s.StdDev / s.Avg * 100
+	}
+	// ADA/ATTD consensus formula: GMI(%) = 3.31 + 0.02392 * mean glucose (mg/dL).
+	s.GMI = 3.31 + 0.02392*s.Avg
 	return s, true
 }
 

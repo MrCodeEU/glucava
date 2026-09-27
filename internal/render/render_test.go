@@ -190,8 +190,10 @@ func TestMergeUpgradesLegacyBlockToSentinel(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	if strings.Count(got, blockMarker) != 1 || strings.Count(got, legacyBlockMarker) != 1 {
-		// legacyBlockMarker is a prefix of blockMarker's visible tail, so a
-		// single sentinel-carrying line legitimately counts as 1 for both.
+		// blockMarker is just the sentinel now; legacyBlockMarker is the
+		// visible "🩸 TIR " text the default template still writes right
+		// after it, so a single upgraded line legitimately counts as 1 for
+		// both.
 		t.Errorf("expected exactly one block after the upgrade: %q", got)
 	}
 
@@ -263,5 +265,28 @@ func TestRemoveBlocksNeverScansPastTheSecondLineWithoutAnEndSentinel(t *testing.
 	got := Strip(existing)
 	if got != "some text\nmore text\neven more" {
 		t.Errorf("scanned past the first line: %q", got)
+	}
+}
+
+// TestMergeRecognisesACustomWordedBlock is the prerequisite a free-form
+// description template needs: detection must not depend on the block's
+// visible text starting with "TIR ". A block written with entirely
+// different wording, but still carrying the sentinel, must still be found
+// and replaced on the next merge, not duplicated next to itself.
+func TestMergeRecognisesACustomWordedBlock(t *testing.T) {
+	custom := sentinel + "Range 88%, avg 130, that's it" + endSentinel
+	existing := "My run notes.\n\n" + custom
+	if !hasBlockPrefix(custom) {
+		t.Fatalf("custom-worded block not recognised: %q", custom)
+	}
+
+	replacement := sentinel + "Range 90%, avg 128, that's it" + endSentinel
+	got := Merge(existing, replacement)
+	want := "My run notes.\n\n" + replacement
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if strings.Count(got, sentinel) != 1 {
+		t.Errorf("expected exactly one block: %q", got)
 	}
 }
