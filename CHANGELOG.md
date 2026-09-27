@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Fixed
 - The description text used to wait for the full "Minutes after end" (`post_minutes`) window before its very first write, because that window's cooldown glucose was baked into the stats. The text is now activity-only (start minus "Minutes before start" through end) and is written the moment an activity finishes; `post_minutes` now only widens the chart photo's curve with cooldown glucose, and no longer delays anything by itself. The delayed-reprocess buffer (`post_buffer_minutes`) still refreshes the text afterwards if any last-minute Dexcom readings were late, and still gates the chart's first upload.
+- An activity that was deleted on Strava, if glucava still had a record of it (e.g. it was resurrected by the restart recovery in 0.1.3), used to retry forever and could even trip the daily canary, both misreporting "no description element" as if Strava's page had changed. It is now recognised distinctly (the edit page redirects elsewhere instead of showing the activity) and is not retried.
 
 ## [0.1.3] - 2026-09-27
 

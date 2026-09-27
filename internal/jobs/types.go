@@ -27,6 +27,7 @@ const (
 	EventGlucoseUnavailable = "glucose_unavailable"
 	EventCanaryFailed       = "canary_failed"
 	EventGlucoseGap         = "glucose_gap"
+	EventActivityNotFound   = "activity_not_found"
 )
 
 var (
@@ -41,6 +42,11 @@ var (
 	ErrUnsafeMerge = errors.New("jobs: refused to write: merge would change text outside the glucava block")
 	// ErrQueueFull is returned by Enqueue when the queue cannot take more work.
 	ErrQueueFull = errors.New("jobs: queue full")
+	// ErrActivityNotFound means the Writer's edit page redirected away from
+	// the activity instead of showing it, e.g. because it was deleted on
+	// Strava. Distinct from a selector failure: retrying cannot fix it, and
+	// it is not drift in Strava's own markup.
+	ErrActivityNotFound = errors.New("jobs: activity not found on Strava (it may have been deleted)")
 )
 
 // Activity is one Strava activity to annotate.

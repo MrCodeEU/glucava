@@ -59,6 +59,14 @@ func (r *Runner) Once(ctx context.Context) error {
 	switch {
 	case !rep.LoggedIn:
 		return r.fail(ctx, acts[0].StravaID, "Strava sent the browser to the login page: the stored session is no longer valid")
+	case rep.NotFound:
+		// Not drift: the checked activity itself is gone (e.g. deleted on
+		// Strava), not a sign the edit page's markup changed. Recorded as
+		// info, not a canary failure, and does not set lastFailed.
+		return r.Store.RecordEvent(ctx, jobs.Event{
+			Type: jobs.EventActivityNotFound, Severity: "info", StravaID: acts[0].StravaID,
+			Message: "canary: the most recently processed activity was not found on Strava (it may have been deleted); this check will keep reporting that until a different activity is processed",
+		})
 	case rep.DescriptionSelector == "":
 		return r.fail(ctx, acts[0].StravaID, "the description field was not found with the configured selectors")
 	case rep.SaveMethod == "":

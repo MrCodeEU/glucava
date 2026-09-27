@@ -210,6 +210,19 @@ func TestSessionExpiredNotRetried(t *testing.T) {
 	}
 }
 
+func TestActivityNotFoundNotRetried(t *testing.T) {
+	w := &fakeWriter{errs: []error{ErrActivityNotFound}}
+	q, st := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+
+	if w.calls != 1 || len(st.events) != 1 || st.events[0].Type != EventActivityNotFound {
+		t.Errorf("calls=%d events=%+v", w.calls, st.events)
+	}
+	if a := st.acts["42"]; a.Status != StatusFailed {
+		t.Errorf("status = %s, want failed", a.Status)
+	}
+}
+
 func TestNoDataRetriedThenReported(t *testing.T) {
 	src := &fakeSource{}
 	q, st := setup(src, &fakeWriter{})

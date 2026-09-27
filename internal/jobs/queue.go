@@ -156,6 +156,7 @@ func retryable(err error) bool {
 		!errors.Is(err, glucose.ErrAuth) &&
 		!errors.Is(err, glucose.ErrTooOld) &&
 		!errors.Is(err, ErrSessionExpired) &&
+		!errors.Is(err, ErrActivityNotFound) &&
 		!errors.Is(err, context.Canceled)
 }
 
@@ -163,6 +164,8 @@ func classify(err error) (typ, severity string) {
 	switch {
 	case errors.Is(err, ErrSessionExpired):
 		return EventSessionExpired, "error"
+	case errors.Is(err, ErrActivityNotFound):
+		return EventActivityNotFound, "warning"
 	case errors.Is(err, ErrNoData), errors.Is(err, glucose.ErrTooOld), errors.Is(err, glucose.ErrAuth):
 		return EventGlucoseUnavailable, "error"
 	default:
