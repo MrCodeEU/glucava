@@ -24,9 +24,13 @@ func post(url string) g.Node {
 	return g.Attr("data-on:click", fmt.Sprintf("@post('%s')", jsQuote(url)))
 }
 
-// postConfirm is post, guarded by a browser confirm() dialog with msg.
-func postConfirm(url, msg string) g.Node {
-	return g.Attr("data-on:click", fmt.Sprintf("confirm('%s') && @post('%s')", jsQuote(msg), jsQuote(url)))
+// postThenGo is post, but navigates to dest once the request finishes. CSP
+// here has no 'unsafe-inline', so a server-sent ExecuteScript (an injected
+// <script> tag, e.g. datastar.Redirect) is silently blocked by the browser;
+// navigating from inside this already-permitted eval'd expression
+// ('unsafe-eval' is granted for exactly this) is not.
+func postThenGo(url, dest string) g.Node {
+	return g.Attr("data-on:click", fmt.Sprintf("await @post('%s'); window.location='%s'", jsQuote(url), jsQuote(dest)))
 }
 
 // SessionInfo summarises the stored Strava cookies and the last session test.
@@ -221,8 +225,9 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
 			g.If(d.Cfg.ChartImage, Btn("", "Attach chart again", post("/actions/chart/"+a.StravaID))),
 			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing"),
-			Btn("danger", "Delete", postConfirm("/actions/delete/"+a.StravaID,
-				"Delete glucava's record of this activity? This does not touch Strava, other than trying to restore the original description first if one was saved."))),
+			ConfirmDialog("delete-dialog", "danger", "Delete", "Delete this activity?",
+				"Removes glucava's record of this activity. This does not touch Strava, other than trying to restore the original description first if one was saved.",
+				postThenGo("/actions/delete/"+a.StravaID, "/"))),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
 }

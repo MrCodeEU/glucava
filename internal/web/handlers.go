@@ -492,7 +492,9 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 		s.toast(sse, "error", "Could not delete it: "+err.Error())
 		return
 	}
-	_ = sse.Redirect("/")
+	// The client navigates itself once this request resolves (see
+	// postThenGo): CSP here has no 'unsafe-inline', so a server-sent
+	// ExecuteScript (an injected <script> tag) would be silently blocked.
 	s.toast(sse, "ok", "Activity deleted"+restored+".")
 }
 
