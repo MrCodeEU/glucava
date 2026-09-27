@@ -21,7 +21,7 @@ func fixture(vals ...float64) ([]stats.Sample, stats.Summary) {
 func TestBlockMgdl(t *testing.T) {
 	s, sum := fixture(100, 120, 140, 160)
 	got := Block(sum, s, Options{SparkWidth: 4})
-	want := "🩸 TIR 100% | min 100 | max 160 | avg 130 mg/dL\n▁▃▆█"
+	want := sentinel + "🩸 TIR 100% | min 100 | max 160 | avg 130 mg/dL\n▁▃▆█"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -30,7 +30,7 @@ func TestBlockMgdl(t *testing.T) {
 func TestBlockMmol(t *testing.T) {
 	s, sum := fixture(90.08, 180)
 	got := Block(sum, s, Options{Unit: MmolL, SparkWidth: -1})
-	want := "🩸 TIR 100% | min 5.0 | max 10.0 | avg 7.5 mmol/L"
+	want := sentinel + "🩸 TIR 100% | min 5.0 | max 10.0 | avg 7.5 mmol/L"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -69,7 +69,7 @@ func TestMergeIdempotent(t *testing.T) {
 	if once != twice {
 		t.Errorf("not idempotent:\n%q\n%q", once, twice)
 	}
-	if strings.Count(twice, blockMarker) != 1 {
+	if strings.Count(twice, legacyBlockMarker) != 1 {
 		t.Errorf("block duplicated: %q", twice)
 	}
 }
@@ -95,7 +95,7 @@ func TestMergeDoesNotCollideWithAnotherAppsSameEmoji(t *testing.T) {
 	if !strings.Contains(once, "Avg : 156") || !strings.Contains(once, "other-app.example") {
 		t.Fatalf("foreign block was eaten: %q", once)
 	}
-	if strings.Count(once, blockMarker) != 1 {
+	if strings.Count(once, legacyBlockMarker) != 1 {
 		t.Fatalf("own block not inserted exactly once: %q", once)
 	}
 
@@ -103,7 +103,7 @@ func TestMergeDoesNotCollideWithAnotherAppsSameEmoji(t *testing.T) {
 	if once != twice {
 		t.Errorf("not idempotent alongside foreign text:\n%q\n%q", once, twice)
 	}
-	if strings.Count(twice, blockMarker) != 1 {
+	if strings.Count(twice, legacyBlockMarker) != 1 {
 		t.Errorf("reprocessing duplicated the block: %q", twice)
 	}
 	if !strings.Contains(twice, "other-app.example") {
@@ -124,7 +124,7 @@ func TestMergeSelfHealsWhenSavedWithoutBlankLines(t *testing.T) {
 	// newlines (no blank line anywhere), as found on a real account.
 	corrupted := block + "\n" + block + "\n" + block
 	got := Merge(corrupted, block)
-	if strings.Count(got, blockMarker) != 1 {
+	if strings.Count(got, legacyBlockMarker) != 1 {
 		t.Errorf("did not collapse duplicates: %q", got)
 	}
 	if got != block {
@@ -171,5 +171,56 @@ func TestPreservesText(t *testing.T) {
 		if PreservesText(user, bad) {
 			t.Errorf("%s: expected the guard to fire", name)
 		}
+	}
+}
+
+// TestMergeUpgradesLegacyBlockToSentinel is the real-world path for every
+// activity already annotated by 0.1.2 or earlier: its block on Strava has no
+// sentinel yet. The next reprocess must recognise it via legacyBlockMarker,
+// replace it in place, and leave exactly one block behind — the new,
+// sentinel-carrying one — not a second copy next to the old text.
+func TestMergeUpgradesLegacyBlockToSentinel(t *testing.T) {
+	s, sum := fixture(100, 120, 140, 160)
+	newBlock := Block(sum, s, Options{SparkWidth: -1})
+	legacy := "Before\n\n🩸 TIR 1% | min 1 | max 1 | avg 1 mg/dL\n▂▂\n\nAfter my text"
+
+	got := Merge(legacy, newBlock)
+	want := "Before\n\n" + newBlock + "\n\nAfter my text"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if strings.Count(got, blockMarker) != 1 || strings.Count(got, legacyBlockMarker) != 1 {
+		// legacyBlockMarker is a prefix of blockMarker's visible tail, so a
+		// single sentinel-carrying line legitimately counts as 1 for both.
+		t.Errorf("expected exactly one block after the upgrade: %q", got)
+	}
+
+	// Reprocessing again must be idempotent and still exactly one block.
+	again := Merge(got, newBlock)
+	if again != got {
+		t.Errorf("not idempotent after the upgrade:\n%q\n%q", got, again)
+	}
+}
+
+// TestSentinelIsInvisibleAndUnique documents what the sentinel is for: two
+// code points that render as nothing, so a human reading the activity sees
+// the same text as before, but a coincidental duplicate is effectively
+// impossible.
+func TestSentinelIsInvisibleAndUnique(t *testing.T) {
+	if len([]rune(sentinel)) != 2 {
+		t.Fatalf("sentinel = %d code points, want 2", len([]rune(sentinel)))
+	}
+	for _, r := range sentinel {
+		if r != '​' && r != '⁠' {
+			t.Errorf("unexpected code point in sentinel: U+%04X", r)
+		}
+	}
+	s, sum := fixture(100, 120, 140, 160)
+	block := Block(sum, s, Options{SparkWidth: -1})
+	if !strings.HasPrefix(block, sentinel) {
+		t.Errorf("Block does not start with the sentinel: %q", block)
+	}
+	if !strings.HasPrefix(strings.TrimPrefix(block, sentinel), Prefix) {
+		t.Errorf("the visible text right after the sentinel changed: %q", block)
 	}
 }

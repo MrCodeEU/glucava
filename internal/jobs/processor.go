@@ -20,7 +20,16 @@ type Processor struct {
 	SourceName string // key for stored samples, e.g. "dexcom"
 	Writer     Writer
 
+	Now func() time.Time // test seam; nil means time.Now
+
 	merge func(existing, block string) string // test seam; nil means render.Merge
+}
+
+func (p *Processor) now() time.Time {
+	if p.Now != nil {
+		return p.Now()
+	}
+	return time.Now()
 }
 
 func (p *Processor) mergeFunc() func(existing, block string) string {
@@ -102,10 +111,20 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	if set.HRRead && len(a.HeartRate) == 0 {
 		p.fetchHeartRate(ctx, a)
 	}
+	// A chart drawn right when the glucose window first closes can miss the
+	// last few Dexcom readings, which lag behind the wall clock. With a
+	// PostBuffer set, the photo waits for that same deadline as the delayed
+	// reprocess, so it is only ever attached once, with the complete data.
+	// The description text is not delayed: it is safe to correct on the
+	// later pass, but a photo cannot be replaced once attached.
+	chartDeadline := a.End().Add(set.Post).Add(set.PostBuffer)
+	chartReady := set.PostBuffer <= 0 || !p.now().Before(chartDeadline)
 	switch {
 	case !set.ChartImage:
 	case a.ChartUploaded:
 		log.Printf("jobs: activity %s: chart photo skipped, one was attached before", a.StravaID)
+	case !chartReady:
+		log.Printf("jobs: activity %s: chart photo delayed until %s so late glucose readings are included", a.StravaID, chartDeadline.Format(time.RFC3339))
 	default:
 		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
 		if err := p.uploadChart(ctx, a, set, chartSamples); err != nil {

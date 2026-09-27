@@ -150,7 +150,7 @@ func TestSuccess(t *testing.T) {
 	if a.Status != StatusDone || a.Summary == nil || a.Summary.TIR != 100 {
 		t.Fatalf("activity = %+v", a)
 	}
-	if !strings.HasPrefix(w.desc, "My run\n\n"+render.Prefix+"TIR 100%") {
+	if !strings.Contains(w.desc, "My run\n\n") || !strings.Contains(w.desc, render.Prefix+"TIR 100%") {
 		t.Errorf("description = %q", w.desc)
 	}
 	if len(st.samples) != 4 || len(st.events) != 0 {
@@ -588,5 +588,44 @@ func TestHeartRateReadWithoutTheChart(t *testing.T) {
 	runOne(t, q, Job{Activity: activity()})
 	if w.asks != 1 || len(st.acts["42"].HeartRate) != 1 || len(w.photos) != 0 {
 		t.Errorf("asks=%d hr=%d photos=%d", w.asks, len(st.acts["42"].HeartRate), len(w.photos))
+	}
+}
+
+func TestChartDelayedUntilPostBufferElapses(t *testing.T) {
+	w := &photoWriter{}
+	st := newStore()
+	st.set.ChartImage = true
+	st.set.PostBuffer = 5 * time.Minute
+	// The activity ends at start+20m; the glucose window closes at +50m
+	// (Post=30m); the chart should wait until +55m (PostBuffer=5m more).
+	early := start.Add(50 * time.Minute) // window just closed; buffer not yet
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w, Now: func() time.Time { return early }}
+	q := NewQueue(p, []time.Duration{time.Millisecond}, 8)
+
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || a.ChartUploaded || len(w.photos) != 0 {
+		t.Fatalf("first pass should write the text but delay the chart: %+v, photos=%d", a, len(w.photos))
+	}
+
+	// The buffered reprocess runs once the deadline has passed.
+	p.Now = func() time.Time { return start.Add(56 * time.Minute) }
+	runOne(t, q, Job{Activity: st.acts["42"], Force: true})
+	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
+		t.Fatalf("buffered pass should attach the chart once: %+v, photos=%d", a, len(w.photos))
+	}
+
+	// A further reprocess never attaches a second copy.
+	runOne(t, q, Job{Activity: st.acts["42"], Force: true})
+	if len(w.photos) != 1 {
+		t.Errorf("photos after a third pass = %d, want 1", len(w.photos))
+	}
+}
+
+func TestChartNotDelayedWhenPostBufferIsZero(t *testing.T) {
+	w := &photoWriter{}
+	q, st := chartSetup(w, true) // PostBuffer defaults to 0
+	runOne(t, q, Job{Activity: activity()})
+	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
+		t.Fatalf("chart should attach immediately with no buffer set: %+v, photos=%d", a, len(w.photos))
 	}
 }
