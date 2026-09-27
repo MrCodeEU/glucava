@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-27
+
 ### Added
 - Activity page: a "Delete" button (with a confirmation dialog) removes glucava's own record of an activity. It never touches Strava beyond trying, best effort, to restore the original description first if one was saved; a failure there (e.g. the activity is already gone from Strava) does not block the local delete.
 
