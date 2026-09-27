@@ -86,6 +86,15 @@ func (m *mock) handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"models":[{"id":42,"name":"Run","type":"Run","start_time":"2026-09-20T05:00:00Z","elapsed_time":1200}]}`)
 	})
+	mux.HandleFunc("/activities/43/edit", func(w http.ResponseWriter, r *http.Request) {
+		// Simulates a deleted activity: logged in, but Strava sends the
+		// browser to the dashboard instead of an edit page for this id.
+		if !loggedIn(r) {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+	})
 	mux.HandleFunc("/activities/42/edit", func(w http.ResponseWriter, r *http.Request) {
 		if !loggedIn(r) {
 			http.Redirect(w, r, "/login", http.StatusFound)
@@ -215,6 +224,18 @@ func TestUpdateDescription(t *testing.T) {
 	}
 }
 
+func TestUpdateDescriptionActivityNotFound(t *testing.T) {
+	w := newWriter(t, &mock{}, goodCookies, nil)
+	err := w.UpdateDescription(context.Background(), "43", func(s string) string { return s + "x" })
+	if !errors.Is(err, ErrActivityNotFound) {
+		t.Errorf("err = %v, want ErrActivityNotFound", err)
+	}
+	var p interface{ Permanent() bool }
+	if !errors.As(err, &p) || !p.Permanent() {
+		t.Errorf("err = %v, want a permanent error (must not be retried)", err)
+	}
+}
+
 func TestSessionExpired(t *testing.T) {
 	w := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil)
 	err := w.UpdateDescription(context.Background(), "42", func(s string) string { return s + "x" })
@@ -316,6 +337,17 @@ func TestInspectMissingSelectorStillReports(t *testing.T) {
 	}
 	if rep.DescriptionSelector != "" || !strings.Contains(rep.String(), "NOT FOUND") {
 		t.Errorf("report = %s", rep)
+	}
+}
+
+func TestInspectActivityNotFound(t *testing.T) {
+	w := newWriter(t, &mock{}, goodCookies, nil)
+	rep, err := w.Inspect(context.Background(), "43", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.LoggedIn || !rep.NotFound || !strings.Contains(rep.String(), "not found") {
+		t.Errorf("report = %+v", rep)
 	}
 }
 
@@ -544,5 +576,24 @@ func TestHeartRateFromBrowser(t *testing.T) {
 	}
 	if _, err := newWriter(t, &mock{}, []Cookie{{Name: "_strava4_session", Value: "stale"}}, nil).HeartRate(context.Background(), "42", start); !errors.Is(err, ErrSessionExpired) {
 		t.Errorf("expired session: %v", err)
+	}
+}
+
+func TestRedirectedAway(t *testing.T) {
+	cases := []struct {
+		requested, final string
+		want             bool
+	}{
+		{"https://strava.com/activities/43/edit", "https://strava.com/activities/43/edit", false},
+		{"https://strava.com/activities/43/edit", "https://strava.com/activities/43/edit/", false}, // trailing slash only
+		{"https://strava.com/activities/43/edit", "https://strava.com/activities/43/edit?x=1", false},
+		{"https://strava.com/activities/43/edit", "https://strava.com/dashboard", true},
+		{"https://strava.com/activities/43/edit", "https://strava.com/athlete/training", true},
+		{"https://strava.com/activities/43/edit", "not a url\x7f", false}, // can't parse: don't guess
+	}
+	for _, c := range cases {
+		if got := redirectedAway(c.requested, c.final); got != c.want {
+			t.Errorf("redirectedAway(%q, %q) = %v, want %v", c.requested, c.final, got, c.want)
+		}
 	}
 }

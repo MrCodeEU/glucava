@@ -25,6 +25,7 @@ type Report struct {
 	FinalURL            string
 	Title               string
 	LoggedIn            bool
+	NotFound            bool   // the edit page redirected elsewhere; see redirectedAway
 	DescriptionSelector string // empty when no candidate matched
 	Description         string
 	SaveMethod          string // "form-button", "selector", "form-submit" or empty
@@ -56,6 +57,10 @@ func (w *Writer) Inspect(ctx context.Context, stravaID string, includeHTML bool)
 			return err
 		}
 		if !rep.LoggedIn {
+			return nil
+		}
+		if redirectedAway(editURL, loc) {
+			rep.NotFound = true
 			return nil
 		}
 
@@ -97,6 +102,10 @@ func (r *Report) String() string {
 	fmt.Fprintf(&b, "requested:  %s\nfinal URL:  %s\ntitle:      %s\nlogged in:  %v\n", r.RequestedURL, r.FinalURL, r.Title, r.LoggedIn)
 	if !r.LoggedIn {
 		b.WriteString("\nStrava redirected to the login page: the stored cookies are not valid.\n")
+		return b.String()
+	}
+	if r.NotFound {
+		b.WriteString("\nThe edit page redirected elsewhere: this activity was not found (it may have been deleted).\n")
 		return b.String()
 	}
 	if r.DescriptionSelector == "" {

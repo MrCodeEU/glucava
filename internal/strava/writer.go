@@ -30,6 +30,10 @@ import (
 // ErrSessionExpired means Strava redirected to the login page.
 var ErrSessionExpired = jobs.ErrSessionExpired
 
+// ErrActivityNotFound means the edit page redirected away from the activity
+// instead of showing it.
+var ErrActivityNotFound = jobs.ErrActivityNotFound
+
 // SelectorError means an element could not be found with any known selector.
 // The LLM repair step keys off this type.
 type SelectorError struct {
@@ -687,7 +691,26 @@ func (w *Writer) openEdit(ctx context.Context, editURL string) (string, error) {
 	if isLoginURL(loc) {
 		return "", ErrSessionExpired
 	}
+	if redirectedAway(editURL, loc) {
+		return "", permanentErr{ErrActivityNotFound}
+	}
 	return w.locate(ctx, "description", loc, w.cfg.Selectors.Description)
+}
+
+// redirectedAway reports whether the browser ended up somewhere other than
+// the edit page it was sent to (a different path, ignoring query string).
+// Strava has been observed (checked 2026-09-27, one real deleted activity)
+// to send a browser navigating to a deleted activity's edit page somewhere
+// else entirely rather than rendering that page with an error; this catches
+// that case before it is mistaken for a broken selector on a page that is
+// otherwise the right one.
+func redirectedAway(requestedURL, finalURL string) bool {
+	req, err1 := url.Parse(requestedURL)
+	fin, err2 := url.Parse(finalURL)
+	if err1 != nil || err2 != nil || fin.Path == "" {
+		return false // can't tell; let the selector check run rather than guess
+	}
+	return strings.TrimRight(req.Path, "/") != strings.TrimRight(fin.Path, "/")
 }
 
 func (w *Writer) navigate(ctx context.Context, u string) (string, error) {

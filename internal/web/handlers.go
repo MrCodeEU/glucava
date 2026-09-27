@@ -459,6 +459,43 @@ func (s *Server) actionRestore(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// actionDeleteActivity removes glucava's own record of an activity, never
+// Strava's. If an original description was saved, it tries to restore it
+// first, best effort: a failure there (including the activity being gone
+// from Strava entirely, e.g. deleted) does not block the local delete, since
+// there is nothing left on Strava to protect once glucava's record is gone
+// either way.
+func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	id := r.PathValue("id")
+	if !digits.MatchString(id) {
+		s.toast(sse, "error", "That is not an activity id.")
+		return
+	}
+	act, err := s.Store.Activity(r.Context(), id)
+	if err != nil {
+		s.toast(sse, "error", "Could not look up that activity: "+err.Error())
+		return
+	}
+	restored := ""
+	if act != nil && act.Original != nil && s.Restore != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		if rerr := s.Restore(ctx, act); rerr != nil {
+			log.Printf("web: restore before delete %s: %v", id, rerr)
+			restored = ", but the original description could not be restored on Strava: " + rerr.Error()
+		} else {
+			restored = " and the original description was restored on Strava"
+		}
+		cancel()
+	}
+	if err := s.Store.DeleteActivity(r.Context(), id); err != nil {
+		s.toast(sse, "error", "Could not delete it: "+err.Error())
+		return
+	}
+	_ = sse.Redirect("/")
+	s.toast(sse, "ok", "Activity deleted"+restored+".")
+}
+
 type settingsSignals struct {
 	Unit           string  `json:"unit"`
 	RangeLow       float64 `json:"rangeLow"`

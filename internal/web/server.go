@@ -59,6 +59,7 @@ type Server struct {
 	Poll          func(ctx context.Context) (int, error)                             // runs a Strava check inline; optional
 	LatestGlucose func(ctx context.Context) (*stats.Sample, error)                   // optional
 	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error) // looks up an activity the poller never queued; optional
+	Restore       func(ctx context.Context, a *jobs.Activity) error                  // puts the original description back on Strava; optional, used by delete
 	SendTest      func(ctx context.Context) error                                    // sends a test notification; optional
 	SourceName    string                                                             // key of stored glucose samples, e.g. "dexcom"
 	Build         string
@@ -126,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/chart/{id}", s.actionChartAgain)
 	page("POST /actions/process", s.actionProcessActivity)
 	page("POST /actions/restore/{id}", s.actionRestore)
+	page("POST /actions/delete/{id}", s.actionDeleteActivity)
 	page("POST /actions/settings", s.actionSettings)
 	page("POST /actions/account", s.actionAccount)
 	page("POST /actions/notify/test", s.actionNotifyTest)

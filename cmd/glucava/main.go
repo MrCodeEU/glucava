@@ -270,6 +270,7 @@ func main() {
 			},
 			Poll:         poller.Once,
 			FindActivity: findActivity,
+			Restore:      proc.Restore,
 			LatestGlucose: func(ctx context.Context) (*stats.Sample, error) {
 				s, err := source.Samples(ctx, time.Now().Add(-30*time.Minute), time.Now())
 				if errors.Is(err, glucose.ErrTooOld) {

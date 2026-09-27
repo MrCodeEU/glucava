@@ -80,6 +80,21 @@ func (s *PB) Activity(_ context.Context, id string) (*jobs.Activity, error) {
 	return &a, nil
 }
 
+// DeleteActivity removes glucava's own record of an activity. It never
+// touches Strava: callers that want the original description restored first
+// must do that themselves before calling this. A no-op (nil error) when
+// there is no such record.
+func (s *PB) DeleteActivity(_ context.Context, id string) error {
+	r, err := s.App.FindFirstRecordByData("activities", "strava_id", id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.App.Delete(r)
+}
+
 func activityFromRecord(r *core.Record) jobs.Activity {
 	a := jobs.Activity{
 		StravaID: r.GetString("strava_id"),

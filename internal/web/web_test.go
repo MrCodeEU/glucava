@@ -714,6 +714,63 @@ func TestRestoreNeedsStoredOriginal(t *testing.T) {
 	}
 }
 
+func TestDeleteActivity(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	if w := e.action("/actions/delete/x'1", "{}", c, nil); !strings.Contains(w.Body.String(), "not an activity id") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+
+	orig := "my text"
+	if err := e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "88", Status: jobs.StatusDone, Original: &orig}); err != nil {
+		t.Fatal(err)
+	}
+	restored := false
+	e.srv.Restore = func(context.Context, *jobs.Activity) error { restored = true; return nil }
+
+	w := e.action("/actions/delete/88", "{}", c, nil)
+	if !restored {
+		t.Error("delete with a stored original must try to restore it first")
+	}
+	if !strings.Contains(w.Body.String(), "restored on Strava") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if got, err := e.srv.Store.Activity(context.Background(), "88"); err != nil || got != nil {
+		t.Errorf("activity = %+v, %v, want gone", got, err)
+	}
+}
+
+func TestDeleteActivityStillDeletesLocallyWhenRestoreFails(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	orig := "my text"
+	if err := e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "89", Status: jobs.StatusDone, Original: &orig}); err != nil {
+		t.Fatal(err)
+	}
+	e.srv.Restore = func(context.Context, *jobs.Activity) error { return errors.New("strava: activity not found") }
+
+	w := e.action("/actions/delete/89", "{}", c, nil)
+	if !strings.Contains(w.Body.String(), "could not be restored") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+	if got, err := e.srv.Store.Activity(context.Background(), "89"); err != nil || got != nil {
+		t.Errorf("activity = %+v, %v, want gone despite the restore failure", got, err)
+	}
+}
+
+func TestDeleteUnknownActivityIsFine(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	if w := e.action("/actions/delete/999", "{}", c, nil); strings.Contains(w.Body.String(), "error") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
 func loginAttempt(e *env, remote, xff string) int {
 	form := url.Values{"email": {testEmail}, "password": {"wrong"}}
 	r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
