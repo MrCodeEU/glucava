@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-27
+
+### Changed
+- Delete's confirmation is now a styled dialog matching the rest of the UI, instead of the browser's plain `confirm()` popup.
+
+### Fixed
+- Delete did not return to the dashboard afterwards: it tried to navigate through a server-sent script, which this app's CSP (no `unsafe-inline`) silently blocks. It now navigates from the client side instead, inside the already-permitted evaluated expression.
+
 ## [0.1.4] - 2026-09-27
 
 ### Added

@@ -18,6 +18,41 @@ func comp(name string, extra ...g.Node) []g.Node {
 // Card is a bordered surface.
 func Card(children ...g.Node) g.Node { return Div(append(comp("card"), children...)...) }
 
+// ConfirmDialog renders a button that opens a styled native <dialog> asking
+// body before doing anything, plus the dialog itself. confirmAttrs go on the
+// dialog's own confirm button (e.g. postThenGo), so the action only runs
+// once the person actually confirms; Cancel just closes the dialog. id must
+// be unique on the page.
+//
+// A native <dialog> is used, rather than window.confirm(), so the prompt
+// matches the rest of the UI; it is opened and closed by calling
+// showModal()/close() from an already-permitted data-on:click expression
+// (see postConfirmThenGo's comment on why an injected <script> tag cannot be
+// used here instead).
+func ConfirmDialog(id, variant, label, title, body string, confirmAttrs ...g.Node) g.Node {
+	openIt := fmt.Sprintf("document.getElementById(%q).showModal()", id)
+	closeIt := fmt.Sprintf("document.getElementById(%q).close()", id)
+	return g.Group([]g.Node{
+		Btn(variant, label, g.Attr("data-on:click", openIt)),
+		g.El("dialog", append(comp("confirmdialog"), ID(id),
+			Div(append(comp2("confirmdialog", "body"),
+				H3(g.Text(title)),
+				P(g.Text(body)),
+				Div(append(comp2("confirmdialog", "actions"),
+					Btn("", "Cancel", g.Attr("data-on:click", closeIt)),
+					Btn(variant, label, confirmAttrs...),
+				)...),
+			)...),
+		)...),
+	})
+}
+
+// comp2 marks an element as one part of a multi-piece component, e.g. a
+// dialog's body or its action row, with both data-component and data-part.
+func comp2(name, part string) []g.Node {
+	return append(comp(name), g.Attr("data-part", part))
+}
+
 // Grid lays out cards in responsive columns. cols "2" gives wider columns.
 func Grid(cols string, children ...g.Node) g.Node {
 	return Div(append(comp("grid", g.If(cols != "", g.Attr("data-cols", cols))), children...)...)
