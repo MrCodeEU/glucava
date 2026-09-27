@@ -77,6 +77,29 @@ func TestActivityRoundTripAndUpsert(t *testing.T) {
 	}
 }
 
+func TestDeleteActivity(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+
+	if err := s.DeleteActivity(ctx, "no-such-id"); err != nil {
+		t.Errorf("deleting an unknown id must be a no-op: %v", err)
+	}
+
+	a := &jobs.Activity{StravaID: "1", Name: "Run", Start: t0, Duration: 45 * time.Minute, Status: jobs.StatusDone}
+	if err := s.SaveActivity(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteActivity(ctx, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Activity(ctx, "1"); err != nil || got != nil {
+		t.Errorf("activity = %+v, %v, want gone", got, err)
+	}
+	if n, _ := s.App.CountRecords("activities"); n != 0 {
+		t.Errorf("activities = %d, want 0", n)
+	}
+}
+
 func TestSamplesDedupeAndRange(t *testing.T) {
 	s := &PB{App: newApp(t)}
 	ctx := context.Background()

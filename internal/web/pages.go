@@ -24,6 +24,11 @@ func post(url string) g.Node {
 	return g.Attr("data-on:click", fmt.Sprintf("@post('%s')", jsQuote(url)))
 }
 
+// postConfirm is post, guarded by a browser confirm() dialog with msg.
+func postConfirm(url, msg string) g.Node {
+	return g.Attr("data-on:click", fmt.Sprintf("confirm('%s') && @post('%s')", jsQuote(msg), jsQuote(url)))
+}
+
 // SessionInfo summarises the stored Strava cookies and the last session test.
 type SessionInfo struct {
 	Configured bool
@@ -215,7 +220,9 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
 			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
 			g.If(d.Cfg.ChartImage, Btn("", "Attach chart again", post("/actions/chart/"+a.StravaID))),
-			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing")),
+			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing"),
+			Btn("danger", "Delete", postConfirm("/actions/delete/"+a.StravaID,
+				"Delete glucava's record of this activity? This does not touch Strava, other than trying to restore the original description first if one was saved."))),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
 }
