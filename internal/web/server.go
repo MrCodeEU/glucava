@@ -115,6 +115,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /{$}", s.dashboard)
 	page("GET /activity/{id}", s.activity)
 	page("GET /chart/{name}", s.chartImage)
+	page("GET /preview/description.txt", s.descriptionPreview)
 	page("GET /strava", s.stravaPage)
 	page("GET /settings", s.settingsPage)
 	page("GET /tokens", s.tokensPage)

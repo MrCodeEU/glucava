@@ -50,6 +50,10 @@ type Config struct {
 	HRRead        bool   // read heart rate from Strava for stats and charts
 	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
 	PostBufferMin int    // minutes after the glucose window closes to reprocess once more; 0 disables it
+
+	// DescriptionTemplate is a Go text/template (see render.RenderBlock).
+	// Empty means render.DefaultTemplate, today's built-in wording.
+	DescriptionTemplate string
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -84,7 +88,8 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
 		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
-		PostBufferMin: r.GetInt("post_buffer_minutes"),
+		PostBufferMin:       r.GetInt("post_buffer_minutes"),
+		DescriptionTemplate: r.GetString("description_template"),
 	}, nil
 }
 
@@ -129,6 +134,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_pre_minutes", c.ChartPreMin)
 	r.Set("hr_read", c.HRRead)
 	r.Set("post_buffer_minutes", c.PostBufferMin)
+	r.Set("description_template", c.DescriptionTemplate)
 	return s.App.Save(r)
 }
 

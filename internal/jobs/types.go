@@ -100,6 +100,10 @@ type Settings struct {
 	ChartPre     time.Duration // glucose lead-in shown on the chart, on top of Pre
 	HRRead       bool          // read heart rate from Strava
 	PostBuffer   time.Duration // delay after Post before one automatic reprocess; 0 disables it
+
+	// DescriptionTemplate is a Go text/template (see render.RenderBlock).
+	// Empty means render.DefaultTemplate, today's built-in wording.
+	DescriptionTemplate string
 }
 
 // Event is an entry for the notification outbox.

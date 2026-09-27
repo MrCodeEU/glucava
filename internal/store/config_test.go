@@ -71,6 +71,9 @@ func TestConfigValidate(t *testing.T) {
 		"public url":  func(c *Config) { c.PublicURL = "ftp://x" },
 		"gap alert":   func(c *Config) { c.GapAlertHours = 500 },
 		"post buffer": func(c *Config) { c.PostBufferMin = 999 },
+		"description template": func(c *Config) {
+			c.DescriptionTemplate = "{{.NoSuchField}}"
+		},
 	}
 	for name, mut := range bad {
 		c := valid()
@@ -78,5 +81,16 @@ func TestConfigValidate(t *testing.T) {
 		if c.Validate() == "" {
 			t.Errorf("%s: not rejected", name)
 		}
+	}
+}
+
+// TestConfigValidateAcceptsAValidDescriptionTemplate is the flip side of the
+// "description template" bad-input case above: a template that actually
+// parses and executes must not be rejected just for existing.
+func TestConfigValidateAcceptsAValidDescriptionTemplate(t *testing.T) {
+	c := valid()
+	c.DescriptionTemplate = "TIR {{.TIR}}%"
+	if msg := c.Validate(); msg != "" {
+		t.Errorf("valid description template rejected: %s", msg)
 	}
 }

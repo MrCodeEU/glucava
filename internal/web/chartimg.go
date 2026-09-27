@@ -1,11 +1,15 @@
 package web
 
 import (
+	"context"
+	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/starfederation/datastar-go/datastar"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -128,6 +132,70 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", "image/png")
 	h.Set("Cache-Control", "no-store")
 	_, _ = w.Write(png)
+}
+
+// descriptionPreview renders the "tmpl" query parameter (a candidate
+// description template) against the same real-latest-activity-or-sample-data
+// used by the chart preview, and patches the descPreview signal with the
+// result. The settings page calls this as someone edits a template, so they
+// see exactly what would be written to Strava before saving anything. A
+// template that fails to parse or execute patches an error message instead,
+// never silently.
+func (s *Server) descriptionPreview(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	cfg, err := s.Store.LoadConfig()
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	cfg = chartConfig(cfg, r.URL.Query())
+	tmplText := r.URL.Query().Get("tmpl")
+	text := s.previewDescriptionText(r.Context(), tmplText, cfg)
+	patch, _ := json.Marshal(map[string]string{"descPreview": text})
+	_ = sse.PatchSignals(patch)
+}
+
+// previewDescriptionText renders tmplText (or render.DefaultTemplate, if
+// empty) against the newest activity with at least two readings, or
+// made-up sample data if there is none yet. Shared by descriptionPreview
+// (live, as someone edits the template) and settingsPage (the value shown
+// before any edit).
+func (s *Server) previewDescriptionText(ctx context.Context, tmplText string, cfg store.Config) string {
+	if tmplText == "" {
+		tmplText = render.DefaultTemplate
+	}
+	var samples []stats.Sample
+	var start, end time.Time
+	acts, _ := s.Store.ListActivities(ctx, 30)
+	for _, a := range acts {
+		got, err := s.Store.LoadSamplesAny(ctx, a.Start, a.End())
+		if err == nil && len(got) >= 2 {
+			samples, start, end = got, a.Start, a.End()
+			break
+		}
+	}
+	if samples == nil {
+		samples, start, end = sampleCurve(s.now())
+	}
+
+	var inWindow []stats.Sample
+	for _, sp := range samples {
+		if !sp.Time.Before(start) && !sp.Time.After(end) {
+			inWindow = append(inWindow, sp)
+		}
+	}
+	if len(inWindow) == 0 {
+		inWindow = samples
+	}
+	sum, ok := stats.Summarize(inWindow, stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh})
+	if !ok {
+		return "⚠ No sample data to preview with."
+	}
+	block, rerr := render.RenderBlock(tmplText, sum, inWindow, render.Options{Unit: render.Unit(cfg.Unit)})
+	if rerr != nil {
+		return "⚠ Template error: " + rerr.Error()
+	}
+	return block
 }
 
 // sampleCurve is a made-up run for previews when no real readings exist yet.

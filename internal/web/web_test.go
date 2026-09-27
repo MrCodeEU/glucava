@@ -385,6 +385,55 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	}
 }
 
+func TestSettingsSaveDescriptionTemplate(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	withTmpl := strings.TrimSuffix(validSettings, "}") + `,"descTemplate":"Custom: {{.TIR}}%"}`
+	w := e.action("/actions/settings", withTmpl, c, nil)
+	if !strings.Contains(w.Body.String(), "Settings saved") {
+		t.Fatalf("response = %s", w.Body)
+	}
+	cfg, _ := e.srv.Store.LoadConfig()
+	if cfg.DescriptionTemplate != "Custom: {{.TIR}}%" {
+		t.Errorf("DescriptionTemplate = %q", cfg.DescriptionTemplate)
+	}
+
+	page := e.get(t, "/settings", c).Body.String()
+	if !strings.Contains(page, "Description text") {
+		t.Error("settings page is missing the description template card")
+	}
+
+	// A template that fails to parse must be rejected, same as any other
+	// bad setting, before it is ever saved.
+	broken := strings.TrimSuffix(validSettings, "}") + `,"descTemplate":"{{.TIR"}` // unclosed
+	w = e.action("/actions/settings", broken, c, nil)
+	if !strings.Contains(w.Body.String(), `data-variant="error"`) {
+		t.Errorf("broken template not rejected: %s", w.Body)
+	}
+	cfg2, _ := e.srv.Store.LoadConfig()
+	if cfg2.DescriptionTemplate != "Custom: {{.TIR}}%" {
+		t.Errorf("rejected save changed the stored template: %q", cfg2.DescriptionTemplate)
+	}
+}
+
+func TestDescriptionPreviewEndpoint(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	w := e.get(t, "/preview/description.txt?tmpl="+url.QueryEscape("Custom {{.TIR}}%"), c)
+	if !strings.Contains(w.Body.String(), "Custom") {
+		t.Errorf("preview response = %s", w.Body)
+	}
+
+	w = e.get(t, "/preview/description.txt?tmpl="+url.QueryEscape("{{.NoSuchField}}"), c)
+	if !strings.Contains(w.Body.String(), "Template error") {
+		t.Errorf("bad template preview = %s", w.Body)
+	}
+}
+
 func TestSettingsValidation(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

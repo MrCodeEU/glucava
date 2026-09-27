@@ -615,6 +615,35 @@ func TestPostWindowWidensTheChartOnlyNotTheText(t *testing.T) {
 	}
 }
 
+// TestCustomDescriptionTemplateIsUsed is the pipeline-level check that
+// Settings.DescriptionTemplate actually reaches the Strava description,
+// not just the render package in isolation.
+func TestCustomDescriptionTemplateIsUsed(t *testing.T) {
+	w := &fakeWriter{}
+	st := newStore()
+	st.set.DescriptionTemplate = "Custom: {{.TIR}}% in range"
+	q := NewQueue(&Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w}, []time.Duration{time.Millisecond}, 8)
+	runOne(t, q, Job{Activity: activity()})
+	if !strings.Contains(w.desc, "Custom: 100% in range") {
+		t.Errorf("description = %q, want it to contain the custom wording", w.desc)
+	}
+}
+
+// TestBadDescriptionTemplateFallsBackToDefault guards the runtime backstop:
+// store.Config.Validate should already have caught a broken template before
+// it was ever saved, but if one somehow got through anyway, Process must
+// still write a description rather than skip the activity.
+func TestBadDescriptionTemplateFallsBackToDefault(t *testing.T) {
+	w := &fakeWriter{}
+	st := newStore()
+	st.set.DescriptionTemplate = "{{.NoSuchField}}"
+	q := NewQueue(&Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w}, []time.Duration{time.Millisecond}, 8)
+	runOne(t, q, Job{Activity: activity()})
+	if !strings.Contains(w.desc, "TIR 100%") {
+		t.Errorf("description = %q, want the default template's wording", w.desc)
+	}
+}
+
 func TestHeartRateReadWithoutTheChart(t *testing.T) {
 	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 131}}}
 	q, st := chartSetup(w, false) // chart off

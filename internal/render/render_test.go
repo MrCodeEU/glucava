@@ -331,6 +331,41 @@ func TestRenderBlockCustomTemplate(t *testing.T) {
 	}
 }
 
+// TestPresetsAllRender guards every built-in preset: each must parse and
+// execute against real sample data (fixture), and none may collide on ID.
+func TestPresetsAllRender(t *testing.T) {
+	s, sum := fixture(60, 70, 100, 180, 200)
+	seen := map[string]bool{}
+	for _, p := range Presets {
+		if seen[p.ID] {
+			t.Errorf("duplicate preset id %q", p.ID)
+		}
+		seen[p.ID] = true
+		if _, err := RenderBlock(p.Template, sum, s, Options{Unit: MgDL}); err != nil {
+			t.Errorf("preset %q: %v", p.ID, err)
+		}
+	}
+}
+
+// TestDefaultPresetMatchesDefaultTemplate is the guarantee that picking the
+// "default" preset changes nothing: it must be exactly DefaultTemplate, not
+// just render the same output as it.
+func TestDefaultPresetMatchesDefaultTemplate(t *testing.T) {
+	p, ok := PresetByID("default")
+	if !ok {
+		t.Fatal(`no "default" preset`)
+	}
+	if p.Template != DefaultTemplate {
+		t.Errorf("default preset's template != DefaultTemplate")
+	}
+}
+
+func TestPresetByIDUnknown(t *testing.T) {
+	if _, ok := PresetByID("nope"); ok {
+		t.Error("expected ok=false for an unknown preset id")
+	}
+}
+
 // TestRenderBlockBadTemplateErrors documents that a broken template fails
 // loudly (parse or execute error) rather than silently producing garbage
 // that would then get written to Strava.
