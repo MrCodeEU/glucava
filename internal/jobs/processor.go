@@ -46,19 +46,26 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	if err != nil {
 		return fmt.Errorf("load settings: %w", err)
 	}
-	from, to := a.Start.Add(-set.Pre), a.End().Add(set.Post)
-	// The chart may open earlier than the statistics do. Fetch the wider window,
-	// and compute everything else on the narrower one.
-	fetchFrom := from
-	if set.ChartImage && a.Start.Add(-set.ChartPre).Before(fetchFrom) {
-		fetchFrom = a.Start.Add(-set.ChartPre)
+	// The description text is activity-only: [start-Pre, end], nothing later.
+	// It never waits on Post, so it can be written the moment the activity
+	// ends. The chart is a separate, wider window: it may open earlier
+	// (ChartPre) and, when Post is set, run later too, to also show the
+	// cooldown glucose after the activity — that curve is worth the wait
+	// (see the chart-delay gate below), the text summary is not.
+	from, textTo := a.Start.Add(-set.Pre), a.End()
+	fetchFrom, fetchTo := from, textTo
+	if set.ChartImage {
+		fetchTo = fetchTo.Add(set.Post)
+		if a.Start.Add(-set.ChartPre).Before(fetchFrom) {
+			fetchFrom = a.Start.Add(-set.ChartPre)
+		}
 	}
 
-	chartSamples, err := p.samples(ctx, fetchFrom, to)
+	chartSamples, err := p.samples(ctx, fetchFrom, fetchTo)
 	if err != nil {
 		return err
 	}
-	samples := within(chartSamples, from, to)
+	samples := within(chartSamples, from, textTo)
 	sum, ok := stats.Summarize(samples, set.Range)
 	if !ok {
 		return ErrNoData
@@ -115,8 +122,9 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	// last few Dexcom readings, which lag behind the wall clock. With a
 	// PostBuffer set, the photo waits for that same deadline as the delayed
 	// reprocess, so it is only ever attached once, with the complete data.
-	// The description text is not delayed: it is safe to correct on the
-	// later pass, but a photo cannot be replaced once attached.
+	// The description text was already written above, activity-only and with
+	// no wait of its own: it is safe to correct on the later pass, but a
+	// photo cannot be replaced once attached.
 	chartDeadline := a.End().Add(set.Post).Add(set.PostBuffer)
 	chartReady := set.PostBuffer <= 0 || !p.now().Before(chartDeadline)
 	switch {

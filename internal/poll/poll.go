@@ -32,7 +32,9 @@ type BufferSource interface {
 //
 // An activity is queued when all of these hold:
 //   - it ended less than MaxAge ago (the glucose source keeps only a day),
-//   - its glucose window is complete, meaning end + post window has passed,
+//   - it has finished (its own end time has passed) — the description text
+//     is activity-only and does not wait on the Post window; Post only
+//     delays the chart photo (see jobs.Processor and BufferSource),
 //   - the store has no record of it. Activities that are done, failed, pending or
 //     processing are left alone; reprocess a failed one by hand.
 type Poller struct {
@@ -97,8 +99,8 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 		if now.Sub(end) > maxAge {
 			continue
 		}
-		if now.Before(end.Add(set.Post)) {
-			continue // glucose window not complete yet; the next poll picks it up
+		if now.Before(end) {
+			continue // not finished yet
 		}
 		prev, err := p.Store.Activity(ctx, a.StravaID)
 		if err != nil {
