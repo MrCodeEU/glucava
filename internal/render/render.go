@@ -34,8 +34,11 @@ const sentinel = "\xe2\x80\x8b\xe2\x81\xa0"
 const endSentinel = "\xe2\x81\xa2\xe2\x81\xa4"
 
 // blockMarker is what Merge and Strip match to recognise a Glucava block
-// written by this version.
-const blockMarker = sentinel + Prefix + "TIR "
+// written by this version. It is the invisible sentinel alone, not the
+// visible "TIR " text after it: a custom description template can start
+// with different words, and detection must still find it, or a reprocess
+// would never replace it and blocks would pile up on every run.
+const blockMarker = sentinel
 
 // legacyBlockMarker matches a block written before the sentinel existed
 // (0.1.2 and earlier: text only, no invisible fingerprint). Matching it too

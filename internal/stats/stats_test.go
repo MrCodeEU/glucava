@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -34,6 +35,38 @@ func TestSummarize(t *testing.T) {
 	}
 	if s.Start != 60 || s.End != 200 {
 		t.Errorf("start/end = %v/%v", s.Start, s.End)
+	}
+}
+
+func TestSummarizeDerivedStats(t *testing.T) {
+	s, ok := Summarize(samples(60, 70, 100, 180, 200), DefaultRange)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	// avg=122; deviations -62,-52,-22,58,78; population variance 3296, stddev ~57.41.
+	if want := 57.41; math.Abs(s.StdDev-want) > 0.01 {
+		t.Errorf("stddev = %v, want ~%v", s.StdDev, want)
+	}
+	if want := 47.06; math.Abs(s.CV-want) > 0.01 {
+		t.Errorf("cv = %v, want ~%v", s.CV, want)
+	}
+	// GMI = 3.31 + 0.02392*122.
+	if want := 6.228; math.Abs(s.GMI-want) > 0.001 {
+		t.Errorf("gmi = %v, want ~%v", s.GMI, want)
+	}
+	if s.VeryLow != 0 || s.VeryHigh != 0 {
+		t.Errorf("verylow/veryhigh = %v/%v, want 0/0 (no sample crosses 54 or 250)", s.VeryLow, s.VeryHigh)
+	}
+}
+
+func TestSummarizeVeryLowAndVeryHigh(t *testing.T) {
+	// 40 is below the clinical 54 mg/dL threshold; 300 is above 250; 100 is neither.
+	s, _ := Summarize(samples(40, 100, 300), DefaultRange)
+	if math.Abs(s.VeryLow-100.0/3) > 0.0001 {
+		t.Errorf("verylow = %v, want ~%v", s.VeryLow, 100.0/3)
+	}
+	if math.Abs(s.VeryHigh-100.0/3) > 0.0001 {
+		t.Errorf("veryhigh = %v, want ~%v", s.VeryHigh, 100.0/3)
 	}
 }
 
