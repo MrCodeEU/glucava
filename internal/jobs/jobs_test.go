@@ -581,6 +581,27 @@ func TestChartLeadInDoesNotChangeTheNumbers(t *testing.T) {
 	}
 }
 
+func TestPostWindowWidensTheChartOnlyNotTheText(t *testing.T) {
+	// A reading 10 minutes after the activity ends: inside Post (30m, set
+	// below) so the chart's fetch window covers it, but the description
+	// text is activity-only and must never see it.
+	late := stats.Sample{Time: start.Add(20*time.Minute + 10*time.Minute), Value: 300}
+	src := &fakeSource{samples: append(readings(), late)}
+	w := &photoWriter{}
+	st := newStore()
+	st.set.Post = 30 * time.Minute
+	st.set.ChartImage = true
+	q := NewQueue(&Processor{Store: st, Source: src, SourceName: "dexcom", Writer: w}, []time.Duration{time.Millisecond}, 8)
+	runOne(t, q, Job{Activity: activity()})
+	a := st.acts["42"]
+	if a.Summary == nil || a.Summary.Max != 160 || a.Summary.Count != 4 {
+		t.Errorf("the post-run cooldown reading leaked into the text stats: %+v", a.Summary)
+	}
+	if len(w.photos) != 1 {
+		t.Errorf("photos = %d", len(w.photos))
+	}
+}
+
 func TestHeartRateReadWithoutTheChart(t *testing.T) {
 	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 131}}}
 	q, st := chartSetup(w, false) // chart off

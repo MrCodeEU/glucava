@@ -68,11 +68,11 @@ func newPoller(l *fakeLister, q *fakeQueue, s *fakeStore) *Poller {
 
 func TestQueuesOnlyNewFinishedRecentActivities(t *testing.T) {
 	l := &fakeLister{acts: []jobs.Activity{
-		act("new", 2*time.Hour),          // queued
-		act("done", 2*time.Hour),         // already processed
-		act("failed", 2*time.Hour),       // failed earlier: left alone
-		act("too-fresh", 10*time.Minute), // glucose window (30 min) not complete
-		act("old", 30*time.Hour),         // older than the source keeps
+		act("new", 2*time.Hour),         // queued
+		act("done", 2*time.Hour),        // already processed
+		act("failed", 2*time.Hour),      // failed earlier: left alone
+		act("finished", 10*time.Minute), // ended already: queued too, text does not wait on Post
+		act("old", 30*time.Hour),        // older than the source keeps
 	}}
 	s := &fakeStore{known: map[string]jobs.Activity{
 		"done": {Status: jobs.StatusDone}, "failed": {Status: jobs.StatusFailed},
@@ -83,23 +83,30 @@ func TestQueuesOnlyNewFinishedRecentActivities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 || len(q.got) != 1 || q.got[0].Activity.StravaID != "new" {
+	if n != 2 {
 		t.Errorf("queued %d: %+v", n, q.got)
+	}
+	got := map[string]bool{}
+	for _, j := range q.got {
+		got[j.Activity.StravaID] = true
+	}
+	if !got["new"] || !got["finished"] {
+		t.Errorf("queued %+v, want new and finished", q.got)
 	}
 }
 
-func TestFreshActivityQueuedOnLaterPoll(t *testing.T) {
-	l := &fakeLister{acts: []jobs.Activity{act("a", 10*time.Minute)}}
+func TestNotYetFinishedActivityQueuedOnceItEnds(t *testing.T) {
+	l := &fakeLister{acts: []jobs.Activity{act("a", -10*time.Minute)}} // still 10m from ending
 	q := &fakeQueue{}
 	p := newPoller(l, q, &fakeStore{})
 
 	if n, _ := p.Once(context.Background()); n != 0 {
 		t.Fatalf("queued %d too early", n)
 	}
-	now = now.Add(25 * time.Minute)
-	defer func() { now = now.Add(-25 * time.Minute) }()
+	now = now.Add(15 * time.Minute)
+	defer func() { now = now.Add(-15 * time.Minute) }()
 	if n, _ := p.Once(context.Background()); n != 1 {
-		t.Errorf("queued %d after the window closed, want 1", n)
+		t.Errorf("queued %d after it finished, want 1", n)
 	}
 }
 
