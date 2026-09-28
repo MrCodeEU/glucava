@@ -9,6 +9,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 - Clinical glucose metrics: GMI (estimated A1C), coefficient of variation, and level 2 (severe) hypo-/hyperglycemia percentages, independent of your own target range.
 - Chart panel order: the activity-span and target-range shading (and, for parity, the dots and heart rate toggles) are now an ordered, reorderable list on the settings page, not just on/off switches — where activity and target-range shading overlap, whichever is listed later wins. Scriptable as `chart_panel_order` (comma-separated: `activity,band,dots,hr`).
 
+### Changed
+- Settings page is now split into 4 tabs (Glucose and timing, Description and chart, Notifications, Data and account) instead of one long scroll. Save and test buttons stay visible on every tab.
+
 ## [0.1.5] - 2026-09-27
 
 ### Changed

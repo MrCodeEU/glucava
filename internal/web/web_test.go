@@ -385,6 +385,28 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	}
 }
 
+// TestSettingsPageTabsCoverEveryField guards the tab overhaul's core
+// invariant: every setting field must still be present in the page HTML
+// (tabs hide with data-show, they never remove), and the tab bar itself
+// must be there.
+func TestSettingsPageTabsCoverEveryField(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	page := e.get(t, "/settings", c).Body.String()
+
+	for _, want := range []string{
+		"Glucose and timing", "Description and chart", "Notifications", "Data and account", // tab labels
+		"data-show=\"$settingsTab",                                              // tab sections
+		"Glucose and timing", "Dexcom Share", "Chart photo", "Description text", // moved-into-tabs cards
+		"Email", "Import glucose readings", "Account", "Your data",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("settings page is missing %q after the tab overhaul", want)
+		}
+	}
+}
+
 func TestSettingsSaveChartPanelOrder(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
