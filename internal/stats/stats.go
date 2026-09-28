@@ -51,6 +51,17 @@ const (
 	veryHighThreshold = 250.0
 )
 
+// Within returns the samples inside the closed interval [from, to].
+func Within(in []Sample, from, to time.Time) []Sample {
+	out := make([]Sample, 0, len(in))
+	for _, s := range in {
+		if !s.Time.Before(from) && !s.Time.After(to) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Summarize returns statistics for samples. ok is false when samples is empty.
 func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
 	if len(samples) == 0 {

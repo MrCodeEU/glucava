@@ -181,12 +181,7 @@ func (s *Server) previewDescriptionText(ctx context.Context, tmplText string, cf
 		samples, start, end = sampleCurve(s.now())
 	}
 
-	var inWindow []stats.Sample
-	for _, sp := range samples {
-		if !sp.Time.Before(start) && !sp.Time.After(end) {
-			inWindow = append(inWindow, sp)
-		}
-	}
+	inWindow := stats.Within(samples, start, end)
 	if len(inWindow) == 0 {
 		inWindow = samples
 	}
