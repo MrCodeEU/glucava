@@ -11,6 +11,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Changed
 - Settings page is now split into 4 tabs (Glucose and timing, Description and chart, Notifications, Data and account) instead of one long scroll. Save and test buttons stay visible on every tab.
+- Activity page: while a run is in progress, "Working on it" now names the actual step (fetching glucose readings, writing the description, reading heart rate, drawing and uploading the chart) instead of a generic message, pushed live over the existing SSE connection.
 
 ## [0.1.5] - 2026-09-27
 

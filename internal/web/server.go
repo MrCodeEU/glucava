@@ -48,6 +48,9 @@ type Server struct {
 	Jobs   Enqueuer
 	Signal *trigger.Signal
 	Bus    *bus.Bus
+	// Progress, if set, gives the current step of a running job, for the
+	// activity page's live status. Optional.
+	Progress *jobs.Progress
 
 	// Proxies names the reverse proxies whose X-Forwarded-* headers are believed.
 	// Nil trusts none, so limits and cookies use the direct peer.

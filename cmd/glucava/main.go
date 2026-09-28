@@ -147,7 +147,8 @@ func main() {
 			inspector = sw
 		}
 
-		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer}
+		progress := jobs.NewProgress()
+		proc := &jobs.Processor{Store: st, Source: source, SourceName: sourceName, Writer: writer, Progress: progress, Notify: changes.Publish}
 		queue := jobs.NewQueue(proc, tun.RetryBackoff, 64)
 		queue.OnDone = func(ctx context.Context, a jobs.Activity) {
 			set, err := st.Settings(ctx)
@@ -257,7 +258,7 @@ func main() {
 		e.Router.Any("/api/trigger", apis.WrapStdHandler(h))
 
 		ui := &web.Server{
-			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes,
+			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
 			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
 			StravaLogin: stravaLogin,

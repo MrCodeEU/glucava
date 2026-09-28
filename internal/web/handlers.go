@@ -114,6 +114,9 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 	}
 
 	d := &ActivityData{Act: *act, Samples: samples, Cfg: cfg, Loc: s.loc(), Now: s.now()}
+	if s.Progress != nil {
+		d.Step = s.Progress.Step(id)
+	}
 	if sum, ok := stats.Summarize(samples, stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh}); ok {
 		d.Block = render.Block(sum, samples, render.Options{Unit: render.Unit(cfg.Unit)})
 		if d.Act.Summary == nil {
