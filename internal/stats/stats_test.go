@@ -15,6 +15,18 @@ func samples(vals ...float64) []Sample {
 	return out
 }
 
+func TestWithinIsInclusiveOfBothEnds(t *testing.T) {
+	ss := samples(100, 120, 140, 160) // t0, t0+5m, t0+10m, t0+15m
+	from, to := ss[1].Time, ss[2].Time
+	got := Within(ss, from, to)
+	if len(got) != 2 || got[0].Value != 120 || got[1].Value != 140 {
+		t.Fatalf("Within(...) = %+v, want the two samples at the exact bounds", got)
+	}
+	if len(Within(ss, ss[3].Time.Add(time.Minute), ss[3].Time.Add(2*time.Minute))) != 0 {
+		t.Error("a window after every sample should return none")
+	}
+}
+
 func TestSummarizeEmpty(t *testing.T) {
 	if _, ok := Summarize(nil, DefaultRange); ok {
 		t.Fatal("expected ok=false for empty input")

@@ -91,7 +91,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	if err != nil {
 		return err
 	}
-	samples := within(chartSamples, from, textTo)
+	samples := stats.Within(chartSamples, from, textTo)
 	sum, ok := stats.Summarize(samples, set.Range)
 	if !ok {
 		return ErrNoData
@@ -266,15 +266,4 @@ func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
 	}
 	log.Printf("jobs: activity %s: %d heart rate points for the chart", a.StravaID, len(pts))
 	a.HeartRate = pts
-}
-
-// within returns the samples inside [from, to].
-func within(in []stats.Sample, from, to time.Time) []stats.Sample {
-	out := make([]stats.Sample, 0, len(in))
-	for _, s := range in {
-		if !s.Time.Before(from) && !s.Time.After(to) {
-			out = append(out, s)
-		}
-	}
-	return out
 }
