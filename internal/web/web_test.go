@@ -88,7 +88,7 @@ func newEnv(t *testing.T) *env {
 	srv := &Server{
 		App: app, Store: &store.PB{App: app, Changed: b.Publish}, Vault: &secrets.Vault{App: app, Cipher: cipher},
 		Tokens: &tokens.Manager{App: app}, Jobs: fj, Signal: trigger.NewSignal(), Bus: b,
-		Session: fakeSession{}, SourceName: "dexcom", Build: "test", Loc: time.UTC,
+		Session: fakeSession{}, SourceName: "dexcom", Build: "test", Loc: time.UTC, Progress: jobs.NewProgress(),
 	}
 	return &env{srv: srv, h: srv.Handler(), app: app, jobs: fj}
 }
@@ -1154,6 +1154,25 @@ func TestActivityPageShowsChartOnlyWhenEnabled(t *testing.T) {
 	}
 	if body := e.get(t, "/settings", c).Body.String(); !strings.Contains(body, "/chart/latest.png?theme=") {
 		t.Error("settings page has no live preview")
+	}
+}
+
+func TestActivityPageShowsLiveStep(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "31", Name: "Run", Start: time.Now().Add(-3 * time.Hour), Duration: time.Hour, Status: jobs.StatusProcessing})
+
+	if body := e.get(t, "/activity/31", c).Body.String(); !strings.Contains(body, "Starting the browser and writing to Strava") {
+		t.Errorf("no step yet: fell back to the generic message: %s", body)
+	}
+	e.srv.Progress.Set("31", "Drawing and uploading chart photo")
+	body := e.get(t, "/activity/31", c).Body.String()
+	if !strings.Contains(body, "Drawing and uploading chart photo") {
+		t.Errorf("live step not shown: %s", body)
+	}
+	if strings.Contains(body, "Starting the browser and writing to Strava") {
+		t.Error("generic message shown although a real step is known")
 	}
 }
 

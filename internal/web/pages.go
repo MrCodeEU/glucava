@@ -203,10 +203,13 @@ type ActivityData struct {
 	Samples []stats.Sample
 	Cfg     store.Config
 	Block   string // description block that was or would be written
-	HR      *stats.HRSummary
-	Events  []store.EventRow
-	Loc     *time.Location
-	Now     time.Time
+	// Step is the pipeline's current step, while Act.Status is "processing".
+	// Empty means unknown (no run in progress, or progress tracking is off).
+	Step   string
+	HR     *stats.HRSummary
+	Events []store.EventRow
+	Loc    *time.Location
+	Now    time.Time
 }
 
 // ActivityPage shows one activity with its glucose chart.
@@ -230,6 +233,16 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 				postThenGo("/actions/delete/"+a.StravaID, "/"))),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
+}
+
+// processingText is the "Working on it" body: the live step name when it is
+// known, or the old generic wording otherwise (progress tracking is off, or
+// the step just hasn't arrived yet).
+func processingText(step string) string {
+	if step == "" {
+		return "Starting the browser and writing to Strava usually takes under a minute; this page updates by itself."
+	}
+	return step + "… this page updates by itself."
 }
 
 // ActivityBody is the part of the activity page that updates live.
@@ -262,7 +275,7 @@ func ActivityBody(d ActivityData) g.Node {
 		g.If(a.Status == jobs.StatusFailed && a.Error != "",
 			Notice("error", Strong(g.Text("This activity failed. ")), g.Text(a.Error))),
 		g.If(a.Status == jobs.StatusPending, Notice("", Strong(g.Text("Waiting in the queue. ")), g.Text("Jobs run one at a time; this page updates by itself."))),
-		g.If(a.Status == jobs.StatusProcessing && a.Error == "", Notice("", Strong(g.Text("Working on it. ")), g.Text("Starting the browser and writing to Strava usually takes under a minute; this page updates by itself."))),
+		g.If(a.Status == jobs.StatusProcessing && a.Error == "", Notice("", Strong(g.Text("Working on it. ")), g.Text(processingText(d.Step)))),
 		g.If(a.Status == jobs.StatusProcessing && a.Error != "", Notice("warning", Strong(g.Text("Not finished yet. ")), g.Text(a.Error))),
 		g.If(tiles != nil, tiles),
 		// The chart photo is square, so it sits beside the text cards instead

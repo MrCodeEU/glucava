@@ -158,6 +158,55 @@ func TestSuccess(t *testing.T) {
 	}
 }
 
+// TestProgressReportsStepsThenClears is the point of Processor.Progress: the
+// activity page needs to see step names while a run is in flight, and see
+// none once it stops, whether it succeeded or failed.
+func TestProgressReportsStepsThenClears(t *testing.T) {
+	w := &fakeWriter{desc: "My run"}
+	st := newStore()
+	prog := NewProgress()
+	var notified int
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w,
+		Progress: prog, Notify: func() { notified++ }}
+	q := NewQueue(p, nil, 8)
+
+	var seenWhileRunning []string
+	origMerge := p.merge
+	p.merge = func(existing, block string) string {
+		seenWhileRunning = append(seenWhileRunning, prog.Step("42"))
+		if origMerge != nil {
+			return origMerge(existing, block)
+		}
+		return render.Merge(existing, block)
+	}
+	runOne(t, q, Job{Activity: activity()})
+
+	if len(seenWhileRunning) == 0 || seenWhileRunning[0] == "" {
+		t.Fatalf("no step recorded while the writer ran: %v", seenWhileRunning)
+	}
+	if got := prog.Step("42"); got != "" {
+		t.Errorf("step after the run finished = %q, want cleared", got)
+	}
+	if notified == 0 {
+		t.Error("Notify was never called")
+	}
+}
+
+// TestProgressClearsOnFailureToo covers the failure path specifically: a
+// stuck "Working on it" step for a failed activity would be misleading.
+func TestProgressClearsOnFailureToo(t *testing.T) {
+	w := &fakeWriter{errs: []error{ErrSessionExpired}}
+	st := newStore()
+	prog := NewProgress()
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w, Progress: prog}
+	q := NewQueue(p, nil, 8)
+	runOne(t, q, Job{Activity: activity()})
+
+	if got := prog.Step("42"); got != "" {
+		t.Errorf("step after a failed run = %q, want cleared", got)
+	}
+}
+
 func TestDoneActivitySkippedUnlessForced(t *testing.T) {
 	w := &fakeWriter{}
 	q, st := setup(&fakeSource{samples: readings()}, w)

@@ -86,6 +86,8 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 	if err := q.P.Store.SaveActivity(ctx, &a); err != nil {
 		log.Printf("jobs: save activity %s: %v", a.StravaID, err)
 	}
+	q.P.step(a.StravaID, "Starting")
+	defer q.P.clearStep(a.StravaID)
 
 	var err error
 	for attempt := 0; ; attempt++ {

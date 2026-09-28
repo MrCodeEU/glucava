@@ -22,7 +22,32 @@ type Processor struct {
 
 	Now func() time.Time // test seam; nil means time.Now
 
+	// Progress, if set, receives the pipeline's step names as it runs, for the
+	// live activity page. Optional.
+	Progress *Progress
+	// Notify, if set, is called after each step so live views wake up and
+	// re-render. Optional.
+	Notify func()
+
 	merge func(existing, block string) string // test seam; nil means render.Merge
+}
+
+// step records the current step of activity id, if a Progress tracker is
+// set, and wakes any live views watching it.
+func (p *Processor) step(id, text string) {
+	if p.Progress != nil {
+		p.Progress.Set(id, text)
+	}
+	if p.Notify != nil {
+		p.Notify()
+	}
+}
+
+// clearStep removes the step recorded for id, once a run has stopped.
+func (p *Processor) clearStep(id string) {
+	if p.Progress != nil {
+		p.Progress.clear(id)
+	}
 }
 
 func (p *Processor) now() time.Time {
@@ -61,6 +86,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		}
 	}
 
+	p.step(a.StravaID, "Fetching glucose readings")
 	chartSamples, err := p.samples(ctx, fetchFrom, fetchTo)
 	if err != nil {
 		return err
@@ -93,6 +119,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		log.Printf("jobs: description template invalid, using the default instead: %v", terr)
 		block, _ = render.RenderBlock(render.DefaultTemplate, sum, samples, render.Options{Unit: set.Unit})
 	}
+	p.step(a.StravaID, "Writing description to Strava")
 	var backupErr error
 	unsafe := false
 	err = p.Writer.UpdateDescription(ctx, a.StravaID, func(existing string) string {
@@ -127,6 +154,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 
 	a.Summary = &sum
 	if set.HRRead && len(a.HeartRate) == 0 {
+		p.step(a.StravaID, "Reading heart rate")
 		p.fetchHeartRate(ctx, a)
 	}
 	// A chart drawn right when the glucose window first closes can miss the
@@ -146,6 +174,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		log.Printf("jobs: activity %s: chart photo delayed until %s so late glucose readings are included", a.StravaID, chartDeadline.Format(time.RFC3339))
 	default:
 		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
+		p.step(a.StravaID, "Drawing and uploading chart photo")
 		if err := p.uploadChart(ctx, a, set, chartSamples); err != nil {
 			return err
 		}
