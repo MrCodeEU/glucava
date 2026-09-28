@@ -63,6 +63,51 @@ func TestGlucoseMmolAndSinglePoint(t *testing.T) {
 	}
 }
 
+// TestStyleHasAndPanels covers the has()/panels() logic behind Panels:
+// the zero value means every panel (today's default look, unchanged),
+// a non-nil empty slice means none, and a specific list means only those.
+func TestStyleHasAndPanels(t *testing.T) {
+	var zero Style
+	for _, p := range []string{PanelActivity, PanelBand, PanelDots, PanelHR} {
+		if !zero.has(p) {
+			t.Errorf("zero-value Style should have panel %q", p)
+		}
+	}
+	none := Style{Panels: []string{}}
+	for _, p := range []string{PanelActivity, PanelBand, PanelDots, PanelHR} {
+		if none.has(p) {
+			t.Errorf("Style{Panels: []string{}} should have no panel %q", p)
+		}
+	}
+	bandOnly := Style{Panels: []string{PanelBand}}
+	if !bandOnly.has(PanelBand) || bandOnly.has(PanelActivity) || bandOnly.has(PanelDots) || bandOnly.has(PanelHR) {
+		t.Errorf("Style{Panels: [band]} should have only band")
+	}
+}
+
+// TestPanelOrderAffectsOverlapRendering is the point of Panels being an
+// order, not just a set: activity and band are both full-height/full-width
+// shaded rects that can overlap, and whichever is listed later must win
+// there. This proves reordering them actually changes the rendered chart.
+func TestPanelOrderAffectsOverlapRendering(t *testing.T) {
+	activityFirst := series()
+	activityFirst.Style = Style{Panels: []string{PanelActivity, PanelBand}}
+	bandFirst := series()
+	bandFirst.Style = Style{Panels: []string{PanelBand, PanelActivity}}
+
+	imgA, err := Glucose(activityFirst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgB, err := Glucose(bandFirst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(imgA, imgB) {
+		t.Error("reordering activity/band panels should change the rendered chart where they overlap")
+	}
+}
+
 func TestBars(t *testing.T) {
 	bars := []Bar{{"Easy run", 0, 92, 8}, {"Intervals", 6, 71, 23}, {"Long run with a very long name here", 0, 85, 15}}
 	b, err := Bars(bars)
@@ -116,7 +161,7 @@ func TestPhotoIsSquareAndSizesFollowStyle(t *testing.T) {
 	for _, tc := range []struct {
 		style Style
 		side  int
-	}{{Style{}, 1080}, {Style{Large: true}, 1620}, {Style{Dark: true, HideBand: true, HideActivity: true, HideDots: true, HideHR: true, LineWidth: 4}, 1080}} {
+	}{{Style{}, 1080}, {Style{Large: true}, 1620}, {Style{Dark: true, Panels: []string{}, LineWidth: 4}, 1080}} {
 		d := photoData()
 		d.Style = tc.style
 		b, err := Photo(d)

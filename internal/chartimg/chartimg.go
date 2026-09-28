@@ -52,16 +52,51 @@ var (
 	}
 )
 
+// PanelActivity, PanelBand, PanelDots and PanelHR are the panel names Style
+// and Photo recognise. Activity and band are shaded, full-height rects that
+// can overlap (see DefaultPanels for what happens where they do); dots and
+// HR are drawn independently of each other and of the two shaded panels, so
+// their position in Panels only matters for a settings UI listing them
+// consistently, not for how the chart itself looks.
+const (
+	PanelActivity = "activity"
+	PanelBand     = "band"
+	PanelDots     = "dots"
+	PanelHR       = "hr"
+)
+
+// DefaultPanels is every panel, in the order that reproduces the chart's
+// original, pre-Panels look: activity drawn first, so band's target-range
+// shading wins in the region where the two overlap.
+var DefaultPanels = []string{PanelActivity, PanelBand, PanelDots, PanelHR}
+
 // Style is how the glucose chart looks. The zero value is the default look
 // used in emails, so every switch is phrased as a change from it.
 type Style struct {
-	Dark         bool    // dark background
-	Large        bool    // twice the pixels, for a sharper photo
-	HideBand     bool    // no shaded target range
-	HideActivity bool    // no shaded activity span
-	HideDots     bool    // no red/orange dots on out-of-range readings
-	HideHR       bool    // no heart rate curve, even when heart rate data is given
-	LineWidth    float64 // curve thickness in logical pixels; 0 means 2
+	Dark   bool // dark background
+	Large  bool // twice the pixels, for a sharper photo
+	Panels []string
+
+	LineWidth float64 // curve thickness in logical pixels; 0 means 2
+}
+
+// panels returns Panels, or DefaultPanels for the zero value: every layer
+// shown, in the original draw order.
+func (st Style) panels() []string {
+	if st.Panels == nil {
+		return DefaultPanels
+	}
+	return st.Panels
+}
+
+// has reports whether panel is enabled.
+func (st Style) has(panel string) bool {
+	for _, p := range st.panels() {
+		if p == panel {
+			return true
+		}
+	}
+	return false
 }
 
 func (st Style) pal() palette {
@@ -196,11 +231,15 @@ func Glucose(s Series) ([]byte, error) {
 		lw = 2
 	}
 	c := newCanvasK(H, pal.bg, s.Style.factor())
-	if !s.Start.IsZero() && s.End.After(s.Start) && !s.Style.HideActivity {
-		c.rect(x(s.Start), padT, x(s.End), H-padB, pal.span)
-	}
-	if !s.Style.HideBand {
-		c.rect(padL, y(s.Range.High), W-padR, y(s.Range.Low), pal.band)
+	for _, p := range s.Style.panels() {
+		switch p {
+		case PanelActivity:
+			if !s.Start.IsZero() && s.End.After(s.Start) {
+				c.rect(x(s.Start), padT, x(s.End), H-padB, pal.span)
+			}
+		case PanelBand:
+			c.rect(padL, y(s.Range.High), W-padR, y(s.Range.Low), pal.band)
+		}
 	}
 	for _, v := range []float64{s.Range.Low, s.Range.High} {
 		c.rect(padL, y(v)-0.5, W-padR, y(v)+0.5, pal.grid)
@@ -210,7 +249,7 @@ func Glucose(s Series) ([]byte, error) {
 		c.line(x(pts[i-1].Time), y(pts[i-1].Value), x(pts[i].Time), y(pts[i].Value), lw, pal.line)
 	}
 	for _, p := range pts {
-		if s.Style.HideDots {
+		if !s.Style.has(PanelDots) {
 			break
 		}
 		switch {

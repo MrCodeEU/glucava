@@ -74,12 +74,56 @@ func TestConfigValidate(t *testing.T) {
 		"description template": func(c *Config) {
 			c.DescriptionTemplate = "{{.NoSuchField}}"
 		},
+		"chart panel order": func(c *Config) { c.ChartPanelOrder = "nope" },
 	}
 	for name, mut := range bad {
 		c := valid()
 		mut(&c)
 		if c.Validate() == "" {
 			t.Errorf("%s: not rejected", name)
+		}
+	}
+}
+
+// TestChartStylePanelOrder covers Config.ChartStyle's Panels construction:
+// only enabled panels appear, in ChartPanelOrder's order, and a panel
+// that's enabled but missing from (or misspelled in) the order string still
+// shows up, appended at the end.
+func TestChartStylePanelOrder(t *testing.T) {
+	c := Config{ChartBand: true, ChartActivity: true, ChartDots: true, ChartHR: false, ChartPanelOrder: "dots,activity,band"}
+	got := c.ChartStyle().Panels
+	want := []string{"dots", "activity", "band"}
+	if fmtStrs(got) != fmtStrs(want) {
+		t.Errorf("Panels = %v, want %v", got, want)
+	}
+
+	// hr is enabled but not mentioned in the order string.
+	c2 := Config{ChartActivity: true, ChartHR: true, ChartPanelOrder: "activity"}
+	got2 := c2.ChartStyle().Panels
+	want2 := []string{"activity", "hr"}
+	if fmtStrs(got2) != fmtStrs(want2) {
+		t.Errorf("Panels = %v, want %v", got2, want2)
+	}
+
+	// nothing enabled: Panels must be an explicit empty slice, not nil
+	// (nil would mean chartimg's own default, i.e. everything shown).
+	c3 := Config{}
+	if p := c3.ChartStyle().Panels; p == nil || len(p) != 0 {
+		t.Errorf("Panels = %v, want a non-nil empty slice", p)
+	}
+}
+
+func fmtStrs(s []string) string { return strings.Join(s, ",") }
+
+func TestValidChartPanelOrder(t *testing.T) {
+	for _, ok := range []string{"", "activity", "activity,band,dots,hr", " band , hr "} {
+		if !ValidChartPanelOrder(ok) {
+			t.Errorf("ValidChartPanelOrder(%q) = false, want true", ok)
+		}
+	}
+	for _, bad := range []string{"nope", "activity,nope", "Activity"} {
+		if ValidChartPanelOrder(bad) {
+			t.Errorf("ValidChartPanelOrder(%q) = true, want false", bad)
 		}
 	}
 }

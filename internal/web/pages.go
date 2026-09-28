@@ -473,7 +473,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
 		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
-		"descTemplate": c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
+		"chartPanelOrder": defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
+		"descTemplate":    c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 	})
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
@@ -515,11 +516,13 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 							Option(Value("standard"), g.Text("Standard (1080 px)")), Option(Value("large"), g.Text("Large (1620 px)")))),
 						Field("chartPre", "Glucose before the activity (minutes)", "How far back the chart starts. Only the chart uses this; the numbers use the window under Glucose and timing.", Input(ID("chartPre"), Type("number"), Min("0"), Max("240"), bind("chartPre"))),
 						Field("chartLine", "Line thickness (1 to 4)", "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
-						Field("chartBand", "Shade the target range", "", Input(ID("chartBand"), Type("checkbox"), bind("chartBand"))),
-						Field("chartActivity", "Shade the activity", "", Input(ID("chartActivity"), Type("checkbox"), bind("chartActivity"))),
-						Field("chartDots", "Mark out-of-range readings", "", Input(ID("chartDots"), Type("checkbox"), bind("chartDots"))),
 						Field("hrRead", "Read heart rate from Strava", "Fetched when an activity is processed (one extra page load) and kept, for the numbers on the activity page and in emails, and for the chart.", Input(ID("hrRead"), Type("checkbox"), bind("hrRead"))),
-						Field("chartHR", "Show heart rate on the chart", "Draws your heart rate on a second axis. It is read from Strava when the chart is first attached, so the preview shows it for activities that were already processed with the chart on.", Input(ID("chartHR"), Type("checkbox"), bind("chartHR"))),
+						Label(g.Text("Panels")),
+						P(Class("muted"), g.Text("Toggle which layers are drawn, and reorder them: where activity and target-range shading overlap, the one listed lower wins.")),
+						chartPanelRow("chartActivity", "activity", "Shade the activity span"),
+						chartPanelRow("chartBand", "band", "Shade the target range"),
+						chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
+						chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
 					),
 					Div(
 						Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
@@ -744,7 +747,40 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 // the image reloads whenever an option changes.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
 	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&pre=' + $chartPre" +
-	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh"
+	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh + '&panelOrder=' + encodeURIComponent($chartPanelOrder)"
+
+// panelMoveExpr swaps panel (one of chartimg's panel names) with its
+// neighbour in $chartPanelOrder, one step toward the front (dir=-1) or back
+// (dir=+1). The signal is a plain comma-separated string (see
+// store.Config.ChartPanelOrder), so this is ordinary array juggling inside
+// the already CSP-permitted evaluated data-on expression.
+func panelMoveExpr(panel string, dir int) string {
+	return fmt.Sprintf(
+		"var a=$chartPanelOrder.split(','); var i=a.indexOf(%q); var j=i+(%d); "+
+			"if(i>=0 && j>=0 && j<a.length){var t=a[i]; a[i]=a[j]; a[j]=t; $chartPanelOrder=a.join(',')}",
+		panel, dir)
+}
+
+// chartPanelRow is one row of the chart panel list: a checkbox toggling the
+// panel on/off (sig, an existing boolean signal like "chartBand"), plus
+// up/down buttons that reorder it within $chartPanelOrder. id is the
+// chartimg panel name ("activity", "band", "dots" or "hr").
+func chartPanelRow(sig, id, label string) g.Node {
+	return Div(g.Attr("style", "display:flex;align-items:center;gap:.5rem;margin:0 0 .5rem"),
+		Input(Type("checkbox"), g.Attr("data-bind", sig)),
+		Span(g.Text(label)),
+		Btn("", "↑ Earlier", g.Attr("data-on:click", panelMoveExpr(id, -1))),
+		Btn("", "↓ Later", g.Attr("data-on:click", panelMoveExpr(id, 1))),
+	)
+}
+
+// defaultStr returns s, or fallback if s is empty.
+func defaultStr(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
+}
 
 // descPreviewExpr asks the server to re-render the description preview
 // whenever the template text changes (debounced on the textarea's own

@@ -60,8 +60,31 @@ func (c Config) Validate() string {
 		if err := render.CheckTemplate(c.DescriptionTemplate); err != nil {
 			return "Description template: " + err.Error()
 		}
+	case !ValidChartPanelOrder(c.ChartPanelOrder):
+		return "Chart panel order must only list activity, band, dots, hr."
 	}
 	return ""
+}
+
+// ValidChartPanelOrder reports whether s is empty or a comma-separated list
+// of only valid chart panel names (see chartPanelTokens). Exported so a
+// caller building a Config from just one field (e.g. a chart preview's
+// query-parameter override) can validate it without a whole Config's other
+// fields also needing to be valid first.
+func ValidChartPanelOrder(s string) bool {
+	if s == "" {
+		return true
+	}
+	valid := map[string]bool{}
+	for _, p := range chartPanelTokens {
+		valid[p] = true
+	}
+	for _, p := range strings.Split(s, ",") {
+		if !valid[strings.TrimSpace(p)] {
+			return false
+		}
+	}
+	return true
 }
 
 func validOptionalURL(s string) bool {
@@ -174,6 +197,7 @@ var configKeys = map[string]configKey{
 	"chart_dots":            boolKey(func(c *Config) *bool { return &c.ChartDots }),
 	"chart_line":            intKey(func(c *Config) *int { return &c.ChartLine }),
 	"chart_hr":              boolKey(func(c *Config) *bool { return &c.ChartHR }),
+	"chart_panel_order":     strKey(func(c *Config) *string { return &c.ChartPanelOrder }),
 	"chart_pre_minutes":     intKey(func(c *Config) *int { return &c.ChartPreMin }),
 	"hr_read":               boolKey(func(c *Config) *bool { return &c.HRRead }),
 	"post_buffer_minutes":   intKey(func(c *Config) *int { return &c.PostBufferMin }),
@@ -213,10 +237,31 @@ func (c *Config) Set(key, value string) error {
 }
 
 // ChartStyle converts the chart settings to how the chart is drawn.
+// chartPanelTokens is every valid chartimg panel name, in the default draw
+// order — the fallback order for a panel enabled but missing from (or
+// misspelled in) ChartPanelOrder, so a stale order string can never hide a
+// panel its own boolean turned on.
+var chartPanelTokens = []string{chartimg.PanelActivity, chartimg.PanelBand, chartimg.PanelDots, chartimg.PanelHR}
+
+// ChartStyle converts the chart settings to how the chart is drawn:
+// ChartBand/ChartActivity/ChartDots/ChartHR decide which panels are on,
+// ChartPanelOrder (comma-separated panel names) decides the draw order
+// among the ones that are.
 func (c Config) ChartStyle() chartimg.Style {
+	enabled := map[string]bool{
+		chartimg.PanelActivity: c.ChartActivity, chartimg.PanelBand: c.ChartBand,
+		chartimg.PanelDots: c.ChartDots, chartimg.PanelHR: c.ChartHR,
+	}
+	seen := map[string]bool{}
+	panels := []string{} // never nil: nil would mean "use chartimg's own default", not "none configured"
+	for _, p := range append(strings.Split(c.ChartPanelOrder, ","), chartPanelTokens...) {
+		p = strings.TrimSpace(p)
+		if enabled[p] && !seen[p] {
+			panels, seen[p] = append(panels, p), true
+		}
+	}
 	return chartimg.Style{
 		Dark: c.ChartTheme == "dark", Large: c.ChartSize == "large",
-		HideBand: !c.ChartBand, HideActivity: !c.ChartActivity, HideDots: !c.ChartDots, HideHR: !c.ChartHR,
-		LineWidth: float64(c.ChartLine),
+		Panels: panels, LineWidth: float64(c.ChartLine),
 	}
 }

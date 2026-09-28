@@ -385,6 +385,32 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	}
 }
 
+func TestSettingsSaveChartPanelOrder(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	withOrder := strings.TrimSuffix(validSettings, "}") + `,"chartPanelOrder":"dots,activity,band,hr"}`
+	w := e.action("/actions/settings", withOrder, c, nil)
+	if !strings.Contains(w.Body.String(), "Settings saved") {
+		t.Fatalf("response = %s", w.Body)
+	}
+	cfg, _ := e.srv.Store.LoadConfig()
+	if cfg.ChartPanelOrder != "dots,activity,band,hr" {
+		t.Errorf("ChartPanelOrder = %q", cfg.ChartPanelOrder)
+	}
+
+	bad := strings.TrimSuffix(validSettings, "}") + `,"chartPanelOrder":"nope"}`
+	w = e.action("/actions/settings", bad, c, nil)
+	if !strings.Contains(w.Body.String(), `data-variant="error"`) {
+		t.Errorf("bad panel order not rejected: %s", w.Body)
+	}
+	cfg2, _ := e.srv.Store.LoadConfig()
+	if cfg2.ChartPanelOrder != "dots,activity,band,hr" {
+		t.Errorf("rejected save changed the stored order: %q", cfg2.ChartPanelOrder)
+	}
+}
+
 func TestSettingsSaveDescriptionTemplate(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

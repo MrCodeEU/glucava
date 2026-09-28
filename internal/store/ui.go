@@ -46,10 +46,16 @@ type Config struct {
 	ChartDots     bool   // mark out-of-range readings
 	ChartLine     int    // curve thickness, 1 to 4
 	ChartHR       bool   // draw heart rate on the chart
-	ChartPreMin   int    // minutes of glucose before the activity on the chart
-	HRRead        bool   // read heart rate from Strava for stats and charts
-	GapAlertHours int    // alert when no glucose reading arrived for this long; 0 turns it off
-	PostBufferMin int    // minutes after the glucose window closes to reprocess once more; 0 disables it
+	// ChartPanelOrder is a comma-separated list of enabled panel names
+	// ("activity", "band", "dots", "hr"), draw order first to last; a
+	// panel whose own boolean is on but is missing here still shows,
+	// appended at the end (see Config.ChartStyle). Empty means the
+	// default order.
+	ChartPanelOrder string
+	ChartPreMin     int  // minutes of glucose before the activity on the chart
+	HRRead          bool // read heart rate from Strava for stats and charts
+	GapAlertHours   int  // alert when no glucose reading arrived for this long; 0 turns it off
+	PostBufferMin   int  // minutes after the glucose window closes to reprocess once more; 0 disables it
 
 	// DescriptionTemplate is a Go text/template (see render.RenderBlock).
 	// Empty means render.DefaultTemplate, today's built-in wording.
@@ -86,7 +92,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		MailHealth: r.GetBool("mail_health"), GapAlertHours: r.GetInt("gap_alert_hours"),
 		ChartImage: r.GetBool("chart_image"), ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"),
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
-		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
+		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"), ChartPanelOrder: r.GetString("chart_panel_order"),
 		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
 		PostBufferMin:       r.GetInt("post_buffer_minutes"),
 		DescriptionTemplate: r.GetString("description_template"),
@@ -130,6 +136,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_activity", c.ChartActivity)
 	r.Set("chart_dots", c.ChartDots)
 	r.Set("chart_line", c.ChartLine)
+	r.Set("chart_panel_order", c.ChartPanelOrder)
 	r.Set("chart_hr", c.ChartHR)
 	r.Set("chart_pre_minutes", c.ChartPreMin)
 	r.Set("hr_read", c.HRRead)

@@ -54,6 +54,7 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	out.ChartStyle = Config{
 		ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"), ChartBand: r.GetBool("chart_band"),
 		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
+		ChartPanelOrder: r.GetString("chart_panel_order"),
 	}.ChartStyle()
 	out.ChartHR = r.GetBool("chart_hr")
 	out.HRRead = r.GetBool("hr_read")

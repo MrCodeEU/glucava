@@ -237,7 +237,7 @@ func Photo(d PhotoData) ([]byte, error) {
 	for _, p := range pts {
 		lo, hi = math.Min(lo, p.Value-10), math.Max(hi, p.Value+10)
 	}
-	hasHR := len(d.HR) > 1 && !d.Style.HideHR
+	hasHR := len(d.HR) > 1 && d.Style.has(PanelHR)
 	hrLo, hrHi := 0.0, 0.0
 	if hasHR {
 		hrLo, hrHi = math.Inf(1), math.Inf(-1)
@@ -282,12 +282,17 @@ func Photo(d PhotoData) ([]byte, error) {
 		)
 	}
 
-	// Grid, band, activity.
-	if !d.Start.IsZero() && d.End.After(d.Start) && !d.Style.HideActivity {
-		c.rect(x(d.Start), ct, x(d.End), cb, th.span)
-	}
-	if !d.Style.HideBand {
-		c.rect(cl, y(d.Range.High), cr, y(d.Range.Low), th.band)
+	// Grid, band, activity: in Panels order, so a later one wins where the
+	// two shaded regions overlap.
+	for _, p := range d.Style.panels() {
+		switch p {
+		case PanelActivity:
+			if !d.Start.IsZero() && d.End.After(d.Start) {
+				c.rect(x(d.Start), ct, x(d.End), cb, th.span)
+			}
+		case PanelBand:
+			c.rect(cl, y(d.Range.High), cr, y(d.Range.Low), th.band)
+		}
 	}
 	for _, v := range yTicks(lo, hi, d.Range, d.Unit) {
 		w := 1.5
@@ -337,7 +342,7 @@ func Photo(d PhotoData) ([]byte, error) {
 	valAt := func(yy float64) float64 { return lo + (hi-lo)*(1-(yy-ct)/(cb-ct)) }
 	for i := 1; i < len(sx); i++ {
 		col := th.line
-		if !d.Style.HideDots { // the colouring is the "mark out-of-range" option
+		if d.Style.has(PanelDots) { // the colouring is the "mark out-of-range" option
 			switch v := valAt((sy[i-1] + sy[i]) / 2); {
 			case v < d.Range.Low:
 				col = colLow
