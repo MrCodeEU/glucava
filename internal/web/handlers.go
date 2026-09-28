@@ -500,46 +500,47 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 type settingsSignals struct {
-	Unit           string  `json:"unit"`
-	RangeLow       float64 `json:"rangeLow"`
-	RangeHigh      float64 `json:"rangeHigh"`
-	PreMin         int     `json:"preMin"`
-	PostMin        int     `json:"postMin"`
-	PollMin        int     `json:"pollMin"`
-	DexcomRegion   string  `json:"dexcomRegion"`
-	DexcomUsername string  `json:"dexcomUsername"`
-	DexcomPassword string  `json:"dexcomPassword"`
-	NtfyURL        string  `json:"ntfyURL"`
-	NtfyToken      string  `json:"ntfyToken"`
-	WebhookURL     string  `json:"webhookURL"`
-	WebhookSecret  string  `json:"webhookSecret"`
-	EmailTo        string  `json:"emailTo"`
-	SMTPHost       string  `json:"smtpHost"`
-	SMTPPort       int     `json:"smtpPort"`
-	SMTPUsername   string  `json:"smtpUsername"`
-	SMTPPassword   string  `json:"smtpPassword"`
-	SMTPTLS        bool    `json:"smtpTLS"`
-	SMTPSender     string  `json:"smtpSender"`
-	SMTPSenderName string  `json:"smtpSenderName"`
-	RetentionDays  int     `json:"retentionDays"`
-	PublicURL      string  `json:"publicURL"`
-	MailAlerts     bool    `json:"mailAlerts"`
-	MailActivity   bool    `json:"mailActivity"`
-	MailWeekly     bool    `json:"mailWeekly"`
-	MailHealth     bool    `json:"mailHealth"`
-	GapAlertHours  int     `json:"gapAlertHours"`
-	ChartImage     bool    `json:"chartImage"`
-	ChartTheme     string  `json:"chartTheme"`
-	ChartSize      string  `json:"chartSize"`
-	ChartBand      bool    `json:"chartBand"`
-	ChartActivity  bool    `json:"chartActivity"`
-	ChartDots      bool    `json:"chartDots"`
-	ChartLine      int     `json:"chartLine"`
-	ChartHR        bool    `json:"chartHR"`
-	ChartPre       int     `json:"chartPre"`
-	HRRead         bool    `json:"hrRead"`
-	PostBuffer     int     `json:"postBuffer"`
-	DescTemplate   string  `json:"descTemplate"`
+	Unit            string  `json:"unit"`
+	RangeLow        float64 `json:"rangeLow"`
+	RangeHigh       float64 `json:"rangeHigh"`
+	PreMin          int     `json:"preMin"`
+	PostMin         int     `json:"postMin"`
+	PollMin         int     `json:"pollMin"`
+	DexcomRegion    string  `json:"dexcomRegion"`
+	DexcomUsername  string  `json:"dexcomUsername"`
+	DexcomPassword  string  `json:"dexcomPassword"`
+	NtfyURL         string  `json:"ntfyURL"`
+	NtfyToken       string  `json:"ntfyToken"`
+	WebhookURL      string  `json:"webhookURL"`
+	WebhookSecret   string  `json:"webhookSecret"`
+	EmailTo         string  `json:"emailTo"`
+	SMTPHost        string  `json:"smtpHost"`
+	SMTPPort        int     `json:"smtpPort"`
+	SMTPUsername    string  `json:"smtpUsername"`
+	SMTPPassword    string  `json:"smtpPassword"`
+	SMTPTLS         bool    `json:"smtpTLS"`
+	SMTPSender      string  `json:"smtpSender"`
+	SMTPSenderName  string  `json:"smtpSenderName"`
+	RetentionDays   int     `json:"retentionDays"`
+	PublicURL       string  `json:"publicURL"`
+	MailAlerts      bool    `json:"mailAlerts"`
+	MailActivity    bool    `json:"mailActivity"`
+	MailWeekly      bool    `json:"mailWeekly"`
+	MailHealth      bool    `json:"mailHealth"`
+	GapAlertHours   int     `json:"gapAlertHours"`
+	ChartImage      bool    `json:"chartImage"`
+	ChartTheme      string  `json:"chartTheme"`
+	ChartSize       string  `json:"chartSize"`
+	ChartBand       bool    `json:"chartBand"`
+	ChartActivity   bool    `json:"chartActivity"`
+	ChartDots       bool    `json:"chartDots"`
+	ChartLine       int     `json:"chartLine"`
+	ChartHR         bool    `json:"chartHR"`
+	ChartPanelOrder string  `json:"chartPanelOrder"`
+	ChartPre        int     `json:"chartPre"`
+	HRRead          bool    `json:"hrRead"`
+	PostBuffer      int     `json:"postBuffer"`
+	DescTemplate    string  `json:"descTemplate"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -554,7 +555,7 @@ func (v settingsSignals) config() store.Config {
 		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
 		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
-		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer,
+		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
 		DescriptionTemplate: v.DescTemplate,
 	}
 }
@@ -593,6 +594,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
 	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
+	cfg.ChartPanelOrder = v.ChartPanelOrder
 	cfg.PostBufferMin = v.PostBuffer
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
 	if err := s.Store.SaveConfig(cfg); err != nil {

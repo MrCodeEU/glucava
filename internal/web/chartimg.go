@@ -54,6 +54,9 @@ func chartConfig(cfg store.Config, q map[string][]string) store.Config {
 	if v, ok := get("unit"); ok && (v == "mg/dL" || v == "mmol/L") {
 		cfg.Unit = v
 	}
+	if v, ok := get("panelOrder"); ok && store.ValidChartPanelOrder(v) {
+		cfg.ChartPanelOrder = v
+	}
 	num := func(k string, dst *float64) {
 		if v, ok := get(k); ok {
 			if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 40 && f <= 400 {
