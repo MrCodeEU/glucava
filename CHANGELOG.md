@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-28
+
 ### Added
 - Custom description text: the Strava description block can now be written as a Go `text/template`, with the same numbers (TIR, min/max/avg, StdDev, CV, GMI, level 2 hypo/hyperglycemia, sparkline) available as fields. Settings page has 5 built-in presets (Default, Minimal, Clinical, Emoji, Numbers only) plus a raw template editor, with a live preview against your latest activity or sample data. Scriptable as `description_template` (CLI/`.env`), like every other setting.
 - Clinical glucose metrics: GMI (estimated A1C), coefficient of variation, and level 2 (severe) hypo-/hyperglycemia percentages, independent of your own target range.
