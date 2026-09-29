@@ -314,6 +314,30 @@ func TestChartOverlayTogglesRoundTrip(t *testing.T) {
 	}
 }
 
+// TestOverviewTogglesDefaultOnAndRoundTrip guards the same bug class as
+// TestChartOverlayTogglesRoundTrip for the stats overview page's three
+// show/hide toggles: migration 018 must add real columns, and LoadConfig/
+// SaveConfig must actually read and write them, not just carry the Go
+// struct fields.
+func TestOverviewTogglesDefaultOnAndRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.OverviewShowTrend || !c.OverviewShowBySport || !c.OverviewShowTable {
+		t.Fatalf("defaults = %+v, want all three true (new content should show up, not need finding)", c)
+	}
+	c.OverviewShowTrend, c.OverviewShowBySport, c.OverviewShowTable = false, false, false
+	if err := s.SaveConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadConfig()
+	if err != nil || got.OverviewShowTrend || got.OverviewShowBySport || got.OverviewShowTable {
+		t.Fatalf("LoadConfig after save = %+v, %v, want all three false", got, err)
+	}
+}
+
 func TestListActivitiesAndEventsOrderAndChangedHook(t *testing.T) {
 	changes := 0
 	s := &PB{App: newApp(t), Changed: func() { changes++ }}
