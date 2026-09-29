@@ -3,7 +3,7 @@ package notify
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -92,14 +92,14 @@ func (d *Dispatcher) Flush(ctx context.Context) error {
 		delivered := false
 		for _, c := range channels {
 			if err := c.Send(ctx, msg); err != nil {
-				log.Printf("notify: %s: %v", c.Name(), err)
+				slog.Error("notify channel send failed", "channel", c.Name(), "err", err)
 				errs = append(errs, err)
 				continue
 			}
 			delivered = true
 		}
 		if !delivered {
-			log.Printf("notify: event %s not delivered: %v", e.ID, errors.Join(errs...))
+			slog.Error("event not delivered", "event", e.ID, "err", errors.Join(errs...))
 			continue
 		}
 		d.remember(key, now)
@@ -132,7 +132,7 @@ func (d *Dispatcher) Run(ctx context.Context, interval time.Duration) {
 	defer t.Stop()
 	for {
 		if err := d.Flush(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("notify: flush: %v", err)
+			slog.Error("notify flush", "err", err)
 		}
 		select {
 		case <-ctx.Done():

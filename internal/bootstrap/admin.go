@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -46,7 +46,7 @@ func EnsureAdminUser(app core.App) error {
 	if err := app.Save(rec); err != nil {
 		return err
 	}
-	log.Printf("bootstrap: created first user %s", email)
+	slog.Info("created first user", "email", email)
 	return nil
 }
 
@@ -104,7 +104,7 @@ func EnsureDexcomCredential(app core.App, vault Vault, dexcomPasswordName string
 	if err := vault.Set(dexcomPasswordName, password); err != nil {
 		return err
 	}
-	log.Printf("bootstrap: stored Dexcom credentials for %s (region %s) from the environment", user, region)
+	slog.Info("stored Dexcom credentials from the environment", "user", user, "region", region)
 	return nil
 }
 
@@ -135,7 +135,7 @@ func ApplyRetentionOverride(app core.App) error {
 	if err := app.Save(recs[0]); err != nil {
 		return err
 	}
-	log.Printf("bootstrap: retention set to %d days from the environment", days)
+	slog.Info("retention set from the environment", "days", days)
 	return nil
 }
 
@@ -180,7 +180,7 @@ func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 			if err := vault.Set(passwordName, pw); err != nil {
 				return err
 			}
-			log.Printf("bootstrap: stored the SMTP password from the environment")
+			slog.Info("stored the SMTP password from the environment")
 		}
 	}
 	if recs[0].GetString("smtp_host") != "" {
@@ -198,7 +198,7 @@ func EnsureSMTP(app core.App, vault Vault, passwordName string) error {
 	if err := app.Save(recs[0]); err != nil {
 		return err
 	}
-	log.Printf("bootstrap: SMTP configured from the environment (%s:%d)", host, port)
+	slog.Info("SMTP configured from the environment", "host", host, "port", port)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func EnsurePublicURL(app core.App) error {
 	if err := app.Save(recs[0]); err != nil {
 		return err
 	}
-	log.Printf("bootstrap: public URL set from the environment (%s)", raw)
+	slog.Info("public URL set from the environment", "url", raw)
 	return nil
 }
 

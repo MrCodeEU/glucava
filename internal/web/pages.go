@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -817,6 +819,54 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 	return Page(pd,
 		PageHead("Notifications", "Everything glucava told you about, or tried to."),
 		Card(body),
+	)
+}
+
+// logLevelBadge maps an slog.Level to the existing badge variants, so /logs
+// reuses the same color coding as severity elsewhere (Notifications page).
+func logLevelBadge(level slog.Level) g.Node {
+	switch {
+	case level >= slog.LevelError:
+		return Badge("error", "Error")
+	case level >= slog.LevelWarn:
+		return Badge("warning", "Warn")
+	case level >= slog.LevelInfo:
+		return Badge("info", "Info")
+	default:
+		return Badge("", "Debug")
+	}
+}
+
+// LogRows renders the log table body, newest first. It is also the fragment
+// streamLogs patches in place on every bus wake, so it must be re-renderable
+// standalone (no page chrome), the same shape as LiveDash for the dashboard.
+func LogRows(entries []logging.Entry, loc *time.Location) g.Node {
+	if len(entries) == 0 {
+		return Div(append(comp("empty"), ID("log-rows"), g.Text("No log entries yet."))...)
+	}
+	rows := make([]g.Node, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, Tr(
+			Td(g.Text(e.Time.In(loc).Format("15:04:05"))),
+			Td(logLevelBadge(e.Level)),
+			Td(g.Text(e.Message)),
+			Td(Class("hide-sm"), g.Text(e.Attrs)),
+		))
+	}
+	return Div(append(comp("tablewrap"), ID("log-rows"), Table(append(comp("table"),
+		THead(Tr(Th(g.Text("Time")), Th(g.Text("Level")), Th(g.Text("Message")), Th(Class("hide-sm"), g.Text("Details")))),
+		TBody(g.Group(rows)))...))...)
+}
+
+// LogsPage is an admin-only diagnostic view of recent structured log entries,
+// live-updated via /stream/logs the same way the dashboard streams over
+// /stream/live. No Settings toggle, same as the Notifications/Events page.
+func LogsPage(pd PageData, entries []logging.Entry, loc *time.Location) g.Node {
+	return Page(pd,
+		PageHead("Logs", "Recent structured log entries from this process, newest first."),
+		Card(
+			Div(g.Attr("data-init", "@get('/stream/logs')"), LogRows(entries, loc)),
+		),
 	)
 }
 

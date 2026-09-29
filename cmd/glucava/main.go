@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"os"
@@ -28,6 +28,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/metrics"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/notify"
@@ -52,6 +53,14 @@ func main() {
 	}
 	app := pocketbase.New()
 	changes := &bus.Bus{}
+
+	// slog.SetDefault as early as possible, before anything else logs: every
+	// log.Printf/slog call site anywhere in the app then also lands in
+	// logHandler's ring buffer for the in-app /logs view, and wakes the same
+	// live-update bus every other page already uses.
+	logHandler := logging.NewHandler(slog.NewTextHandler(os.Stderr, nil), logging.DefaultCapacity, changes)
+	slog.SetDefault(slog.New(logHandler))
+
 	toks := &tokens.Manager{App: app}
 	st := &store.PB{App: app, Changed: changes.Publish}
 	signal := trigger.NewSignal()
@@ -72,10 +81,10 @@ func main() {
 			return err
 		}
 		if os.Getpid() == 1 {
-			log.Printf("warning: glucava is PID 1 without an init, so Chrome's leftover processes are never reaped and will fill the container's pids limit; start the container with --init (compose: init: true) or use the official image, which has one")
+			slog.Warn("glucava is PID 1 without an init, so Chrome's leftover processes are never reaped and will fill the container's pids limit; start the container with --init (compose: init: true) or use the official image, which has one")
 		}
 		if err := os.Chmod(app.DataDir(), 0o700); err != nil {
-			log.Printf("chmod data dir: %v", err)
+			slog.Error("chmod data dir", "err", err)
 		}
 		if os.Getenv("GLUCAVA_ADMIN_UI") != "1" {
 			e.Router.BindFunc(blockPocketBase)
@@ -95,7 +104,7 @@ func main() {
 			return err
 		}
 		if !secrets.KeyFromEnv() {
-			log.Printf("encryption key is stored in %s; keep it out of backups of the data dir, or set GLUCAVA_SECRET_KEY", secrets.KeyFilePath(app.DataDir()))
+			slog.Warn("encryption key is stored on disk; keep it out of backups of the data dir, or set GLUCAVA_SECRET_KEY", "path", secrets.KeyFilePath(app.DataDir()))
 		}
 		if err := bootstrap.EnsureDexcomCredential(app, vault, secrets.NameDexcomPassword); err != nil {
 			return err
@@ -161,17 +170,17 @@ func main() {
 			samples, _ := st.LoadSamplesAny(ctx, a.Start.Add(-set.Pre), a.End().Add(set.Post))
 			if m, ok := digest.ActivityMessage(a, set.Unit, set.Range, samples, time.Local); ok {
 				if err := sendSummary(ctx, st, vault, m); err != nil {
-					log.Printf("notify: activity summary: %v", err)
+					slog.Error("notify activity summary", "err", err)
 				}
 			}
 		}
 		if stuck, err := st.RecoverStuck(ctx); err != nil {
-			log.Printf("recover stuck activities: %v", err)
+			slog.Error("recover stuck activities", "err", err)
 		} else if len(stuck) > 0 {
-			log.Printf("recovered %d activity(ies) left mid-run by a previous restart; reprocessing", len(stuck))
+			slog.Info("recovered activities left mid-run by a previous restart; reprocessing", "count", len(stuck))
 			for _, a := range stuck {
 				if _, err := queue.Enqueue(jobs.Job{Activity: a}); err != nil {
-					log.Printf("re-enqueue %s: %v", a.StravaID, err)
+					slog.Error("re-enqueue", "activity", a.StravaID, "err", err)
 				}
 			}
 		}
@@ -201,9 +210,9 @@ func main() {
 		go func() { // apply the retention setting at start and every few hours
 			for {
 				if n, err := st.Prune(ctx, time.Now()); err != nil {
-					log.Printf("retention: %v", err)
+					slog.Error("retention", "err", err)
 				} else if n.Samples > 0 || n.Events > 0 {
-					log.Printf("retention: deleted %d readings and %d events", n.Samples, n.Events)
+					slog.Info("retention deleted", "readings", n.Samples, "events", n.Events)
 				}
 				select {
 				case <-ctx.Done():
@@ -306,6 +315,7 @@ func main() {
 
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,
+			Logs:    logHandler,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
 			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
 			StravaLogin: stravaLogin,
@@ -350,7 +360,8 @@ func main() {
 	})
 
 	if err := app.Start(); err != nil {
-		log.Fatal(err)
+		slog.Error("start", "err", err)
+		os.Exit(1)
 	}
 }
 
@@ -363,7 +374,7 @@ func demoDefaults() {
 			pw = security.RandomString(20)
 			_ = os.Setenv("GLUCAVA_ADMIN_PASSWORD", pw)
 		}
-		log.Printf("demo mode: sign in with demo@example.test / %s", pw)
+		slog.Info("demo mode: sign in with demo@example.test", "password", pw)
 	}
 }
 
@@ -404,7 +415,7 @@ func sendTest(ctx context.Context, chans []notify.Channel) error {
 func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
 	cfg, err := st.LoadConfig()
 	if err != nil {
-		log.Printf("notify: read settings: %v", err)
+		slog.Error("notify read settings", "err", err)
 		return nil
 	}
 	var out []notify.Channel

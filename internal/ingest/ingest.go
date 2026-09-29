@@ -12,7 +12,7 @@ package ingest
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/glucose"
@@ -135,10 +135,10 @@ func (in *Ingestor) Run(ctx context.Context) {
 	for {
 		if n, err := in.Once(ctx); err != nil {
 			if ctx.Err() == nil { // don't log the expected error from shutting down mid-fetch
-				log.Printf("%v", err)
+				slog.Error("ingest", "err", err)
 			}
 		} else if n > 0 {
-			log.Printf("ingest: stored %d readings", n)
+			slog.Info("stored readings", "count", n)
 		}
 		select {
 		case <-ctx.Done():

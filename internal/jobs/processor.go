@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
@@ -117,7 +117,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		// Validate (see store.Config.Validate) is meant to catch this before
 		// it is ever saved, so this should not happen; if it does anyway,
 		// fall back to the default rather than skip writing the description.
-		log.Printf("jobs: description template invalid, using the default instead: %v", terr)
+		slog.Warn("description template invalid, using the default instead", "err", terr)
 		block, _ = render.RenderBlock(render.DefaultTemplate, sum, samples, render.Options{Unit: set.Unit})
 	}
 	p.step(a.StravaID, "Writing description to Strava")
@@ -172,16 +172,16 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	switch {
 	case !set.ChartImage:
 	case a.ChartUploaded:
-		log.Printf("jobs: activity %s: chart photo skipped, one was attached before", a.StravaID)
+		slog.Info("chart photo skipped, one was attached before", "activity", a.StravaID)
 	case !chartReady:
-		log.Printf("jobs: activity %s: chart photo delayed until %s so late glucose readings are included", a.StravaID, chartDeadline.Format(time.RFC3339))
+		slog.Info("chart photo delayed so late glucose readings are included", "activity", a.StravaID, "until", chartDeadline.Format(time.RFC3339))
 	default:
-		log.Printf("jobs: activity %s: attaching chart photo", a.StravaID)
+		slog.Info("attaching chart photo", "activity", a.StravaID)
 		p.step(a.StravaID, "Drawing and uploading chart photo")
 		if err := p.uploadChart(ctx, a, set, chartSamples); err != nil {
 			return err
 		}
-		log.Printf("jobs: activity %s: chart photo attached and confirmed on the edit page", a.StravaID)
+		slog.Info("chart photo attached and confirmed on the edit page", "activity", a.StravaID)
 	}
 
 	a.Status = StatusDone
@@ -264,9 +264,9 @@ func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
 	}
 	pts, err := src.HeartRate(ctx, a.StravaID, a.Start)
 	if err != nil {
-		log.Printf("jobs: activity %s: no heart rate for the chart: %v", a.StravaID, err)
+		slog.Warn("no heart rate for the chart", "activity", a.StravaID, "err", err)
 		return
 	}
-	log.Printf("jobs: activity %s: %d heart rate points for the chart", a.StravaID, len(pts))
+	slog.Info("heart rate points for the chart", "activity", a.StravaID, "points", len(pts))
 	a.HeartRate = pts
 }

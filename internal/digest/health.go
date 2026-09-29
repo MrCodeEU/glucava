@@ -3,7 +3,7 @@ package digest
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -192,7 +192,7 @@ func (h *Health) Run(ctx context.Context) {
 	}
 	for {
 		if _, err := h.Once(ctx); err != nil {
-			log.Printf("digest: health report: %v", err)
+			slog.Error("health report", "err", err)
 		}
 		select {
 		case <-ctx.Done():

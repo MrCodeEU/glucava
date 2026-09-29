@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,6 +19,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/glucose/importers"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/overview"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
@@ -36,7 +37,7 @@ func (s *Server) html(w http.ResponseWriter, code int, n g.Node) {
 }
 
 func (s *Server) serverError(w http.ResponseWriter, err error) {
-	log.Printf("web: %v", err)
+	slog.Error("server error", "err", err)
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
@@ -81,7 +82,7 @@ func (s *Server) dashData(ctx context.Context) (DashData, error) {
 		sample, err := s.LatestGlucose(gctx)
 		cancel()
 		if err != nil {
-			log.Printf("web: latest glucose: %v", err)
+			slog.Error("latest glucose", "err", err)
 		}
 		d.Latest = sample
 	}
@@ -228,6 +229,17 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 	s.html(w, http.StatusOK, EventsPage(s.page(r, "Notifications", "events"), evs, s.loc(), s.now()))
 }
 
+func (s *Server) recentLogs() []logging.Entry {
+	if s.Logs == nil {
+		return nil
+	}
+	return s.Logs.Recent(500)
+}
+
+func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
+	s.html(w, http.StatusOK, LogsPage(s.page(r, "Logs", "logs"), s.recentLogs(), s.loc()))
+}
+
 // ----------------------------------------------------------------- streams
 
 // stream keeps an SSE connection open and calls render whenever the bus fires.
@@ -261,6 +273,12 @@ func (s *Server) streamLive(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		return sse.PatchElements(renderString(LiveDash(d)))
+	})
+}
+
+func (s *Server) streamLogs(w http.ResponseWriter, r *http.Request) {
+	s.stream(w, r, func(sse *datastar.ServerSentEventGenerator) error {
+		return sse.PatchElements(renderString(LogRows(s.recentLogs(), s.loc())))
 	})
 }
 
@@ -318,7 +336,7 @@ func (s *Server) actionPoll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		log.Printf("web: check strava now: %v", err)
+		slog.Error("check strava now", "err", err)
 		msg := err.Error()
 		if errors.Is(err, jobs.ErrSessionExpired) {
 			msg = "the Strava session has expired; import fresh cookies."
@@ -445,7 +463,7 @@ func (s *Server) actionProcessActivity(w http.ResponseWriter, r *http.Request) {
 			s.toast(sse, "error", "The Strava session has expired; import fresh cookies.")
 			return
 		case ferr != nil:
-			log.Printf("web: find activity %s: %v", id, ferr)
+			slog.Error("find activity", "activity", id, "err", ferr)
 			s.toast(sse, "error", "Could not look it up: "+ferr.Error())
 			return
 		case found == nil:
@@ -519,7 +537,7 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 	if act != nil && act.Original != nil && s.Restore != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		if rerr := s.Restore(ctx, act); rerr != nil {
-			log.Printf("web: restore before delete %s: %v", id, rerr)
+			slog.Error("restore before delete", "activity", id, "err", rerr)
 			restored = ", but the original description could not be restored on Strava: " + rerr.Error()
 		} else {
 			restored = " and the original description was restored on Strava"
@@ -788,11 +806,11 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.SaveSamples(r.Context(), source, samples); err != nil {
-		log.Printf("web: glucose import: store: %v", err)
+		slog.Error("glucose import: store", "err", err)
 		fail("Could not store the readings.")
 		return
 	}
-	log.Printf("web: glucose import: stored %d readings (%d skipped) as source %q", len(samples), skipped, source)
+	slog.Info("glucose import stored", "readings", len(samples), "skipped", skipped, "source", source)
 
 	msg := fmt.Sprintf("Stored %d readings as %q.", len(samples), source)
 	if skipped > 0 {
@@ -898,11 +916,11 @@ func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
 
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
 	if err != nil {
-		log.Printf("web: strava automatic sign-in for %s: %v", v.Email, err)
+		slog.Error("strava automatic sign-in failed", "email", v.Email, "err", err)
 		s.toast(sse, "error", "Automatic sign-in stopped: "+strava.ExplainLoginError(err))
 		return
 	}
-	log.Printf("web: strava automatic sign-in for %s: succeeded", v.Email)
+	slog.Info("strava automatic sign-in succeeded", "email", v.Email)
 	s.toast(sse, "ok", "Signed in and stored the session.")
 }
 
@@ -915,11 +933,11 @@ func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.GlucoseTest(ctx); err != nil {
-		log.Printf("web: dexcom test connection: %v", err)
+		slog.Error("dexcom test connection", "err", err)
 		s.toast(sse, "error", "Dexcom check failed: "+err.Error())
 		return
 	}
-	log.Printf("web: dexcom test connection: accepted")
+	slog.Info("dexcom test connection accepted")
 	s.toast(sse, "ok", "Dexcom accepted the stored credentials.")
 }
 
@@ -936,7 +954,7 @@ func (s *Server) actionGlucoseResync(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	n, err := s.Resync(ctx)
 	if err != nil {
-		log.Printf("web: glucose resync: %v", err)
+		slog.Error("glucose resync", "err", err)
 		s.toast(sse, "error", "Resync failed: "+err.Error())
 		return
 	}

@@ -10,7 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/mail"
 	"os"
@@ -46,7 +46,8 @@ func htmlOf(m notify.Message) string {
 	}
 	m.Link, m.LinkLabel = notify.LinkFor("https://glucava.example.com", m)
 	if err := e.Send(context.Background(), m); err != nil {
-		log.Fatal(err)
+		slog.Error("send", "err", err)
+		os.Exit(1)
 	}
 	return out
 }
@@ -55,7 +56,8 @@ func main() {
 	outDir := flag.String("out", "docs/img", "output directory")
 	flag.Parse()
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
-		log.Fatal(err)
+		slog.Error("mkdir out dir", "err", err)
+		os.Exit(1)
 	}
 
 	loc := time.UTC
@@ -103,11 +105,13 @@ func main() {
 			chromedp.Screenshot("body > div", &png, chromedp.ByQuery),
 		)
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("screenshot", "err", err)
+			os.Exit(1)
 		}
 		f := filepath.Join(*outDir, name+".png")
 		if err := os.WriteFile(f, png, 0o644); err != nil {
-			log.Fatal(err)
+			slog.Error("write screenshot", "err", err)
+			os.Exit(1)
 		}
 		fmt.Println(f)
 	}

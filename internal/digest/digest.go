@@ -6,7 +6,7 @@ package digest
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -94,7 +94,7 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples
 	if len(samples) > 0 {
 		png, err := chartimg.Glucose(chartimg.Series{Samples: samples, Range: rng, Start: a.Start, End: a.End(), Unit: unit, Loc: loc})
 		if err != nil {
-			log.Printf("digest: chart for %s: %v", a.StravaID, err)
+			slog.Error("digest chart", "activity", a.StravaID, "err", err)
 		} else {
 			m.Chart, m.ChartAlt = png, "Glucose during the activity"
 		}
@@ -170,7 +170,7 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	}
 	chart, cerr := chartimg.Bars(bars)
 	if cerr != nil {
-		log.Printf("digest: weekly chart: %v", cerr)
+		slog.Error("digest weekly chart", "err", cerr)
 	}
 	return notify.Message{
 		Type: notify.TypeWeeklySummary, Severity: sev,
@@ -290,7 +290,7 @@ func (w *Weekly) Run(ctx context.Context) {
 	}
 	for {
 		if _, err := w.Once(ctx); err != nil {
-			log.Printf("digest: weekly summary: %v", err)
+			slog.Error("digest weekly summary", "err", err)
 		}
 		select {
 		case <-ctx.Done():

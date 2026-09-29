@@ -24,6 +24,7 @@ var navItems = []struct{ key, href, label string }{
 	{"settings", "/settings", "Settings"},
 	{"tokens", "/tokens", "Triggers"},
 	{"events", "/events", "Notifications"},
+	{"logs", "/logs", "Logs"},
 }
 
 // navAlertsBadge is the Notifications nav link's error-count badge. It

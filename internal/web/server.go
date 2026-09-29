@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/bus"
 	"github.com/MrCodeEU/glucava/internal/clientip"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -51,6 +52,9 @@ type Server struct {
 	// Progress, if set, gives the current step of a running job, for the
 	// activity page's live status. Optional.
 	Progress *jobs.Progress
+	// Logs, if set, backs the /logs page. Optional (nil hides the page's data,
+	// though the route stays registered).
+	Logs *logging.Handler
 
 	// Proxies names the reverse proxies whose X-Forwarded-* headers are believed.
 	// Nil trusts none, so limits and cookies use the direct peer.
@@ -98,7 +102,7 @@ func (s *Server) page(r *http.Request, title, active string) PageData {
 	email, _ := s.user(r)
 	n, err := s.Store.CountRecentErrors(r.Context(), s.now().Add(-24*time.Hour))
 	if err != nil {
-		log.Printf("web: count recent errors: %v", err)
+		slog.Error("count recent errors", "err", err)
 	}
 	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n}
 }
@@ -125,6 +129,8 @@ func (s *Server) Handler() http.Handler {
 	page("GET /settings", s.settingsPage)
 	page("GET /tokens", s.tokensPage)
 	page("GET /events", s.eventsPage)
+	page("GET /logs", s.logsPage)
+	page("GET /stream/logs", s.streamLogs)
 	page("GET /stream/live", s.streamLive)
 	page("GET /stream/activity/{id}", s.streamActivity)
 
@@ -155,7 +161,7 @@ func (s *Server) Handler() http.Handler {
 // Routes lists the PocketBase route patterns that forward to Handler. PocketBase
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
-	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events",
+	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events", "/logs",
 	"/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 

@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -84,7 +84,7 @@ func (r *Runner) fail(ctx context.Context, stravaID, msg string) error {
 			Type: jobs.EventCanaryFailed, Severity: "error", StravaID: stravaID,
 			Message: "canary check failed: " + msg,
 		}); rerr != nil {
-			log.Printf("canary: record event: %v", rerr)
+			slog.Error("record event", "err", rerr)
 		}
 	}
 	return errors.New("canary: " + msg)
@@ -94,7 +94,7 @@ func (r *Runner) fail(ctx context.Context, stravaID, msg string) error {
 func (r *Runner) Run(ctx context.Context) {
 	for {
 		if err := r.Once(ctx); err != nil {
-			log.Printf("canary: %v", err)
+			slog.Error("canary", "err", err)
 		}
 		wait := 24 * time.Hour
 		if r.Interval != nil {

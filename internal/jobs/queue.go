@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -87,7 +87,7 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 	}
 	a.Status = StatusProcessing
 	if err := q.P.Store.SaveActivity(ctx, &a); err != nil {
-		log.Printf("jobs: save activity %s: %v", a.StravaID, err)
+		slog.Error("save activity", "activity", a.StravaID, "err", err)
 	}
 	q.P.step(a.StravaID, "Starting")
 	defer q.P.clearStep(a.StravaID)
@@ -101,10 +101,10 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		}
 		// Say why, and when it will try again, instead of sitting silent for
 		// minutes: the activity page shows this text while the job waits.
-		log.Printf("jobs: activity %s: attempt %d failed, retrying in %s: %v", a.StravaID, attempt+1, q.Backoff[attempt], err)
+		slog.Warn("activity attempt failed, retrying", "activity", a.StravaID, "attempt", attempt+1, "backoff", q.Backoff[attempt], "err", err)
 		a.Error = fmt.Sprintf("Attempt %d failed: %v. Trying again in %s.", attempt+1, err, q.Backoff[attempt].Round(time.Second))
 		if serr := q.P.Store.SaveActivity(ctx, &a); serr != nil {
-			log.Printf("jobs: save activity %s: %v", a.StravaID, serr)
+			slog.Error("save activity", "activity", a.StravaID, "err", serr)
 		}
 		select {
 		case <-ctx.Done():
@@ -114,7 +114,7 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 	}
 	if err == nil {
 		metrics.JobsProcessedTotal.WithLabelValues("success").Inc()
-		log.Printf("jobs: activity %s: done (attempt %d)", a.StravaID, a.Attempts)
+		slog.Info("activity done", "activity", a.StravaID, "attempts", a.Attempts)
 		if q.OnDone != nil && !j.Force {
 			q.OnDone(ctx, a)
 		}
@@ -122,17 +122,17 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 	}
 
 	metrics.JobsProcessedTotal.WithLabelValues("failed").Inc()
-	log.Printf("jobs: activity %s: failed after %d attempt(s): %v", a.StravaID, a.Attempts, err)
+	slog.Error("activity failed after all attempts", "activity", a.StravaID, "attempts", a.Attempts, "err", err)
 	typ, sev := classify(err)
 	a.Status = StatusFailed
 	a.Error = err.Error()
 	if serr := q.P.Store.SaveActivity(ctx, &a); serr != nil {
-		log.Printf("jobs: save activity %s: %v", a.StravaID, serr)
+		slog.Error("save activity", "activity", a.StravaID, "err", serr)
 	}
 	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
 		Message: fmt.Sprintf("activity %s: %v", a.StravaID, err)}
 	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
-		log.Printf("jobs: record event: %v", rerr)
+		slog.Error("record event", "err", rerr)
 	}
 }
 
@@ -146,7 +146,7 @@ func (q *Queue) restore(ctx context.Context, a Activity) {
 	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
 		Message: fmt.Sprintf("restore activity %s: %v", a.StravaID, err)}
 	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
-		log.Printf("jobs: record event: %v", rerr)
+		slog.Error("record event", "err", rerr)
 	}
 }
 
