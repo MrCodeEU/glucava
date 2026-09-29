@@ -193,7 +193,7 @@ func (s *Server) previewDescriptionText(ctx context.Context, tmplText string, cf
 	if !ok {
 		return "⚠ No sample data to preview with."
 	}
-	block, rerr := render.RenderBlock(tmplText, sum, inWindow, render.Options{Unit: render.Unit(cfg.Unit)})
+	block, rerr := render.RenderBlock(tmplText, sum, sum, inWindow, render.Options{Unit: render.Unit(cfg.Unit)})
 	if rerr != nil {
 		return "⚠ Template error: " + rerr.Error()
 	}

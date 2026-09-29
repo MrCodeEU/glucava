@@ -587,8 +587,9 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
-						"(Go text/template syntax: {{.TIR}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
-						"{{if .Sparkline}}...{{end}} to only show a line when it's there). The preview below updates as you type, using your latest activity or sample data.")),
+						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
+						"{{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; {{.TIRWindow}} is the wider pre/post "+
+						"window the chart draws from below, so the two can differ — add both if you want to show that. The preview below updates as you type, using your latest activity or sample data.")),
 					Field("descPreset", "Preset", "Selecting one replaces the template below; keep editing afterwards to customize it further.",
 						g.El("select", append([]g.Node{ID("descPreset"), bind("descPreset"), g.Attr("data-on:change", descPresetChangeExpr),
 							Option(Value("custom"), g.Text("Custom"))}, presetOptions()...)...)),

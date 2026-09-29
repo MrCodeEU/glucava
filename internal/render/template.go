@@ -25,27 +25,36 @@ type TemplateData struct {
 	GMI               string // percent, no "%" suffix
 	Start, End        string // in Unit
 
+	// TIRWindow is time-in-range over the wider pre/post buffer window the
+	// chart uses (Settings.ChartPre/Pre/Post), rather than TIR's activity
+	// window — the two differ whenever a buffer is configured, which is why
+	// the chart and the description text can show different percentages for
+	// the same activity. Equal to TIR when no separate window was computed
+	// (e.g. the chart image is disabled, or in a template preview).
+	TIRWindow string // percent, no "%" suffix
+
 	Sparkline string // "" when disabled or there were no samples to draw
 }
 
-func newTemplateData(sum stats.Summary, samples []stats.Sample, opt Options) TemplateData {
+func newTemplateData(sum, windowSum stats.Summary, samples []stats.Sample, opt Options) TemplateData {
 	pct := func(v float64) string { return num(v, "") }
 	d := TemplateData{
-		Sum:      sum,
-		Unit:     string(opt.Unit),
-		TIR:      pct(sum.TIR),
-		Below:    pct(sum.Below),
-		Above:    pct(sum.Above),
-		VeryLow:  pct(sum.VeryLow),
-		VeryHigh: pct(sum.VeryHigh),
-		Min:      num(sum.Min, opt.Unit),
-		Max:      num(sum.Max, opt.Unit),
-		Avg:      num(sum.Avg, opt.Unit),
-		StdDev:   num(sum.StdDev, opt.Unit),
-		CV:       pct(sum.CV),
-		GMI:      pct(sum.GMI),
-		Start:    num(sum.Start, opt.Unit),
-		End:      num(sum.End, opt.Unit),
+		Sum:       sum,
+		Unit:      string(opt.Unit),
+		TIR:       pct(sum.TIR),
+		Below:     pct(sum.Below),
+		Above:     pct(sum.Above),
+		VeryLow:   pct(sum.VeryLow),
+		VeryHigh:  pct(sum.VeryHigh),
+		Min:       num(sum.Min, opt.Unit),
+		Max:       num(sum.Max, opt.Unit),
+		Avg:       num(sum.Avg, opt.Unit),
+		StdDev:    num(sum.StdDev, opt.Unit),
+		CV:        pct(sum.CV),
+		GMI:       pct(sum.GMI),
+		Start:     num(sum.Start, opt.Unit),
+		End:       num(sum.End, opt.Unit),
+		TIRWindow: pct(windowSum.TIR),
 	}
 	w := opt.SparkWidth
 	if w == 0 {
@@ -93,7 +102,7 @@ var sampleSamples = []stats.Sample{{Value: 110}, {Value: 132}, {Value: 140}}
 // through; RenderBlock's own fallback to DefaultTemplate is the backstop
 // for that case.
 func CheckTemplate(tmplText string) error {
-	_, err := RenderBlock(tmplText, sampleSummary, sampleSamples, Options{})
+	_, err := RenderBlock(tmplText, sampleSummary, sampleSummary, sampleSamples, Options{})
 	return err
 }
 
@@ -103,7 +112,10 @@ func CheckTemplate(tmplText string) error {
 // wrote it. tmplText is user-controlled (a custom description template),
 // but text/template cannot execute arbitrary code — a bad template only
 // ever fails to parse or execute, it cannot escape the sandbox.
-func RenderBlock(tmplText string, sum stats.Summary, samples []stats.Sample, opt Options) (string, error) {
+//
+// windowSum backs {{.TIRWindow}}: pass the same value as sum when there is
+// no separate pre/post window to report.
+func RenderBlock(tmplText string, sum, windowSum stats.Summary, samples []stats.Sample, opt Options) (string, error) {
 	if opt.Unit == "" {
 		opt.Unit = MgDL
 	}
@@ -112,7 +124,7 @@ func RenderBlock(tmplText string, sum stats.Summary, samples []stats.Sample, opt
 		return "", err
 	}
 	var buf strings.Builder
-	if err := t.Execute(&buf, newTemplateData(sum, samples, opt)); err != nil {
+	if err := t.Execute(&buf, newTemplateData(sum, windowSum, samples, opt)); err != nil {
 		return "", err
 	}
 	return sentinel + buf.String() + endSentinel, nil

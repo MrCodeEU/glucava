@@ -97,6 +97,14 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	if !ok {
 		return ErrNoData
 	}
+	// windowSum backs {{.TIRWindow}}: the same wider window the chart draws
+	// from, so a template that shows both never has to explain why they
+	// differ. Falls back to sum itself when chartSamples has no wider range
+	// than samples (chart image off, or no Pre/Post/ChartPre configured).
+	windowSum := sum
+	if ws, ok := stats.Summarize(chartSamples, set.Range); ok {
+		windowSum = ws
+	}
 
 	if prev, perr := p.Store.Activity(ctx, a.StravaID); perr == nil && prev != nil {
 		if a.Original == nil {
@@ -112,13 +120,13 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	if tmpl == "" {
 		tmpl = render.DefaultTemplate
 	}
-	block, terr := render.RenderBlock(tmpl, sum, samples, render.Options{Unit: set.Unit})
+	block, terr := render.RenderBlock(tmpl, sum, windowSum, samples, render.Options{Unit: set.Unit})
 	if terr != nil {
 		// Validate (see store.Config.Validate) is meant to catch this before
 		// it is ever saved, so this should not happen; if it does anyway,
 		// fall back to the default rather than skip writing the description.
 		slog.Warn("description template invalid, using the default instead", "err", terr)
-		block, _ = render.RenderBlock(render.DefaultTemplate, sum, samples, render.Options{Unit: set.Unit})
+		block, _ = render.RenderBlock(render.DefaultTemplate, sum, windowSum, samples, render.Options{Unit: set.Unit})
 	}
 	p.step(a.StravaID, "Writing description to Strava")
 	var backupErr error
