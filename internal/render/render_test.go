@@ -378,3 +378,48 @@ func TestRenderBlockBadTemplateErrors(t *testing.T) {
 		t.Error("expected an error for unclosed template syntax")
 	}
 }
+
+// FuzzMergePreservesText fuzzes the existing-description text and the
+// Summary going into a well-formed Block(), and checks the one invariant
+// Merge must never break: with every Glucava block removed, the result must
+// read the same as the original. block always comes from Block() itself, not
+// an arbitrary fuzzed string, since PreservesText only promises this for a
+// block Merge can actually recognise as its own (see blockMarker).
+func FuzzMergePreservesText(f *testing.F) {
+	f.Add("Nice morning run\n", 92.5, 70.0, 180.0, 110.0, 4)
+	f.Add("", 0.0, 0.0, 0.0, 0.0, 0)
+	f.Add("🩸 not really a glucava block", 100.0, 60.0, 60.0, 60.0, -1)
+	f.Add("line1\r\nline2\r\n", 50.0, 40.0, 300.0, 150.0, 24)
+	f.Fuzz(func(t *testing.T, existing string, tir, min, max, avg float64, sparkWidth int) {
+		s, sum := fixture(min, max, avg)
+		sum.TIR = tir
+		block := Block(sum, s, Options{SparkWidth: sparkWidth})
+
+		merged := Merge(existing, block)
+		if !PreservesText(existing, merged) {
+			t.Fatalf("Merge changed the user's own text\nexisting: %q\nmerged:   %q", existing, merged)
+		}
+
+		again := Merge(merged, block)
+		if again != merged {
+			t.Fatalf("Merge is not idempotent\nfirst:  %q\nsecond: %q", merged, again)
+		}
+	})
+}
+
+// FuzzStripIdempotent fuzzes arbitrary text (not necessarily containing a
+// Glucava block) and checks Strip never panics and is idempotent: stripping
+// an already-stripped text must be a no-op.
+func FuzzStripIdempotent(f *testing.F) {
+	f.Add("Nice morning run\n" + sentinel + "🩸 TIR 92% | min 70 | max 180 | avg 110 mg/dL\n▁▃▆█" + endSentinel)
+	f.Add("")
+	f.Add(legacyBlockMarker + "90% | min 1 | max 1 | avg 1 mg/dL\n▁")
+	f.Add("just some text\r\nwith CRLF\r\n")
+	f.Fuzz(func(t *testing.T, existing string) {
+		once := Strip(existing)
+		twice := Strip(once)
+		if once != twice {
+			t.Fatalf("Strip is not idempotent\nonce:  %q\ntwice: %q", once, twice)
+		}
+	})
+}

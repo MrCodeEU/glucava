@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/MrCodeEU/glucava/internal/metrics"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
@@ -200,5 +203,39 @@ func TestRunStopsOnCancel(t *testing.T) {
 	}
 	if src.calls == 0 {
 		t.Error("Run never ticked")
+	}
+}
+
+// TestOnceUpdatesMetricsOnSuccess and TestOnceUpdatesMetricsOnError guard
+// the metrics wiring in fetchAndStore.
+func TestOnceUpdatesMetricsOnSuccess(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{samples: []stats.Sample{{Time: now.Add(-5 * time.Minute), Value: 110}}}
+	st := &fakeStore{}
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now }}
+
+	storedBefore := testutil.ToFloat64(metrics.IngestReadingsStoredTotal)
+	if _, err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := testutil.ToFloat64(metrics.IngestReadingsStoredTotal); got != storedBefore+1 {
+		t.Errorf("IngestReadingsStoredTotal = %v, want %v", got, storedBefore+1)
+	}
+	if got := testutil.ToFloat64(metrics.IngestLastSuccessTimestamp); got != float64(now.Unix()) {
+		t.Errorf("IngestLastSuccessTimestamp = %v, want %v", got, now.Unix())
+	}
+}
+
+func TestOnceUpdatesMetricsOnError(t *testing.T) {
+	src := &fakeSource{err: errors.New("source down")}
+	st := &fakeStore{}
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom"}
+
+	errsBefore := testutil.ToFloat64(metrics.IngestErrorsTotal)
+	if _, err := in.Once(context.Background()); err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := testutil.ToFloat64(metrics.IngestErrorsTotal); got != errsBefore+1 {
+		t.Errorf("IngestErrorsTotal = %v, want %v", got, errsBefore+1)
 	}
 }

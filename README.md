@@ -164,6 +164,10 @@ glucava secrets status --dev=false --dir /data     # set/unset per secret, never
 - Only one user account can exist.
 - Back up the data dir and the encryption key separately; a backup holding both exposes your credentials. See [Backup and restore](#backup-and-restore).
 
+## Monitoring
+
+`GET /health` reports `{"status":"ok","build":"<version>"}`, unauthenticated. `GET /metrics` serves [Prometheus](https://prometheus.io/) text-format metrics, also unauthenticated (put it behind your reverse proxy or scrape network if that matters to you): job outcomes and queue depth (`glucava_jobs_*`), background ingest health (`glucava_ingest_*`, including `glucava_ingest_last_success_timestamp_seconds` — alert on its age to catch a source that has silently stopped answering), Strava write latency (`glucava_strava_write_duration_seconds`), a recent-window glucose summary (`glucava_glucose_*`), HTTP request counts/latency/in-flight (`glucava_http_*`), and the standard Go runtime/process collectors.
+
 ## Backup and restore
 
 All state is in the data dir (`/data` in Docker): the SQLite database (settings, activities, readings, events, encrypted secrets) and, unless you set `GLUCAVA_SECRET_KEY`, `secret.key`.

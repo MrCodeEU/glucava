@@ -9,6 +9,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/metrics"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -122,6 +123,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 	p.step(a.StravaID, "Writing description to Strava")
 	var backupErr error
 	unsafe := false
+	writeStart := time.Now()
 	err = p.Writer.UpdateDescription(ctx, a.StravaID, func(existing string) string {
 		// Persist the backup before anything is written. If that fails, leave
 		// the description untouched.
@@ -142,6 +144,7 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		}
 		return merged
 	})
+	metrics.StravaWriteDuration.Observe(time.Since(writeStart).Seconds())
 	if unsafe {
 		return ErrUnsafeMerge
 	}

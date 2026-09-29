@@ -9,8 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/metrics"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -775,5 +778,34 @@ func TestChartNotDelayedWhenPostBufferIsZero(t *testing.T) {
 	runOne(t, q, Job{Activity: activity()})
 	if a := st.acts["42"]; a.Status != StatusDone || !a.ChartUploaded || len(w.photos) != 1 {
 		t.Fatalf("chart should attach immediately with no buffer set: %+v, photos=%d", a, len(w.photos))
+	}
+}
+
+// TestSuccessIncrementsJobsProcessedMetric and
+// TestFailureIncrementsJobsProcessedMetric are the regression guard for
+// wiring metrics.JobsProcessedTotal into Queue.handle: not parallel, since
+// they read the shared package-level counter by delta and a concurrent
+// increment from another test would make the exact delta unreliable.
+func TestSuccessIncrementsJobsProcessedMetric(t *testing.T) {
+	before := testutil.ToFloat64(metrics.JobsProcessedTotal.WithLabelValues("success"))
+	w := &fakeWriter{desc: "My run"}
+	q, _ := setup(&fakeSource{samples: readings()}, w)
+	runOne(t, q, Job{Activity: activity()})
+
+	if got := testutil.ToFloat64(metrics.JobsProcessedTotal.WithLabelValues("success")); got != before+1 {
+		t.Errorf("JobsProcessedTotal{success} = %v, want %v", got, before+1)
+	}
+}
+
+func TestFailureIncrementsJobsProcessedMetric(t *testing.T) {
+	before := testutil.ToFloat64(metrics.JobsProcessedTotal.WithLabelValues("failed"))
+	w := &fakeWriter{errs: []error{ErrSessionExpired}}
+	st := newStore()
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w}
+	q := NewQueue(p, nil, 8) // no backoff: fails after the first attempt
+	runOne(t, q, Job{Activity: activity()})
+
+	if got := testutil.ToFloat64(metrics.JobsProcessedTotal.WithLabelValues("failed")); got != before+1 {
+		t.Errorf("JobsProcessedTotal{failed} = %v, want %v", got, before+1)
 	}
 }
