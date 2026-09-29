@@ -281,6 +281,39 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
+// TestChartOverlayTogglesRoundTrip guards against a real bug: LoadConfig and
+// SaveConfig never read or wrote chart_avg_line/chart_range_lines/
+// chart_min_max/chart_hide_stats, so the four chart overlay toggles the
+// Settings page shows (added in 0.3.0) silently did not persist, and
+// Settings() (what the pipeline actually reads when it draws the chart
+// attached to Strava) never saw them either.
+func TestChartOverlayTogglesRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ChartAvgLine || c.ChartRangeLines || c.ChartMinMax || c.ChartHideStats {
+		t.Fatalf("defaults = %+v, want all four false", c)
+	}
+	c.ChartAvgLine, c.ChartRangeLines, c.ChartMinMax, c.ChartHideStats = true, true, true, true
+	if err := s.SaveConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadConfig()
+	if err != nil || !got.ChartAvgLine || !got.ChartRangeLines || !got.ChartMinMax || !got.ChartHideStats {
+		t.Fatalf("LoadConfig after save = %+v, %v, want all four true", got, err)
+	}
+	set, err := s.Settings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	style := set.ChartStyle
+	if !style.AvgLine || !style.RangeLines || !style.MinMax || !style.HideStats {
+		t.Errorf("Settings().ChartStyle = %+v, want all four true (this is what the real Strava chart photo uses)", style)
+	}
+}
+
 func TestListActivitiesAndEventsOrderAndChangedHook(t *testing.T) {
 	changes := 0
 	s := &PB{App: newApp(t), Changed: func() { changes++ }}

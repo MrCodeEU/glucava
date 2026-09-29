@@ -55,6 +55,8 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 		ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"), ChartBand: r.GetBool("chart_band"),
 		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
 		ChartPanelOrder: r.GetString("chart_panel_order"),
+		ChartAvgLine:    r.GetBool("chart_avg_line"), ChartRangeLines: r.GetBool("chart_range_lines"),
+		ChartMinMax: r.GetBool("chart_min_max"), ChartHideStats: r.GetBool("chart_hide_stats"),
 	}.ChartStyle()
 	out.ChartHR = r.GetBool("chart_hr")
 	out.HRRead = r.GetBool("hr_read")
@@ -80,6 +82,23 @@ func (s *PB) Activity(_ context.Context, id string) (*jobs.Activity, error) {
 	}
 	a := activityFromRecord(r)
 	return &a, nil
+}
+
+// ActivitiesInRange returns activities with a start time in [from, to],
+// newest first, for the stats overview page. Distinct from ListActivities
+// (store/ui.go), which takes a limit instead of a range for the dashboard.
+func (s *PB) ActivitiesInRange(_ context.Context, from, to time.Time) ([]jobs.Activity, error) {
+	recs, err := s.App.FindRecordsByFilter("activities",
+		"start_time >= {:from} && start_time <= {:to}", "-start_time", 0, 0,
+		dbx.Params{"from": pbTime(from), "to": pbTime(to)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]jobs.Activity, len(recs))
+	for i, r := range recs {
+		out[i] = activityFromRecord(r)
+	}
+	return out, nil
 }
 
 // DeleteActivity removes glucava's own record of an activity. It never
