@@ -161,13 +161,21 @@ func ParseTrainingActivities(raw []byte, loc *time.Location) ([]jobs.Activity, e
 		if secs <= 0 {
 			continue
 		}
+		// distance_raw and elevation_gain_raw (checked 2026-09, real response)
+		// are meters, and legitimately 0 for a trainer/manual "Workout" entry,
+		// so read them directly rather than through firstNumber (which treats
+		// 0 as "missing" and falls through to the next key).
+		distance, _ := number(m["distance_raw"])
+		elevation, _ := number(m["elevation_gain_raw"])
 		out = append(out, jobs.Activity{
-			StravaID: id,
-			Name:     str(m["name"]),
-			Sport:    firstString(m, "sport_type", "type", "activity_type_display_name"),
-			Start:    start,
-			Duration: time.Duration(secs) * time.Second,
-			Status:   jobs.StatusPending,
+			StravaID:      id,
+			Name:          str(m["name"]),
+			Sport:         firstString(m, "sport_type", "type", "activity_type_display_name"),
+			Start:         start,
+			Duration:      time.Duration(secs) * time.Second,
+			Distance:      distance,
+			ElevationGain: elevation,
+			Status:        jobs.StatusPending,
 		})
 	}
 	return out, nil

@@ -54,11 +54,13 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 	out.ChartStyle = Config{
 		ChartTheme: r.GetString("chart_theme"), ChartSize: r.GetString("chart_size"), ChartBand: r.GetBool("chart_band"),
 		ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"), ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"),
+		ChartElevation:  r.GetBool("chart_elevation"),
 		ChartPanelOrder: r.GetString("chart_panel_order"),
 		ChartAvgLine:    r.GetBool("chart_avg_line"), ChartRangeLines: r.GetBool("chart_range_lines"),
 		ChartMinMax: r.GetBool("chart_min_max"), ChartHideStats: r.GetBool("chart_hide_stats"),
 	}.ChartStyle()
 	out.ChartHR = r.GetBool("chart_hr")
+	out.ChartElevation = r.GetBool("chart_elevation")
 	out.HRRead = r.GetBool("hr_read")
 	out.ChartPre = time.Duration(r.GetInt("chart_pre_minutes")) * time.Minute
 	out.Pre = time.Duration(r.GetInt("pre_minutes")) * time.Minute
@@ -123,6 +125,10 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 		Sport:    r.GetString("sport_type"),
 		Start:    r.GetDateTime("start_time").Time(),
 		Duration: time.Duration(r.GetInt("duration_sec")) * time.Second,
+
+		Distance:      r.GetFloat("distance_m"),
+		ElevationGain: r.GetFloat("elevation_gain_m"),
+
 		Status:   r.GetString("status"),
 		Error:    r.GetString("error"),
 		Attempts: r.GetInt("attempts"),
@@ -136,6 +142,9 @@ func activityFromRecord(r *core.Record) jobs.Activity {
 	}
 	if raw := r.GetString("heart_rate"); raw != "" && raw != "null" {
 		_ = json.Unmarshal([]byte(raw), &a.HeartRate)
+	}
+	if raw := r.GetString("elevation"); raw != "" && raw != "null" {
+		_ = json.Unmarshal([]byte(raw), &a.Elevation)
 	}
 	if raw := r.GetString("summary"); raw != "" && raw != "null" {
 		var sum stats.Summary
@@ -163,6 +172,8 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 	r.Set("sport_type", a.Sport)
 	r.Set("start_time", a.Start)
 	r.Set("duration_sec", int(a.Duration.Seconds()))
+	r.Set("distance_m", a.Distance)
+	r.Set("elevation_gain_m", a.ElevationGain)
 	r.Set("status", a.Status)
 	r.Set("error", a.Error)
 	r.Set("attempts", a.Attempts)
@@ -183,6 +194,9 @@ func (s *PB) SaveActivity(_ context.Context, a *jobs.Activity) error {
 	}
 	if len(a.HeartRate) > 0 { // never cleared: it is what the chart preview draws
 		r.Set("heart_rate", a.HeartRate)
+	}
+	if len(a.Elevation) > 0 { // never cleared, same reasoning as heart_rate
+		r.Set("elevation", a.Elevation)
 	}
 	if a.Status == jobs.StatusDone {
 		r.Set("processed_at", time.Now().UTC())

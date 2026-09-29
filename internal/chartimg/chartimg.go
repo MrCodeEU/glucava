@@ -52,23 +52,26 @@ var (
 	}
 )
 
-// PanelActivity, PanelBand, PanelDots and PanelHR are the panel names Style
-// and Photo recognise. Activity and band are shaded, full-height rects that
-// can overlap (see DefaultPanels for what happens where they do); dots and
-// HR are drawn independently of each other and of the two shaded panels, so
-// their position in Panels only matters for a settings UI listing them
-// consistently, not for how the chart itself looks.
+// PanelActivity, PanelBand, PanelDots, PanelHR and PanelElevation are the
+// panel names Style and Photo recognise. Activity and band are shaded,
+// full-height rects that can overlap (see DefaultPanels for what happens
+// where they do); dots, HR and elevation are drawn independently of each
+// other and of the two shaded panels, so their position in Panels only
+// matters for a settings UI listing them consistently, not for how the
+// chart itself looks.
 const (
-	PanelActivity = "activity"
-	PanelBand     = "band"
-	PanelDots     = "dots"
-	PanelHR       = "hr"
+	PanelActivity  = "activity"
+	PanelBand      = "band"
+	PanelDots      = "dots"
+	PanelHR        = "hr"
+	PanelElevation = "elevation"
 )
 
 // DefaultPanels is every panel, in the order that reproduces the chart's
 // original, pre-Panels look: activity drawn first, so band's target-range
-// shading wins in the region where the two overlap.
-var DefaultPanels = []string{PanelActivity, PanelBand, PanelDots, PanelHR}
+// shading wins in the region where the two overlap. Elevation is drawn last
+// among these background layers to keep it behind the glucose curve itself.
+var DefaultPanels = []string{PanelActivity, PanelBand, PanelElevation, PanelDots, PanelHR}
 
 // Style is how the glucose chart looks. The zero value is the default look
 // used in emails, so every switch is phrased as a change from it.

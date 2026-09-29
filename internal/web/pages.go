@@ -281,6 +281,14 @@ func ActivityBody(d ActivityData) g.Node {
 	if h := d.HR; h != nil {
 		tileList = append(tileList, Tile("Heart rate", fmt.Sprintf("%.0f", h.Avg), fmt.Sprintf("bpm average · max %.0f · min %.0f", h.Max, h.Min)))
 	}
+	if a.Distance > 0 || a.ElevationGain > 0 {
+		pace := render.FormatPace(a.Sport, a.Distance, a.Duration)
+		sub := fmt.Sprintf("%.0f m elevation", a.ElevationGain)
+		if pace != "" {
+			sub += " · " + pace
+		}
+		tileList = append(tileList, Tile("Distance", fmt.Sprintf("%.2f km", a.Distance/1000), sub))
+	}
 	var tiles g.Node
 	if len(tileList) > 0 {
 		tiles = Grid("", tileList...)
@@ -505,7 +513,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
-		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
+		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartElevation": c.ChartElevation, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
 		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
 		"chartPanelOrder":   defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
 		"overviewShowTrend": c.OverviewShowTrend, "overviewShowBySport": c.OverviewShowBySport, "overviewShowTable": c.OverviewShowTable,
@@ -565,6 +573,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 								chartPanelRow("chartBand", "band", "Shade the target range"),
 								chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
 								chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
+								chartPanelRow("chartElevation", "elevation", "Show elevation profile (background; fetched from Strava when on)"),
 							),
 							Field("chartAvgLine", "Average line", "A dashed line at the average glucose value.", Input(ID("chartAvgLine"), Type("checkbox"), bind("chartAvgLine"))),
 							Field("chartRangeLines", "Low/high lines", "Dashed lines at the target range low and high.", Input(ID("chartRangeLines"), Type("checkbox"), bind("chartRangeLines"))),
@@ -587,9 +596,11 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
-						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
-						"{{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; {{.TIRWindow}} is the wider pre/post "+
-						"window the chart draws from below, so the two can differ — add both if you want to show that. The preview below updates as you type, using your latest activity or sample data.")),
+						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+
+						"{{.Distance}}, {{.Elevation}}, {{.Pace}}, {{.Sparkline}}; {{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; "+
+						"{{.TIRWindow}} is the wider pre/post window the chart draws from below, so the two can differ — add both if you want to show that. {{.Pace}} is a single "+
+						"field that's already the right unit for the activity's sport (pace for a run/hike/walk/swim, speed for a ride), empty when there's no meaningful distance "+
+						"metric for the sport. The preview below updates as you type, using your latest activity or sample data.")),
 					Field("descPreset", "Preset", "Selecting one replaces the template below; keep editing afterwards to customize it further.",
 						g.El("select", append([]g.Node{ID("descPreset"), bind("descPreset"), g.Attr("data-on:change", descPresetChangeExpr),
 							Option(Value("custom"), g.Text("Custom"))}, presetOptions()...)...)),
@@ -874,7 +885,7 @@ func LogsPage(pd PageData, entries []logging.Entry, loc *time.Location) g.Node {
 // chartPreviewExpr builds the preview image address from the form signals, so
 // the image reloads whenever an option changes.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
-	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&pre=' + $chartPre" +
+	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&elevation=' + $chartElevation + '&pre=' + $chartPre" +
 	" + '&avgline=' + $chartAvgLine + '&rangelines=' + $chartRangeLines + '&minmax=' + $chartMinMax + '&hidestats=' + $chartHideStats" +
 	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh + '&panelOrder=' + encodeURIComponent($chartPanelOrder)"
 

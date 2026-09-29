@@ -45,6 +45,7 @@ func chartConfig(cfg store.Config, q map[string][]string) store.Config {
 	flag("minmax", &cfg.ChartMinMax)
 	flag("hidestats", &cfg.ChartHideStats)
 	flag("hr", &cfg.ChartHR)
+	flag("elevation", &cfg.ChartElevation)
 	if v, ok := get("pre"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 240 {
 			cfg.ChartPreMin = n
@@ -97,6 +98,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 	var (
 		samples    []stats.Sample
 		hr         []chartimg.HRPoint
+		elev       []chartimg.ElevPoint
 		start, end time.Time
 	)
 	load := func(id string) bool {
@@ -108,7 +110,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 		if err != nil || len(got) < 2 {
 			return false
 		}
-		samples, start, end, hr = got, act.Start, act.End(), act.HeartRate
+		samples, start, end, hr, elev = got, act.Start, act.End(), act.HeartRate, act.Elevation
 		return true
 	}
 	if name == "latest" {
@@ -128,7 +130,7 @@ func (s *Server) chartImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	png, err := chartimg.Photo(chartimg.PhotoData{
-		Samples: samples, HR: hr, Range: stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh},
+		Samples: samples, HR: hr, Elevation: elev, Range: stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh},
 		Start: start, End: end, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Style: cfg.ChartStyle(),
 	})
 	if err != nil {

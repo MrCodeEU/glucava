@@ -11,6 +11,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 
+	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
@@ -133,17 +134,22 @@ func (s *PB) ExportActivities(w io.Writer) error {
 		return err
 	}
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"strava_id", "name", "sport", "start_utc", "duration_sec", "status", "tir_pct", "min", "max", "avg", "processed_utc", "hr_avg", "hr_max", "hr_min"})
+	_ = cw.Write([]string{"strava_id", "name", "sport", "start_utc", "duration_sec", "status", "tir_pct", "min", "max", "avg", "processed_utc", "hr_avg", "hr_max", "hr_min", "distance_km", "elevation_gain_m", "pace"})
 	for _, r := range recs {
 		a := activityFromRecord(r)
 		row := []string{a.StravaID, safeCell(a.Name), safeCell(a.Sport), a.Start.UTC().Format(time.RFC3339),
-			strconv.Itoa(int(a.Duration.Seconds())), a.Status, "", "", "", "", isoTime(r.GetString("processed_at")), "", "", ""}
+			strconv.Itoa(int(a.Duration.Seconds())), a.Status, "", "", "", "", isoTime(r.GetString("processed_at")), "", "", "", "", "", ""}
 		if a.Summary != nil {
 			row[6] = strconv.FormatFloat(a.Summary.TIR, 'f', 1, 64)
 			row[7], row[8], row[9] = fmt.Sprint(a.Summary.Min), fmt.Sprint(a.Summary.Max), strconv.FormatFloat(a.Summary.Avg, 'f', 1, 64)
 		}
 		if h, ok := stats.SummarizeHR(a.HeartRate, a.Start, a.End()); ok {
 			row[11], row[12], row[13] = strconv.FormatFloat(h.Avg, 'f', 0, 64), strconv.FormatFloat(h.Max, 'f', 0, 64), strconv.FormatFloat(h.Min, 'f', 0, 64)
+		}
+		if a.Distance > 0 || a.ElevationGain > 0 {
+			row[14] = strconv.FormatFloat(a.Distance/1000, 'f', 2, 64)
+			row[15] = strconv.FormatFloat(a.ElevationGain, 'f', 0, 64)
+			row[16] = render.FormatPace(a.Sport, a.Distance, a.Duration)
 		}
 		_ = cw.Write(row)
 	}
