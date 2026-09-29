@@ -14,7 +14,8 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 			v = "mmol/L"
 		case "dexcom_region":
 			v = "us"
-		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr", "hr_read":
+		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr", "hr_read",
+			"chart_avg_line", "chart_range_lines", "chart_min_max", "chart_hide_stats":
 			v = "true"
 		case "chart_theme":
 			v = "dark"

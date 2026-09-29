@@ -2,6 +2,7 @@ package chartimg
 
 import (
 	"bytes"
+	"image/color"
 	"image/png"
 	"math"
 	"os"
@@ -191,5 +192,66 @@ func TestPhotoNeedsSamplesAndToleratesOddData(t *testing.T) {
 	d.HR = d.HR[:1]
 	if _, err := Photo(d); err != nil {
 		t.Errorf("mmol/L: %v", err)
+	}
+}
+
+// TestPhotoOverlayTogglesChangeOutput guards each new 0.3.0 overlay: on its
+// own, it must render successfully and actually change the pixels versus the
+// baseline (otherwise the toggle would silently do nothing, the same class
+// of bug as the panel reorder buttons in 0.2.0).
+func TestPhotoOverlayTogglesChangeOutput(t *testing.T) {
+	base := photoData()
+	basePNG, err := Photo(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		style func(*Style)
+	}{
+		{"avg line", func(s *Style) { s.AvgLine = true }},
+		{"range lines", func(s *Style) { s.RangeLines = true }},
+		{"min/max markers", func(s *Style) { s.MinMax = true }},
+		{"hide stats", func(s *Style) { s.HideStats = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := photoData()
+			tc.style(&d.Style)
+			b, err := Photo(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Equal(b, basePNG) {
+				t.Error("output identical to the baseline: the toggle changed nothing")
+			}
+		})
+	}
+}
+
+// TestPhotoHideStatsActuallyHidesTheBar checks HideStats by pixel content,
+// not just "the bytes differ": the stats bar sits in a known band near the
+// bottom (y 748-996 of the 1000-unit layout), which should be untouched
+// background when hidden.
+func TestPhotoHideStatsActuallyHidesTheBar(t *testing.T) {
+	d := photoData()
+	d.Style.HideStats = true
+	b, err := Photo(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bounds := img.Bounds()
+	bg := lightPalette.bg
+	// A horizontal strip through where the "in range" bar (green) would be.
+	y := bounds.Min.Y + int(float64(bounds.Dy())*0.76)
+	for x := bounds.Min.X + bounds.Dx()/2 - 20; x < bounds.Min.X+bounds.Dx()/2+20; x++ {
+		r, g, bch, _ := img.At(x, y).RGBA()
+		got := color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(bch >> 8), 255}
+		if got != bg {
+			t.Fatalf("pixel at (%d,%d) = %+v, want background %+v: the stats bar is still drawn", x, y, got, bg)
+		}
 	}
 }

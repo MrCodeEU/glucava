@@ -499,6 +499,9 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 	// The client navigates itself once this request resolves (see
 	// postThenGo): CSP here has no 'unsafe-inline', so a server-sent
 	// ExecuteScript (an injected <script> tag) would be silently blocked.
+	// Publish so any OTHER open dashboard tab's /stream/live drops the row
+	// too, not just the tab that clicked delete.
+	s.Bus.Publish()
 	s.toast(sse, "ok", "Activity deleted"+restored+".")
 }
 
@@ -541,6 +544,10 @@ type settingsSignals struct {
 	ChartHR         bool    `json:"chartHR"`
 	ChartPanelOrder string  `json:"chartPanelOrder"`
 	ChartPre        int     `json:"chartPre"`
+	ChartAvgLine    bool    `json:"chartAvgLine"`
+	ChartRangeLines bool    `json:"chartRangeLines"`
+	ChartMinMax     bool    `json:"chartMinMax"`
+	ChartHideStats  bool    `json:"chartHideStats"`
 	HRRead          bool    `json:"hrRead"`
 	PostBuffer      int     `json:"postBuffer"`
 	DescTemplate    string  `json:"descTemplate"`
@@ -559,6 +566,7 @@ func (v settingsSignals) config() store.Config {
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
 		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
+		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
 	}
 }
@@ -598,6 +606,8 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
 	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
 	cfg.ChartPanelOrder = v.ChartPanelOrder
+	cfg.ChartAvgLine, cfg.ChartRangeLines = v.ChartAvgLine, v.ChartRangeLines
+	cfg.ChartMinMax, cfg.ChartHideStats = v.ChartMinMax, v.ChartHideStats
 	cfg.PostBufferMin = v.PostBuffer
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
 	if err := s.Store.SaveConfig(cfg); err != nil {
@@ -865,6 +875,34 @@ func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("web: dexcom test connection: accepted")
 	s.toast(sse, "ok", "Dexcom accepted the stored credentials.")
+}
+
+// actionGlucoseResync forces one ingest fetch with a widened window (up to
+// the source's retention), for catching up right away after a gap instead
+// of waiting for it to self-heal on the next scheduled tick.
+func (s *Server) actionGlucoseResync(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	if s.Resync == nil {
+		s.toast(sse, "error", "Resync is not available here.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	n, err := s.Resync(ctx)
+	if err != nil {
+		log.Printf("web: glucose resync: %v", err)
+		s.toast(sse, "error", "Resync failed: "+err.Error())
+		return
+	}
+	if n == 0 {
+		s.toast(sse, "", "Resynced. Nothing new.")
+		return
+	}
+	suffix := "s"
+	if n == 1 {
+		suffix = ""
+	}
+	s.toast(sse, "ok", fmt.Sprintf("Resynced. Stored %d reading%s.", n, suffix))
 }
 
 func (s *Server) actionPurge(w http.ResponseWriter, r *http.Request) {

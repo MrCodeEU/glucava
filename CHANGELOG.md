@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
+### Added
+- Glucose ingest self-heals after a gap: if the newest stored reading is older than the usual rolling window (phone off, flight mode, a dead Dexcom login), the next fetch widens automatically to catch up on everything the source still has, up to its retention limit. A "Resync now" button on the settings page forces the same catch-up on demand instead of waiting for the next tick.
+- Four new chart photo overlays, each its own on/off toggle on the settings page: an average-glucose line, dashed lines at the target range low/high, marker dots at the curve's minimum and maximum, and hiding the TIR number and stats bar for a plainer chart.
+
+### Fixed
+- Deleting an activity didn't update any OTHER already-open dashboard tab (the one that clicked delete navigated home correctly; a second tab kept showing the deleted row until a manual reload). Delete now publishes to the same live-update bus every other action already uses.
+
 ## [0.2.1] - 2026-09-29
 
 ### Fixed

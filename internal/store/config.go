@@ -199,6 +199,10 @@ var configKeys = map[string]configKey{
 	"chart_hr":              boolKey(func(c *Config) *bool { return &c.ChartHR }),
 	"chart_panel_order":     strKey(func(c *Config) *string { return &c.ChartPanelOrder }),
 	"chart_pre_minutes":     intKey(func(c *Config) *int { return &c.ChartPreMin }),
+	"chart_avg_line":        boolKey(func(c *Config) *bool { return &c.ChartAvgLine }),
+	"chart_range_lines":     boolKey(func(c *Config) *bool { return &c.ChartRangeLines }),
+	"chart_min_max":         boolKey(func(c *Config) *bool { return &c.ChartMinMax }),
+	"chart_hide_stats":      boolKey(func(c *Config) *bool { return &c.ChartHideStats }),
 	"hr_read":               boolKey(func(c *Config) *bool { return &c.HRRead }),
 	"post_buffer_minutes":   intKey(func(c *Config) *int { return &c.PostBufferMin }),
 	"description_template":  strKey(func(c *Config) *string { return &c.DescriptionTemplate }),
@@ -263,5 +267,6 @@ func (c Config) ChartStyle() chartimg.Style {
 	return chartimg.Style{
 		Dark: c.ChartTheme == "dark", Large: c.ChartSize == "large",
 		Panels: panels, LineWidth: float64(c.ChartLine),
+		AvgLine: c.ChartAvgLine, RangeLines: c.ChartRangeLines, MinMax: c.ChartMinMax, HideStats: c.ChartHideStats,
 	}
 }

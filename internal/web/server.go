@@ -59,6 +59,7 @@ type Server struct {
 	Session       SessionChecker                                                     // optional
 	StravaLogin   func(ctx context.Context, email, password string) error            // optional; experimental
 	GlucoseTest   func(ctx context.Context) error                                    // optional
+	Resync        func(ctx context.Context) (int, error)                             // widens the ingest window to catch up on a gap; optional
 	Poll          func(ctx context.Context) (int, error)                             // runs a Strava check inline; optional
 	LatestGlucose func(ctx context.Context) (*stats.Sample, error)                   // optional
 	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error) // looks up an activity the poller never queued; optional
@@ -139,6 +140,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/strava/test", s.actionStravaTest)
 	page("POST /actions/strava/login", s.actionStravaLogin)
 	page("POST /actions/dexcom/test", s.actionDexcomTest)
+	page("POST /actions/glucose/resync", s.actionGlucoseResync)
 	page("POST /actions/tokens/create", s.actionTokenCreate)
 	page("POST /actions/tokens/revoke/{name}", s.actionTokenRevoke)
 	page("POST /actions/data/purge", s.actionPurge)

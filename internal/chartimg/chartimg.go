@@ -78,6 +78,19 @@ type Style struct {
 	Panels []string
 
 	LineWidth float64 // curve thickness in logical pixels; 0 means 2
+
+	// AvgLine, RangeLines and MinMax add overlays to Photo; Glucose (the
+	// small email chart) ignores them. Unlike Panels, these are simple
+	// on/off switches with no draw-order relative to each other: they are
+	// lines and point markers, not filled regions that can visually hide
+	// one another the way Panels' shaded rects can.
+	AvgLine    bool // dashed horizontal line at the average glucose value
+	RangeLines bool // dashed horizontal lines at the target range low/high
+	MinMax     bool // marker dots at the curve's minimum and maximum points
+	// HideStats turns off the TIR header number and the below/in-range/above
+	// bar with its lowest/average/highest tiles at the bottom of Photo. The
+	// zero value (false) keeps them, matching the look before this existed.
+	HideStats bool
 }
 
 // panels returns Panels, or DefaultPanels for the zero value: every layer

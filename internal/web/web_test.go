@@ -912,6 +912,30 @@ func TestDeleteActivity(t *testing.T) {
 	}
 }
 
+// TestDeletePublishesToBus guards against the bug found alongside the
+// dashboard row not disappearing after a delete in a tab OTHER than the one
+// that clicked it: actionDeleteActivity used to navigate the clicking tab
+// home (correct, its dashboard re-fetches fresh) but never published to the
+// Bus, so any other open dashboard tab's /stream/live never re-rendered and
+// kept showing the deleted activity.
+func TestDeletePublishesToBus(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "89", Status: jobs.StatusDone})
+
+	changes, cancel := e.srv.Bus.Subscribe()
+	defer cancel()
+
+	e.action("/actions/delete/89", "{}", c, nil)
+
+	select {
+	case <-changes:
+	default:
+		t.Error("delete did not publish to the bus")
+	}
+}
+
 func TestDeleteActivityStillDeletesLocallyWhenRestoreFails(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
@@ -1114,6 +1138,37 @@ func TestActionDexcomTest(t *testing.T) {
 	}
 	e.srv.GlucoseTest = func(context.Context) error { return nil }
 	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "accepted") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionGlucoseResyncUnavailableByDefault(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	w := e.action("/actions/glucose/resync", "{}", c, nil)
+	if !strings.Contains(w.Body.String(), "not available") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestActionGlucoseResync(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	e.srv.Resync = func(context.Context) (int, error) { return 0, errors.New("dexcom down") }
+	if w := e.action("/actions/glucose/resync", "{}", c, nil); !strings.Contains(w.Body.String(), "dexcom down") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+
+	e.srv.Resync = func(context.Context) (int, error) { return 0, nil }
+	if w := e.action("/actions/glucose/resync", "{}", c, nil); !strings.Contains(w.Body.String(), "Nothing new") {
+		t.Errorf("body = %s", w.Body.String())
+	}
+
+	e.srv.Resync = func(context.Context) (int, error) { return 42, nil }
+	if w := e.action("/actions/glucose/resync", "{}", c, nil); !strings.Contains(w.Body.String(), "Stored 42 readings") {
 		t.Errorf("body = %s", w.Body.String())
 	}
 }
