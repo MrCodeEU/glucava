@@ -28,6 +28,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/metrics"
 	_ "github.com/MrCodeEU/glucava/internal/migrations"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/poll"
@@ -251,6 +252,24 @@ func main() {
 			return re.JSON(http.StatusOK, map[string]string{"status": "ok", "build": buildID})
 		})
 
+		// glucoseWindow is how far back the /metrics glucose gauges look: long
+		// enough for TIR to mean something, short enough to still read as
+		// "now" rather than a whole day's history.
+		const glucoseWindow = 3 * time.Hour
+		metrics.RegisterGlucoseCollector(func(ctx context.Context) (stats.Summary, bool) {
+			samples, err := st.LoadSamplesAny(ctx, time.Now().Add(-glucoseWindow), time.Now())
+			if err != nil || len(samples) == 0 {
+				return stats.Summary{}, false
+			}
+			set, err := st.Settings(ctx)
+			rng := stats.DefaultRange
+			if err == nil {
+				rng = set.Range
+			}
+			return stats.Summarize(samples, rng)
+		})
+		e.Router.GET("/metrics", apis.WrapStdHandler(metrics.RequireToken(toks.Verify, metrics.Handler())))
+
 		h := &trigger.Handler{
 			Tokens: toks, Signal: signal, Events: st,
 			ClientIP: proxies.IP,
@@ -294,7 +313,7 @@ func main() {
 				return &last, nil
 			},
 		}
-		uiHandler := apis.WrapStdHandler(ui.Handler())
+		uiHandler := apis.WrapStdHandler(metrics.InstrumentHandler(ui.Handler()))
 		for _, pattern := range web.Routes {
 			e.Router.GET(pattern, uiHandler)
 			e.Router.POST(pattern, uiHandler)

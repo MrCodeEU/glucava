@@ -133,14 +133,45 @@ func removeBlocks(lines []string) ([]string, int) {
 	return out, found
 }
 
+// normalizeNewlines rewrites CRLF and lone CR line endings to LF. It must
+// leave no "\r" behind: a stray, unpaired CR surviving a first pass (say,
+// right before an LF that was not originally its pair) would look like a
+// real CRLF pair to a second pass over the same text, and get eaten then —
+// making Strip and Merge produce a different result the second time they see
+// their own output. Handling both at once, in one pass, keeps the function
+// idempotent regardless of how CR and LF are mixed in the input.
+func normalizeNewlines(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
+}
+
 // Strip removes every Glucava block from existing and keeps the other text.
+// It runs to a fixed point rather than a single pass: removing one block and
+// trimming the result can put a second, still-marked line at the very start
+// of some other line, where hasBlockPrefix would only recognise it once
+// nothing precedes it — one pass could miss that and leave it as ordinary
+// text, which a second call to Strip would then remove, so Strip's output
+// would not equal Strip of its own output. Looping until a pass changes
+// nothing rules that out regardless of how blocks and whitespace are mixed
+// in the input; each pass only removes lines or trims, so it always
+// terminates.
 func Strip(existing string) string {
-	existing = strings.ReplaceAll(existing, "\r\n", "\n")
-	lines, found := removeBlocks(strings.Split(existing, "\n"))
-	if found == 0 {
-		return strings.TrimRight(existing, " \n\t")
+	s := strings.Trim(normalizeNewlines(existing), " \n\t")
+	for {
+		next := stripOnce(s)
+		if next == s {
+			return s
+		}
+		s = next
 	}
-	return strings.Trim(strings.Join(lines, "\n"), "\n \t")
+}
+
+func stripOnce(s string) string {
+	lines, found := removeBlocks(strings.Split(s, "\n"))
+	if found == 0 {
+		return s
+	}
+	return strings.Trim(strings.Join(lines, "\n"), " \n\t")
 }
 
 // PreservesText reports whether merged differs from existing only by Glucava
@@ -156,7 +187,7 @@ func PreservesText(existing, merged string) bool {
 // appended after a blank line if there wasn't one. Other text — including
 // another app's own text that happens to share the 🩸 emoji — is kept as-is.
 func Merge(existing, block string) string {
-	existing = strings.ReplaceAll(existing, "\r\n", "\n")
+	existing = normalizeNewlines(existing)
 	lines := strings.Split(existing, "\n")
 
 	start := -1

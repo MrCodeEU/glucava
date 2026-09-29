@@ -19,6 +19,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/glucose/importers"
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/overview"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -157,6 +158,26 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) stravaPage(w http.ResponseWriter, r *http.Request) {
 	s.html(w, http.StatusOK, StravaPage(s.page(r, "Strava session", "strava"), s.sessionInfo()))
+}
+
+func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.Store.LoadConfig()
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	key, from, to := statsRangeBounds(r.URL.Query().Get("range"), s.now())
+	acts, err := s.Store.ActivitiesInRange(r.Context(), from, to)
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	loc := s.loc()
+	d := StatsData{
+		Range: key, Overview: overview.Build(acts, loc), Unit: render.Unit(cfg.Unit), Loc: loc, Now: s.now(),
+		ShowTrend: cfg.OverviewShowTrend, ShowBySport: cfg.OverviewShowBySport, ShowTable: cfg.OverviewShowTable,
+	}
+	s.html(w, http.StatusOK, StatsPage(s.page(r, "Overview", "stats"), d))
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +572,10 @@ type settingsSignals struct {
 	HRRead          bool    `json:"hrRead"`
 	PostBuffer      int     `json:"postBuffer"`
 	DescTemplate    string  `json:"descTemplate"`
+
+	OverviewShowTrend   bool `json:"overviewShowTrend"`
+	OverviewShowBySport bool `json:"overviewShowBySport"`
+	OverviewShowTable   bool `json:"overviewShowTable"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -568,6 +593,7 @@ func (v settingsSignals) config() store.Config {
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
+		OverviewShowTrend:   v.OverviewShowTrend, OverviewShowBySport: v.OverviewShowBySport, OverviewShowTable: v.OverviewShowTable,
 	}
 }
 
@@ -610,6 +636,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartMinMax, cfg.ChartHideStats = v.ChartMinMax, v.ChartHideStats
 	cfg.PostBufferMin = v.PostBuffer
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
+	cfg.OverviewShowTrend, cfg.OverviewShowBySport, cfg.OverviewShowTable = v.OverviewShowTrend, v.OverviewShowBySport, v.OverviewShowTable
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

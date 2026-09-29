@@ -19,6 +19,7 @@ type PageData struct {
 
 var navItems = []struct{ key, href, label string }{
 	{"dashboard", "/", "Activities"},
+	{"stats", "/stats", "Overview"},
 	{"strava", "/strava", "Strava session"},
 	{"settings", "/settings", "Settings"},
 	{"tokens", "/tokens", "Triggers"},

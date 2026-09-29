@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/metrics"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
@@ -108,14 +109,17 @@ func (in *Ingestor) ForceOnce(ctx context.Context) (int, error) {
 func (in *Ingestor) fetchAndStore(ctx context.Context, from, to time.Time) (int, error) {
 	got, err := in.Source.Samples(ctx, from, to)
 	if err != nil {
+		metrics.IngestErrorsTotal.Inc()
 		return 0, fmt.Errorf("ingest: %w", err)
 	}
+	metrics.IngestLastSuccessTimestamp.Set(float64(in.now().Unix()))
 	if len(got) == 0 {
 		return 0, nil
 	}
 	if err := in.Store.SaveSamples(ctx, in.SourceName, got); err != nil {
 		return 0, fmt.Errorf("ingest: store samples: %w", err)
 	}
+	metrics.IngestReadingsStoredTotal.Add(float64(len(got)))
 	return len(got), nil
 }
 

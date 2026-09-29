@@ -121,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /chart/{name}", s.chartImage)
 	page("GET /preview/description.txt", s.descriptionPreview)
 	page("GET /strava", s.stravaPage)
+	page("GET /stats", s.statsPage)
 	page("GET /settings", s.settingsPage)
 	page("GET /tokens", s.tokensPage)
 	page("GET /events", s.eventsPage)
@@ -154,7 +155,7 @@ func (s *Server) Handler() http.Handler {
 // Routes lists the PocketBase route patterns that forward to Handler. PocketBase
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
-	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/settings", "/tokens", "/events",
+	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events",
 	"/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 

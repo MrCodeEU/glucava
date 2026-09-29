@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/metrics"
 )
 
 // DefaultBackoff is the wait before retry 1, 2 and 3.
@@ -49,6 +50,7 @@ func (q *Queue) Enqueue(j Job) (bool, error) {
 	select {
 	case q.in <- j:
 		q.pending[j.Activity.StravaID] = true
+		metrics.JobsQueueDepth.Set(float64(len(q.pending)))
 		return true, nil
 	default:
 		return false, ErrQueueFull
@@ -65,6 +67,7 @@ func (q *Queue) Run(ctx context.Context) {
 			q.handle(ctx, j)
 			q.mu.Lock()
 			delete(q.pending, j.Activity.StravaID)
+			metrics.JobsQueueDepth.Set(float64(len(q.pending)))
 			q.mu.Unlock()
 		}
 	}
@@ -110,6 +113,7 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		}
 	}
 	if err == nil {
+		metrics.JobsProcessedTotal.WithLabelValues("success").Inc()
 		log.Printf("jobs: activity %s: done (attempt %d)", a.StravaID, a.Attempts)
 		if q.OnDone != nil && !j.Force {
 			q.OnDone(ctx, a)
@@ -117,6 +121,7 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		return
 	}
 
+	metrics.JobsProcessedTotal.WithLabelValues("failed").Inc()
 	log.Printf("jobs: activity %s: failed after %d attempt(s): %v", a.StravaID, a.Attempts, err)
 	typ, sev := classify(err)
 	a.Status = StatusFailed

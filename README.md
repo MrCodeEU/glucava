@@ -79,6 +79,7 @@ Put a TLS reverse proxy in front. Then:
 - **Custom description text:** Settings → Description text lets you replace the wording written to Strava. Pick a built-in preset (Default, Minimal, Clinical, Emoji, Numbers only), or write your own [Go `text/template`](https://pkg.go.dev/text/template) using `{{.TIR}}`, `{{.Min}}`, `{{.Max}}`, `{{.Avg}}`, `{{.StdDev}}`, `{{.CV}}`, `{{.GMI}}`, `{{.VeryLow}}`, `{{.VeryHigh}}`, `{{.Unit}}` and `{{.Sparkline}}` (`{{if .Sparkline}}...{{end}}` to only draw it when there is one). The preview updates as you type, using your latest activity or made-up sample data, before anything is saved; an invalid template is rejected on save, and — as a backstop — falls back to the default rather than skip an activity if one somehow got through anyway. Scriptable as `description_template`, like every other setting.
 - **Glucose gap alert:** when no glucose reading has been stored for 3 hours (setting `gap_alert_hours`, 0 turns it off) glucava raises one alert per gap, through the usual channels. It catches a stopped sensor share or a broken Dexcom login, and does not try to replace the sensor app's own low/high alarms.
 - **Canary:** once a day, glucava dry-runs the edit page against your most recent activity (no save) to catch a broken selector or an expired session before it silently fails a real one; a failure notifies like any other event.
+- **Overview page:** trends over time (time in range and average glucose, one point per day), a breakdown by activity type, and the raw activity table with a link to the CSV export, over a selectable date range (7/30/90 days or all time). Each card can be turned off independently under Settings → Description and chart → Overview page.
 - Dexcom Share itself only serves ~24 h of history, but a background job stores every reading it sees into glucava's own database as it arrives, so an activity can still be reprocessed later as long as its window is within Settings → **Your data** → retention (default 365 days). An activity missed entirely while it was still fresh (e.g. glucava was not running, or the reading never got ingested) cannot be recovered after the fact — unless you can still get that period as an export file: `make glucose-import FILE=export.csv FORMAT=libre` backfills readings from another app's export directly into the same database, so an older activity can be reprocessed against them. `glucava glucose import --format` currently understands `glooko` (a Glooko export — either the zip download directly, or `cgm_data_*.csv` from its extracted folder; verified against a real export), `libre` (a LibreView CSV export; unverified against a real file — see the code comment) and `nightscout` (an `entries.json` export). A zip is decoded entirely in memory and never extracted to disk: the entry name is only ever compared as a string, never used to build a filesystem path, so a malicious entry name cannot write outside the intended location; decompression is capped to bound a zip bomb. Adding another format is one function; see the extension point below.
 
 ## Configuration
@@ -163,6 +164,17 @@ glucava secrets status --dev=false --dir /data     # set/unset per secret, never
 - Settings → **Your data**: retention (default 365 days for readings and events; 0 keeps them), CSV export of readings and activities, and delete-all. `glucava data purge --yes` does the same from the shell. Activities are kept by retention because they log what was written to Strava.
 - Only one user account can exist.
 - Back up the data dir and the encryption key separately; a backup holding both exposes your credentials. See [Backup and restore](#backup-and-restore).
+
+## Monitoring
+
+`GET /health` reports `{"status":"ok","build":"<version>"}`, unauthenticated. `GET /metrics` serves [Prometheus](https://prometheus.io/) text-format metrics: job outcomes and queue depth (`glucava_jobs_*`), background ingest health (`glucava_ingest_*`, including `glucava_ingest_last_success_timestamp_seconds` — alert on its age to catch a source that has silently stopped answering), Strava write latency (`glucava_strava_write_duration_seconds`), a recent-window glucose summary (`glucava_glucose_*`), HTTP request counts/latency/in-flight (`glucava_http_*`), and the standard Go runtime/process collectors. Like `/api/trigger`, it needs `Authorization: Bearer <token>` with a token from `glucava token create <name>` — the same tokens, so a scrape config and a phone's trigger call can use different ones if you want to tell them apart, or the same one. A Prometheus scrape config:
+```yaml
+scrape_configs:
+  - job_name: glucava
+    bearer_token: gst_...
+    static_configs:
+      - targets: ["host:8090"]
+```
 
 ## Backup and restore
 

@@ -64,6 +64,12 @@ type Config struct {
 	// DescriptionTemplate is a Go text/template (see render.RenderBlock).
 	// Empty means render.DefaultTemplate, today's built-in wording.
 	DescriptionTemplate string
+
+	// OverviewShowTrend, OverviewShowBySport and OverviewShowTable show or
+	// hide each card on the stats overview page independently.
+	OverviewShowTrend   bool
+	OverviewShowBySport bool
+	OverviewShowTable   bool
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -98,8 +104,13 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartBand: r.GetBool("chart_band"), ChartActivity: r.GetBool("chart_activity"), ChartDots: r.GetBool("chart_dots"),
 		ChartLine: r.GetInt("chart_line"), ChartHR: r.GetBool("chart_hr"), ChartPanelOrder: r.GetString("chart_panel_order"),
 		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
+		ChartAvgLine: r.GetBool("chart_avg_line"), ChartRangeLines: r.GetBool("chart_range_lines"),
+		ChartMinMax: r.GetBool("chart_min_max"), ChartHideStats: r.GetBool("chart_hide_stats"),
 		PostBufferMin:       r.GetInt("post_buffer_minutes"),
 		DescriptionTemplate: r.GetString("description_template"),
+		OverviewShowTrend:   r.GetBool("overview_show_trend"),
+		OverviewShowBySport: r.GetBool("overview_show_by_sport"),
+		OverviewShowTable:   r.GetBool("overview_show_table"),
 	}, nil
 }
 
@@ -143,9 +154,16 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("chart_panel_order", c.ChartPanelOrder)
 	r.Set("chart_hr", c.ChartHR)
 	r.Set("chart_pre_minutes", c.ChartPreMin)
+	r.Set("chart_avg_line", c.ChartAvgLine)
+	r.Set("chart_range_lines", c.ChartRangeLines)
+	r.Set("chart_min_max", c.ChartMinMax)
+	r.Set("chart_hide_stats", c.ChartHideStats)
 	r.Set("hr_read", c.HRRead)
 	r.Set("post_buffer_minutes", c.PostBufferMin)
 	r.Set("description_template", c.DescriptionTemplate)
+	r.Set("overview_show_trend", c.OverviewShowTrend)
+	r.Set("overview_show_by_sport", c.OverviewShowBySport)
+	r.Set("overview_show_table", c.OverviewShowTable)
 	return s.App.Save(r)
 }
 

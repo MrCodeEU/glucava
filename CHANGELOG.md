@@ -4,8 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- `GET /metrics`: Prometheus metrics for job outcomes and queue depth, background ingest health (including a "last successful fetch" gauge to catch a silently stopped source), Strava write latency, a recent-window glucose summary, and HTTP request counts/latency/in-flight, alongside the standard Go runtime/process collectors. Needs a bearer token, the same kind and the same tokens as `/api/trigger`.
+- **Overview page** (`/stats`): trends over time (time in range and average glucose, one point per day), a breakdown by activity type, and the raw activity table, over a selectable date range (7/30/90 days or all time). Each card can be turned off independently under Settings → Description and chart → Overview page.
+
 ### Fixed
 - The chart photo's font cache reused a `font.Face` across concurrent chart renders (e.g. two browser tabs, or the settings page's live preview refetching while another view also draws a chart), which is not safe: `font.Face` keeps private state that drawing mutates. Two charts rendered at close enough to the same time could corrupt each other's text. Each render now gets its own `Face` instead of a shared, cached one.
+- The Strava description merge could disagree with itself on already-merged text when the input mixed CRLF, lone CR, or leading whitespace with a Glucava block in specific ways: `Strip`/`Merge` did not always give the same answer for their own output as for the original text (found by a new fuzz test, `FuzzMergePreservesText`/`FuzzStripIdempotent`; not something Merge's normal callers were ever seen to trigger).
+- The four chart overlay toggles added in 0.3.0 (average line, target range low/high lines, min/max markers, hide stats) never actually worked: the settings collection was missing their database columns entirely, so a checkbox on the Settings page looked like it saved but the value was silently dropped, and the real chart photo attached to a Strava activity never picked it up either. If you turned any of these on since 0.3.0, re-save Settings once after upgrading.
 
 ## [0.3.0] - 2026-09-29
 
