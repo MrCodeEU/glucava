@@ -8,6 +8,7 @@ package metrics
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -97,6 +98,41 @@ func InstrumentHandler(h http.Handler) http.Handler {
 // Handler serves the Prometheus text exposition format.
 func Handler() http.Handler {
 	return promhttp.Handler()
+}
+
+// RequireToken wraps h so a request must carry "Authorization: Bearer
+// <token>" with a token verify accepts — the same scheme /api/trigger uses
+// (see internal/trigger), reusing whatever token store the caller passes as
+// verify. Unlike the trigger endpoint, this does not rate-limit or log
+// failed attempts: a scrape target is hit on a fixed schedule forever, and a
+// misconfigured scrape token should fail the same predictable way every
+// time, not get itself temporarily locked out.
+func RequireToken(verify func(token string) (bool, error), h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, ok := bearerToken(r)
+		if ok {
+			var err error
+			if ok, err = verify(token); err != nil {
+				http.Error(w, "error", http.StatusInternalServerError)
+				return
+			}
+		}
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="glucava metrics"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func bearerToken(r *http.Request) (string, bool) {
+	v := r.Header.Get("Authorization")
+	const p = "Bearer "
+	if len(v) <= len(p) || !strings.EqualFold(v[:len(p)], p) {
+		return "", false
+	}
+	return strings.TrimSpace(v[len(p):]), true
 }
 
 var (

@@ -166,7 +166,14 @@ glucava secrets status --dev=false --dir /data     # set/unset per secret, never
 
 ## Monitoring
 
-`GET /health` reports `{"status":"ok","build":"<version>"}`, unauthenticated. `GET /metrics` serves [Prometheus](https://prometheus.io/) text-format metrics, also unauthenticated (put it behind your reverse proxy or scrape network if that matters to you): job outcomes and queue depth (`glucava_jobs_*`), background ingest health (`glucava_ingest_*`, including `glucava_ingest_last_success_timestamp_seconds` — alert on its age to catch a source that has silently stopped answering), Strava write latency (`glucava_strava_write_duration_seconds`), a recent-window glucose summary (`glucava_glucose_*`), HTTP request counts/latency/in-flight (`glucava_http_*`), and the standard Go runtime/process collectors.
+`GET /health` reports `{"status":"ok","build":"<version>"}`, unauthenticated. `GET /metrics` serves [Prometheus](https://prometheus.io/) text-format metrics: job outcomes and queue depth (`glucava_jobs_*`), background ingest health (`glucava_ingest_*`, including `glucava_ingest_last_success_timestamp_seconds` — alert on its age to catch a source that has silently stopped answering), Strava write latency (`glucava_strava_write_duration_seconds`), a recent-window glucose summary (`glucava_glucose_*`), HTTP request counts/latency/in-flight (`glucava_http_*`), and the standard Go runtime/process collectors. Like `/api/trigger`, it needs `Authorization: Bearer <token>` with a token from `glucava token create <name>` — the same tokens, so a scrape config and a phone's trigger call can use different ones if you want to tell them apart, or the same one. A Prometheus scrape config:
+```yaml
+scrape_configs:
+  - job_name: glucava
+    bearer_token: gst_...
+    static_configs:
+      - targets: ["host:8090"]
+```
 
 ## Backup and restore
 

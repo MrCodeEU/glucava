@@ -268,7 +268,7 @@ func main() {
 			}
 			return stats.Summarize(samples, rng)
 		})
-		e.Router.GET("/metrics", apis.WrapStdHandler(metrics.Handler()))
+		e.Router.GET("/metrics", apis.WrapStdHandler(metrics.RequireToken(toks.Verify, metrics.Handler())))
 
 		h := &trigger.Handler{
 			Tokens: toks, Signal: signal, Events: st,

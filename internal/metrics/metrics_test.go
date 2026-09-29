@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -107,5 +108,64 @@ func TestGlucoseCollectorSkipsWhenNoData(t *testing.T) {
 	body := scrape(t, reg)
 	if strings.Contains(body, "glucava_glucose_tir_percent") {
 		t.Errorf("expected no glucose gauges when Latest reports no data, got:\n%s", body)
+	}
+}
+
+func TestRequireTokenRejectsMissingToken(t *testing.T) {
+	called := false
+	h := RequireToken(func(string) (bool, error) { return true, nil }, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rr.Code)
+	}
+	if called {
+		t.Error("wrapped handler ran without a token")
+	}
+}
+
+func TestRequireTokenRejectsInvalidToken(t *testing.T) {
+	h := RequireToken(func(token string) (bool, error) { return token == "good", nil }, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("wrapped handler ran with an invalid token")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer bad")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rr.Code)
+	}
+}
+
+func TestRequireTokenAllowsValidToken(t *testing.T) {
+	called := false
+	h := RequireToken(func(token string) (bool, error) { return token == "good", nil }, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK || !called {
+		t.Fatalf("status = %d, called = %v, want 200/true", rr.Code, called)
+	}
+}
+
+func TestRequireTokenPropagatesVerifyError(t *testing.T) {
+	wantErr := errors.New("db down")
+	h := RequireToken(func(string) (bool, error) { return false, wantErr }, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("wrapped handler ran despite a Verify error")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer whatever")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
 	}
 }
