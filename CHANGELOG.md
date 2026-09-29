@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-29
+
 ### Added
 - Distance, elevation gain and a single sport-aware pace/speed field, pulled from Strava's own activity listing (free — no extra request): `{{.Distance}}`, `{{.Elevation}}` and `{{.Pace}}` in the description template, tiles on the activity page, and `distance_km`/`elevation_gain_m`/`pace` columns in the activities CSV export. `{{.Pace}}` is already in the right unit and label for the activity's sport (pace for a run/hike/walk/swim, speed for a ride), empty for a sport with no meaningful distance metric or a manual/trainer entry.
 - An elevation profile panel on the chart photo (Settings → Description and chart → Panels), drawn as a faint terrain silhouette behind the glucose curve. Fetched the same way heart rate already is (one extra page load, only when the panel is on).
