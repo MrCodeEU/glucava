@@ -53,6 +53,10 @@ type Config struct {
 	// default order.
 	ChartPanelOrder string
 	ChartPreMin     int  // minutes of glucose before the activity on the chart
+	ChartAvgLine    bool // dashed line at the average glucose value
+	ChartRangeLines bool // dashed lines at the target range low/high
+	ChartMinMax     bool // marker dots at the curve's minimum and maximum
+	ChartHideStats  bool // hide the TIR header number and below/in-range/above bar
 	HRRead          bool // read heart rate from Strava for stats and charts
 	GapAlertHours   int  // alert when no glucose reading arrived for this long; 0 turns it off
 	PostBufferMin   int  // minutes after the glucose window closes to reprocess once more; 0 disables it

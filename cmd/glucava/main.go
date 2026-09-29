@@ -186,9 +186,10 @@ func main() {
 		}
 		go poller.Run(ctx)
 
+		var ingestor *ingest.Ingestor
 		if !demoMode { // demo's Source is fake data with no history worth storing
-			in := &ingest.Ingestor{Source: source, Store: st, SourceName: sourceName}
-			go in.Run(ctx)
+			ingestor = &ingest.Ingestor{Source: source, Store: st, SourceName: sourceName, Latest: st.LatestSampleTime}
+			go ingestor.Run(ctx)
 		}
 
 		if !demoMode && tun.CanaryInterval > 0 { // demo has no real Strava session to dry-run against
@@ -269,7 +270,13 @@ func main() {
 				}
 				return err
 			},
-			Poll:         poller.Once,
+			Poll: poller.Once,
+			Resync: func(ctx context.Context) (int, error) {
+				if ingestor == nil {
+					return 0, nil
+				}
+				return ingestor.ForceOnce(ctx)
+			},
 			FindActivity: findActivity,
 			Restore:      proc.Restore,
 			LatestGlucose: func(ctx context.Context) (*stats.Sample, error) {

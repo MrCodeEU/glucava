@@ -33,6 +33,20 @@ type Ingestor struct {
 	Interval time.Duration // how often to fetch; default 10 minutes
 	Lookback time.Duration // window to (re)fetch each time; default 20 minutes
 
+	// MaxLookback bounds how far back a stale-gap catch-up widens the
+	// window, default 23h50m (just under Dexcom Share's 24h retention, so
+	// the widened request itself never trips ErrTooOld). Ignored if
+	// Latest is nil.
+	MaxLookback time.Duration
+
+	// Latest returns the time of the newest stored reading, from any
+	// source, e.g. store.PB.LatestSampleTime. Optional: when set, a fetch
+	// whose default window wouldn't reach that reading is widened to
+	// cover the gap, so reconnecting after an outage (phone off, flight
+	// mode) picks up everything the source still has, not just the last
+	// Lookback. When unset, every fetch uses the plain Lookback window.
+	Latest func(ctx context.Context) (time.Time, bool)
+
 	Now func() time.Time
 }
 
@@ -43,19 +57,57 @@ func (in *Ingestor) now() time.Time {
 	return time.Now()
 }
 
-// Once fetches and stores one window. The lookback is meant to overlap the
-// previous run, so a slow tick or a brief source outage does not leave a
-// gap; SaveSamples skips readings it already has for the same source and time.
-func (in *Ingestor) Once(ctx context.Context) (int, error) {
+// window returns the [from, to] to fetch for a normal tick: Lookback,
+// widened to reach the newest stored reading if Latest is set and that
+// reading is older than Lookback would otherwise cover, capped at
+// MaxLookback.
+func (in *Ingestor) window(ctx context.Context, now time.Time) time.Time {
 	lookback := in.Lookback
 	if lookback <= 0 {
 		lookback = 20 * time.Minute
 	}
+	from := now.Add(-lookback)
+	if in.Latest == nil {
+		return from
+	}
+	last, ok := in.Latest(ctx)
+	if !ok || last.After(from) {
+		return from
+	}
+	maxLookback := in.MaxLookback
+	if maxLookback <= 0 {
+		maxLookback = 23*time.Hour + 50*time.Minute
+	}
+	if widened := now.Add(-maxLookback); last.Before(widened) {
+		return widened
+	}
+	return last
+}
+
+// Once fetches and stores one window. The lookback is meant to overlap the
+// previous run, so a slow tick or a brief source outage does not leave a
+// gap; SaveSamples skips readings it already has for the same source and time.
+func (in *Ingestor) Once(ctx context.Context) (int, error) {
 	now := in.now()
-	got, err := in.Source.Samples(ctx, now.Add(-lookback), now)
+	return in.fetchAndStore(ctx, in.window(ctx, now), now)
+}
+
+// ForceOnce fetches and stores the widest window the source will serve
+// (MaxLookback, regardless of how fresh the newest stored reading already
+// is), for a manual "resync now" request rather than waiting for a stale
+// gap to trigger the same widening on the next scheduled tick.
+func (in *Ingestor) ForceOnce(ctx context.Context) (int, error) {
+	maxLookback := in.MaxLookback
+	if maxLookback <= 0 {
+		maxLookback = 23*time.Hour + 50*time.Minute
+	}
+	now := in.now()
+	return in.fetchAndStore(ctx, now.Add(-maxLookback), now)
+}
+
+func (in *Ingestor) fetchAndStore(ctx context.Context, from, to time.Time) (int, error) {
+	got, err := in.Source.Samples(ctx, from, to)
 	if err != nil {
-		// ErrTooOld cannot happen for a recent window; anything else (session/auth
-		// trouble, a down source) is expected to recur and is logged by Run.
 		return 0, fmt.Errorf("ingest: %w", err)
 	}
 	if len(got) == 0 {

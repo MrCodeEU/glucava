@@ -132,6 +132,16 @@ func (c *pcanvas) line(x0, y0, x1, y1, w float64, col color.RGBA) {
 	}
 }
 
+// dashedHLine draws a horizontal dashed line at y from x0 to x1, so it reads
+// as a reference line (average, target range) distinct from the solid
+// glucose curve and the plain grid.
+func (c *pcanvas) dashedHLine(x0, x1, y, w float64, col color.RGBA) {
+	const dash, gap = 14.0, 8.0
+	for x := x0; x < x1; x += dash + gap {
+		c.rect(x, y-w/2, math.Min(x+dash, x1), y+w/2, col)
+	}
+}
+
 func (c *pcanvas) rrect(x0, y0, x1, y1, r float64, col color.RGBA) {
 	c.rect(x0+r, y0, x1-r, y1, col)
 	c.rect(x0, y0+r, x1, y1-r, col)
@@ -270,7 +280,7 @@ func Photo(d PhotoData) ([]byte, error) {
 		label{mx, 96, "GLUCOSE", 28, true, th.muted, 0},
 		label{lg - mx, 96, when(d, t0, t1), 28, false, th.muted, 2},
 	)
-	if sum != nil {
+	if sum != nil && !d.Style.HideStats {
 		numW := 0.0
 		if f, err := face(true, 150); err == nil { // width of the big number, so the caption never overlaps it
 			numW = float64((&font.Drawer{Face: f}).MeasureString(fmt.Sprintf("%.0f%%", sum.TIR)).Round())
@@ -306,6 +316,15 @@ func Photo(d PhotoData) ([]byte, error) {
 	for _, t := range xTicks(t0, t1, d.Loc, (cr-cl)/110) {
 		c.rect(x(t)-1, cb, x(t)+1, cb+10, th.grid)
 		labels = append(labels, label{x(t), cb + 44, t.In(d.Loc).Format("15:04"), 26, false, th.muted, 1})
+	}
+
+	if d.Style.RangeLines {
+		c.dashedHLine(cl, cr, y(d.Range.Low), 3, colLow)
+		c.dashedHLine(cl, cr, y(d.Range.High), 3, colHigh)
+	}
+	if d.Style.AvgLine && sum != nil {
+		c.dashedHLine(cl, cr, y(sum.Avg), 3, th.strong)
+		labels = append(labels, label{cr + 14, y(sum.Avg) + 8, "avg " + render.Value(sum.Avg, d.Unit), 24, true, th.strong, 0})
 	}
 
 	// Heart rate underneath the glucose curve, on its own axis.
@@ -353,8 +372,31 @@ func Photo(d PhotoData) ([]byte, error) {
 		c.line(sx[i-1], sy[i-1], sx[i], sy[i], lw, col)
 	}
 
+	if d.Style.MinMax && sum != nil {
+		for _, m := range []struct {
+			v    float64
+			name string
+			col  color.RGBA
+			up   bool // label above the marker instead of below, so it clears the curve
+		}{{sum.Min, "min", colLow, false}, {sum.Max, "max", colHigh, true}} {
+			for _, p := range pts { // first match: an activity can revisit the same extreme value
+				if p.Value != m.v {
+					continue
+				}
+				px, py := x(p.Time), y(p.Value)
+				c.disc(px, py, 6, m.col)
+				ly := py + 34
+				if m.up {
+					ly = py - 20
+				}
+				labels = append(labels, label{px, ly, m.name + " " + render.Value(m.v, d.Unit), 24, true, m.col, 1})
+				break
+			}
+		}
+	}
+
 	// Time in range bar and the three numbers.
-	if sum != nil {
+	if sum != nil && !d.Style.HideStats {
 		by, bh := 748.0, 30.0
 		segs := []struct {
 			v   float64

@@ -94,6 +94,94 @@ func TestOnceStoreErrorPropagates(t *testing.T) {
 	}
 }
 
+func TestOnceWidensWindowWhenLatestIsStale(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	st := &fakeStore{}
+	// The newest stored reading is 5 hours old: the plain 20-minute lookback
+	// would never reach it, so the fetch should widen to cover the gap
+	// instead (the flight-mode scenario this exists for).
+	last := now.Add(-5 * time.Hour)
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now },
+		Latest: func(context.Context) (time.Time, bool) { return last, true }}
+
+	if _, err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !src.lastFrom.Equal(last) || !src.lastTo.Equal(now) {
+		t.Errorf("window = [%v, %v], want [%v, %v]", src.lastFrom, src.lastTo, last, now)
+	}
+}
+
+func TestOnceCapsWidenedWindowAtMaxLookback(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	st := &fakeStore{}
+	// Stale for 3 days: real gap far exceeds what the source can serve, so
+	// the fetch must still be capped at MaxLookback, not the full gap (the
+	// source would reject the wider request anyway).
+	last := now.Add(-72 * time.Hour)
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now },
+		MaxLookback: 23*time.Hour + 50*time.Minute,
+		Latest:      func(context.Context) (time.Time, bool) { return last, true }}
+
+	if _, err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := now.Add(-(23*time.Hour + 50*time.Minute))
+	if !src.lastFrom.Equal(want) {
+		t.Errorf("window from = %v, want %v (capped)", src.lastFrom, want)
+	}
+}
+
+func TestOnceKeepsPlainLookbackWhenFresh(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	st := &fakeStore{}
+	// The newest stored reading is within the plain lookback already: no
+	// widening should happen on an ordinary tick.
+	last := now.Add(-5 * time.Minute)
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now },
+		Latest: func(context.Context) (time.Time, bool) { return last, true }}
+
+	if _, err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !src.lastFrom.Equal(now.Add(-20 * time.Minute)) {
+		t.Errorf("window from = %v, want the plain 20-minute lookback", src.lastFrom)
+	}
+}
+
+func TestOnceIgnoresLatestWhenNoReadingEverArrived(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	st := &fakeStore{}
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now },
+		Latest: func(context.Context) (time.Time, bool) { return time.Time{}, false }}
+
+	if _, err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !src.lastFrom.Equal(now.Add(-20 * time.Minute)) {
+		t.Errorf("window from = %v, want the plain 20-minute lookback", src.lastFrom)
+	}
+}
+
+func TestForceOnceUsesMaxLookbackRegardlessOfLatest(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	st := &fakeStore{}
+	in := &Ingestor{Source: src, Store: st, SourceName: "dexcom", Now: func() time.Time { return now }}
+
+	if _, err := in.ForceOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := now.Add(-(23*time.Hour + 50*time.Minute))
+	if !src.lastFrom.Equal(want) || !src.lastTo.Equal(now) {
+		t.Errorf("window = [%v, %v], want [%v, %v]", src.lastFrom, src.lastTo, want, now)
+	}
+}
+
 func TestRunStopsOnCancel(t *testing.T) {
 	src := &fakeSource{}
 	st := &fakeStore{}

@@ -40,6 +40,10 @@ func chartConfig(cfg store.Config, q map[string][]string) store.Config {
 	flag("band", &cfg.ChartBand)
 	flag("activity", &cfg.ChartActivity)
 	flag("dots", &cfg.ChartDots)
+	flag("avgline", &cfg.ChartAvgLine)
+	flag("rangelines", &cfg.ChartRangeLines)
+	flag("minmax", &cfg.ChartMinMax)
+	flag("hidestats", &cfg.ChartHideStats)
 	flag("hr", &cfg.ChartHR)
 	if v, ok := get("pre"); ok {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 240 {

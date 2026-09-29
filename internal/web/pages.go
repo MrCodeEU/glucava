@@ -439,7 +439,8 @@ func DexcomSecretStatus(has bool) g.Node {
 	return Div(ID("dexcom-secret-status"),
 		Div(Class("help"), g.Text(secretHelp(has, "A password"))),
 		g.If(has, Div(append(comp("actions"),
-			IndicatorBtn("", "Test connection", "/actions/dexcom/test", "dxtest"))...)),
+			IndicatorBtn("", "Test connection", "/actions/dexcom/test", "dxtest"),
+			IndicatorBtn("", "Resync now", "/actions/glucose/resync", "dxresync"))...)),
 	)
 }
 
@@ -489,6 +490,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
 		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
+		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
 		"chartPanelOrder": defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
 		"descTemplate":    c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 		"settingsTab": "glucose",
@@ -546,6 +548,10 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 								chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
 								chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
 							),
+							Field("chartAvgLine", "Average line", "A dashed line at the average glucose value.", Input(ID("chartAvgLine"), Type("checkbox"), bind("chartAvgLine"))),
+							Field("chartRangeLines", "Low/high lines", "Dashed lines at the target range low and high.", Input(ID("chartRangeLines"), Type("checkbox"), bind("chartRangeLines"))),
+							Field("chartMinMax", "Min/max markers", "Marker dots at the curve's lowest and highest points.", Input(ID("chartMinMax"), Type("checkbox"), bind("chartMinMax"))),
+							Field("chartHideStats", "Hide the TIR number and stats bar", "Turns off the big time-in-range number and the below/in-range/above bar at the bottom.", Input(ID("chartHideStats"), Type("checkbox"), bind("chartHideStats"))),
 						),
 						Div(
 							Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
@@ -775,6 +781,7 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 // the image reloads whenever an option changes.
 const chartPreviewExpr = "'/chart/latest.png?theme=' + $chartTheme + '&size=' + $chartSize + '&line=' + $chartLine" +
 	" + '&band=' + $chartBand + '&activity=' + $chartActivity + '&dots=' + $chartDots + '&hr=' + $chartHR + '&pre=' + $chartPre" +
+	" + '&avgline=' + $chartAvgLine + '&rangelines=' + $chartRangeLines + '&minmax=' + $chartMinMax + '&hidestats=' + $chartHideStats" +
 	" + '&unit=' + encodeURIComponent($unit) + '&low=' + $rangeLow + '&high=' + $rangeHigh + '&panelOrder=' + encodeURIComponent($chartPanelOrder)"
 
 // panelMoveExpr swaps panel (one of chartimg's panel names) with its
