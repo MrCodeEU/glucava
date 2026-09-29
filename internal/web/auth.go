@@ -1,7 +1,7 @@
 package web
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -99,7 +99,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		if rec, err := s.App.FindAuthRecordByToken(c.Value, core.TokenTypeAuth); err == nil {
 			rec.RefreshTokenKey()
 			if err := s.App.Save(rec); err != nil {
-				log.Printf("web: revoke session: %v", err)
+				slog.Error("revoke session", "err", err)
 			}
 		}
 	}

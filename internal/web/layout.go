@@ -24,6 +24,7 @@ var navItems = []struct{ key, href, label string }{
 	{"settings", "/settings", "Settings"},
 	{"tokens", "/tokens", "Triggers"},
 	{"events", "/events", "Notifications"},
+	{"logs", "/logs", "Logs"},
 }
 
 // navAlertsBadge is the Notifications nav link's error-count badge. It
@@ -75,9 +76,11 @@ func Page(pd PageData, body ...g.Node) g.Node {
 						Img(Src("/static/favicon.svg"), Alt("")), g.Text("glucava"))...),
 					g.Group(links),
 					Span(comp("navspacer")...),
-					BtnSized("", "sm", "Theme", g.Attr("data-on:click", themeToggle), g.Attr("aria-label", "Toggle dark mode")),
-					Form(Method("post"), Action("/logout"),
-						SubmitBtn("", "sm", "Sign out ("+pd.User+")")),
+					Div(append(comp("navactions"),
+						BtnSized("", "sm", "Theme", g.Attr("data-on:click", themeToggle), g.Attr("aria-label", "Toggle dark mode")),
+						Form(Method("post"), Action("/logout"),
+							SubmitBtn("", "sm", "Sign out ("+pd.User+")")),
+					)...),
 				))...),
 				Main(g.Group(body)),
 				sourceFooter(pd.Build),

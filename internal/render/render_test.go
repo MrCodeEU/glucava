@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -305,7 +306,7 @@ func TestDefaultTemplateMatchesBlock(t *testing.T) {
 		{Unit: MgDL, SparkWidth: 4},
 	} {
 		want := Block(sum, s, opt)
-		got, err := RenderBlock(DefaultTemplate, sum, s, opt)
+		got, err := RenderBlock(DefaultTemplate, sum, sum, s, opt)
 		if err != nil {
 			t.Fatalf("opt=%+v: %v", opt, err)
 		}
@@ -321,13 +322,32 @@ func TestDefaultTemplateMatchesBlock(t *testing.T) {
 func TestRenderBlockCustomTemplate(t *testing.T) {
 	s, sum := fixture(60, 70, 100, 180, 200)
 	tmpl := `GMI {{.GMI}}% | stddev {{.StdDev}} | avg {{round .Sum.Avg 1}}`
-	got, err := RenderBlock(tmpl, sum, s, Options{Unit: MgDL, SparkWidth: -1})
+	got, err := RenderBlock(tmpl, sum, sum, s, Options{Unit: MgDL, SparkWidth: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := sentinel + "GMI 6% | stddev 57 | avg 122.0" + endSentinel
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestRenderBlockTIRWindow covers the two-summary case: TIR reflects sum,
+// TIRWindow reflects the separate windowSum, and they can legitimately
+// differ (that's the whole point of the field).
+func TestRenderBlockTIRWindow(t *testing.T) {
+	s, sum := fixture(60, 70, 100, 180, 200) // TIR 40% (fixture's own default range)
+	_, windowSum := fixture(100, 120, 140, 160)
+	got, err := RenderBlock(`{{.TIR}}/{{.TIRWindow}}`, sum, windowSum, s, Options{Unit: MgDL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf(sentinel+"%s/%s"+endSentinel, num(sum.TIR, ""), num(windowSum.TIR, ""))
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if sum.TIR == windowSum.TIR {
+		t.Fatal("fixture inputs chosen to differ; test is not exercising the two-summary path")
 	}
 }
 
@@ -341,7 +361,7 @@ func TestPresetsAllRender(t *testing.T) {
 			t.Errorf("duplicate preset id %q", p.ID)
 		}
 		seen[p.ID] = true
-		if _, err := RenderBlock(p.Template, sum, s, Options{Unit: MgDL}); err != nil {
+		if _, err := RenderBlock(p.Template, sum, sum, s, Options{Unit: MgDL}); err != nil {
 			t.Errorf("preset %q: %v", p.ID, err)
 		}
 	}
@@ -371,10 +391,10 @@ func TestPresetByIDUnknown(t *testing.T) {
 // that would then get written to Strava.
 func TestRenderBlockBadTemplateErrors(t *testing.T) {
 	s, sum := fixture(60, 70, 100, 180, 200)
-	if _, err := RenderBlock("{{.NoSuchField}}", sum, s, Options{}); err == nil {
+	if _, err := RenderBlock("{{.NoSuchField}}", sum, sum, s, Options{}); err == nil {
 		t.Error("expected an error for an unknown field")
 	}
-	if _, err := RenderBlock("{{.TIR", sum, s, Options{}); err == nil {
+	if _, err := RenderBlock("{{.TIR", sum, sum, s, Options{}); err == nil {
 		t.Error("expected an error for unclosed template syntax")
 	}
 }

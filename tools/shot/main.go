@@ -6,7 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +27,8 @@ func main() {
 	flag.Parse()
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
-		log.Fatal(err)
+		slog.Error("mkdir out dir", "err", err)
+		os.Exit(1)
 	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(os.Getenv("CHROME_PATH")), chromedp.Flag("no-sandbox", true), chromedp.WindowSize(*width, 900))
@@ -41,18 +42,21 @@ func main() {
 	var buf []byte
 	shot := func(name string) {
 		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 90)); err != nil {
-			log.Fatal(err)
+			slog.Error("screenshot", "err", err)
+			os.Exit(1)
 		}
 		f := filepath.Join(*out, name+"-"+*mode+".png")
 		if err := os.WriteFile(f, buf, 0o644); err != nil {
-			log.Fatal(err)
+			slog.Error("write screenshot", "err", err)
+			os.Exit(1)
 		}
 		fmt.Println(f)
 	}
 	setMode := chromedp.Evaluate(fmt.Sprintf(`document.documentElement.dataset.mode=%q`, *mode), nil)
 
 	if err := chromedp.Run(ctx, chromedp.Navigate(*base+"/login"), setMode, chromedp.Sleep(400*time.Millisecond)); err != nil {
-		log.Fatal(err)
+		slog.Error("navigate to login", "err", err)
+		os.Exit(1)
 	}
 	shot("login")
 	err := chromedp.Run(ctx,
@@ -61,7 +65,8 @@ func main() {
 		chromedp.WaitVisible("main"),
 	)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("login", "err", err)
+		os.Exit(1)
 	}
 	if *flow {
 		runFlow(ctx, *base, shot, setMode)
@@ -73,7 +78,8 @@ func main() {
 			name = "dashboard"
 		}
 		if err := chromedp.Run(ctx, chromedp.Navigate(*base+p), setMode, chromedp.Sleep(900*time.Millisecond)); err != nil {
-			log.Fatal(err)
+			slog.Error("navigate", "path", p, "err", err)
+			os.Exit(1)
 		}
 		shot(name)
 	}
@@ -82,7 +88,8 @@ func main() {
 func runFlow(ctx context.Context, base string, shot func(string), setMode chromedp.Action) {
 	must := func(err error) {
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("flow step failed", "err", err)
+			os.Exit(1)
 		}
 	}
 	text := func(sel string) string {

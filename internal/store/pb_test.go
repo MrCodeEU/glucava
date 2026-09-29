@@ -172,6 +172,36 @@ func TestLoadSamplesAnyCrossesSources(t *testing.T) {
 	}
 }
 
+// TestSourceHealth is the "is my glucose source actually working" signal:
+// per-source reading count and newest timestamp, so a stopped live
+// connection or a failed import is visible without waiting for an activity.
+func TestSourceHealth(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	if err := s.SaveSamples(ctx, "dexcom", []stats.Sample{
+		{Time: t0, Value: 100}, {Time: t0.Add(5 * time.Minute), Value: 110},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveSamples(ctx, "glooko", []stats.Sample{{Time: t0.Add(-time.Hour), Value: 90}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SourceHealth(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("SourceHealth = %+v, want 2 sources", got)
+	}
+	// Newest reading first: dexcom's latest (t0+5m) is after glooko's (t0-1h).
+	if got[0].Source != "dexcom" || got[0].Count != 2 || !got[0].Latest.Equal(t0.Add(5*time.Minute)) {
+		t.Errorf("got[0] = %+v, want dexcom, count 2, latest t0+5m", got[0])
+	}
+	if got[1].Source != "glooko" || got[1].Count != 1 {
+		t.Errorf("got[1] = %+v, want glooko, count 1", got[1])
+	}
+}
+
 func TestRecordEvent(t *testing.T) {
 	app := newApp(t)
 	s := &PB{App: app}
@@ -335,6 +365,28 @@ func TestOverviewTogglesDefaultOnAndRoundTrip(t *testing.T) {
 	got, err := s.LoadConfig()
 	if err != nil || got.OverviewShowTrend || got.OverviewShowBySport || got.OverviewShowTable {
 		t.Fatalf("LoadConfig after save = %+v, %v, want all three false", got, err)
+	}
+}
+
+// TestOverviewGeneralTogglesDefaultOnAndRoundTrip guards the same bug class
+// for migration 019's two toggles (whole-range glucose summary, per-source
+// health list).
+func TestOverviewGeneralTogglesDefaultOnAndRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.OverviewShowGeneral || !c.OverviewShowSourceHealth {
+		t.Fatalf("defaults = %+v, want both true (new content should show up, not need finding)", c)
+	}
+	c.OverviewShowGeneral, c.OverviewShowSourceHealth = false, false
+	if err := s.SaveConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadConfig()
+	if err != nil || got.OverviewShowGeneral || got.OverviewShowSourceHealth {
+		t.Fatalf("LoadConfig after save = %+v, %v, want both false", got, err)
 	}
 }
 

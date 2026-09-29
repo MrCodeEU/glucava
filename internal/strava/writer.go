@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -253,7 +253,7 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 		// The uploader sends the file to storage as soon as it has it. Saving
 		// before that finishes would drop it.
 		if err := w.waitUploaded(ctx, net, w.cfg.UploadWait); err != nil {
-			log.Printf("strava: photo upload did not finish; requests seen: %s; page: %s", net.filtered(), photoState(ctx))
+			slog.Error("photo upload did not finish", "requests", net.filtered(), "page", photoState(ctx))
 			return permanentErr{fmt.Errorf("strava: the uploader did not send the photo within %s (nothing was saved; the page's uploader may have changed)", w.cfg.UploadWait)}
 		}
 
@@ -272,7 +272,7 @@ func (w *Writer) UploadPhoto(ctx context.Context, stravaID, name string, png []b
 				break
 			}
 			if time.Now().After(deadline) {
-				log.Printf("strava: after saving, requests seen: %s; reopened page: %s", net.filtered(), photoState(ctx))
+				slog.Error("photo not visible after saving", "requests", net.filtered(), "page", photoState(ctx))
 				return permanentErr{errors.New("strava: saved, but the reopened edit page lists no new photo; check the activity on Strava before trying again, or a second copy may be added")}
 			}
 			if err := sleep(ctx, 2*time.Second); err != nil {
@@ -1012,5 +1012,5 @@ func quietErrorf(format string, args ...any) {
 	if strings.Contains(format, "unhandled node event") {
 		return
 	}
-	log.Printf("ERROR: "+format, args...)
+	slog.Error(fmt.Sprintf(format, args...))
 }

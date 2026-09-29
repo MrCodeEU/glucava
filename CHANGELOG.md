@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Two more cards on the Overview page (each independently toggleable, like the existing three): a whole-range glucose summary, independent of activities, and a per-source health list showing each glucose source's reading count and newest reading — the signal that a live connection is still working or a backfill import actually landed something, without waiting for an activity to show up.
+- The Tokens page generates a ready-to-import Tasker `.prf.xml` (download button + QR code, next to a freshly created token): a Notification event on the Strava app, deliberately left unfiltered rather than trying to match specific wording, wired to an HTTP Request task that calls `/api/trigger`. A second QR code opens the Tokens page itself, for HTTP Shortcuts/MacroDroid/Apple Shortcuts, whose per-platform instructions on that page fill in the real token instead of a placeholder.
+- A new `/logs` page shows the last 1000 log entries, live-updating, without needing `docker logs` on the host. Logging switched from `log.Printf` to structured `log/slog` throughout, so entries carry real fields (activity id, error, counts) instead of pre-formatted strings.
+- A new `{{.TIRWindow}}` description-template field: time in range over the wider pre/post buffer window the chart photo draws from, alongside the existing `{{.TIR}}` (activity window only). The two can legitimately show different percentages for the same activity — this makes that visible/explainable in the text instead of silently differing from the chart. Corrected on the delayed reprocess pass once late readings land, same as the chart.
+
+### Fixed
+- The nav bar's sign-out button could wrap onto its own line separately from the theme toggle when the signed-in email was long enough, instead of the two wrapping together as a unit. The sign-out button's text is also now truncated instead of stretching the button for a very long email.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

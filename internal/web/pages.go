@@ -1,21 +1,37 @@
 package web
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
 
+	qrcode "github.com/skip2/go-qrcode"
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 )
+
+// qrDataURI renders content as a PNG QR code, inline as a data: URI so it
+// needs no extra route or static file. Returns "" if encoding fails (a
+// malformed content string), so a caller can skip the image rather than
+// break the page.
+func qrDataURI(content string) string {
+	png, err := qrcode.Encode(content, qrcode.Medium, 240)
+	if err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+}
 
 // jsQuote escapes s for use inside a single-quoted JavaScript string in a Datastar expression.
 var jsQuote = strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "<", `\x3c`).Replace
@@ -493,6 +509,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
 		"chartPanelOrder":   defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
 		"overviewShowTrend": c.OverviewShowTrend, "overviewShowBySport": c.OverviewShowBySport, "overviewShowTable": c.OverviewShowTable,
+		"overviewShowGeneral": c.OverviewShowGeneral, "overviewShowSourceHealth": c.OverviewShowSourceHealth,
 		"descTemplate": c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 		"settingsTab": "glucose",
 	})
@@ -562,14 +579,17 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Card(H2(g.Text("Overview page")),
 					P(Class("muted"), g.Text("Turn cards on the Overview page on or off.")),
+					Field("overviewShowGeneral", "General glucose", "Whole-range summary, independent of activities.", Input(ID("overviewShowGeneral"), Type("checkbox"), bind("overviewShowGeneral"))),
+					Field("overviewShowSourceHealth", "Glucose sources", "Per-source reading counts and newest reading, to spot a stopped connection or a failed import.", Input(ID("overviewShowSourceHealth"), Type("checkbox"), bind("overviewShowSourceHealth"))),
 					Field("overviewShowTrend", "Trends over time", "", Input(ID("overviewShowTrend"), Type("checkbox"), bind("overviewShowTrend"))),
 					Field("overviewShowBySport", "By activity type", "", Input(ID("overviewShowBySport"), Type("checkbox"), bind("overviewShowBySport"))),
 					Field("overviewShowTable", "Raw table", "", Input(ID("overviewShowTable"), Type("checkbox"), bind("overviewShowTable"))),
 				),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
-						"(Go text/template syntax: {{.TIR}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
-						"{{if .Sparkline}}...{{end}} to only show a line when it's there). The preview below updates as you type, using your latest activity or sample data.")),
+						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, {{.Sparkline}}; "+
+						"{{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; {{.TIRWindow}} is the wider pre/post "+
+						"window the chart draws from below, so the two can differ — add both if you want to show that. The preview below updates as you type, using your latest activity or sample data.")),
 					Field("descPreset", "Preset", "Selecting one replaces the template below; keep editing afterwards to customize it further.",
 						g.El("select", append([]g.Node{ID("descPreset"), bind("descPreset"), g.Attr("data-on:change", descPresetChangeExpr),
 							Option(Value("custom"), g.Text("Custom"))}, presetOptions()...)...)),
@@ -710,8 +730,14 @@ func CopyRow(label, value string) g.Node {
 	)
 }
 
-// SecretReveal shows a new token once, with the values a phone app needs.
-func SecretReveal(name, token, endpoint string) g.Node {
+// SecretReveal shows a new token once, with the values a phone app needs,
+// plus two QR codes while the token is still on screen: one to download a
+// ready-to-import Tasker profile directly (for Android), and one that just
+// opens this page on whatever device scans it (for HTTP Shortcuts,
+// MacroDroid or Apple Shortcuts, which can't be pre-built as a file the
+// same way — the target is this page's own per-platform instructions,
+// filled in with the real token below instead of a placeholder).
+func SecretReveal(name, token, endpoint, taskerURL, pageURL string) g.Node {
 	header := "Bearer " + token
 	return Div(ID("token-reveal"), Div(append(comp("secretbox"),
 		P(Strong(g.Textf("Token “%s” created. Copy it now; it is not shown again.", name))),
@@ -720,6 +746,19 @@ func SecretReveal(name, token, endpoint string) g.Node {
 		CopyRow("Header", "Authorization: "+header),
 		CopyRow("Test", fmt.Sprintf("curl -i -X POST -H 'Authorization: %s' %s", header, endpoint)),
 		P(Class("muted"), g.Text("A working call answers 202, and “Last used” in the list below changes.")),
+		Grid("2",
+			Div(
+				H3(g.Text("Android (Tasker)")),
+				P(Class("muted"), g.Text("A ready-to-import profile: Strava notification → check now, unfiltered (see below for why).")),
+				A(append(comp("button"), Href(taskerURL), g.Attr("download", ""), g.Text("Download Tasker profile"))...),
+				g.If(qrDataURI(taskerURL) != "", Img(Alt("QR code to download the Tasker profile"), Src(qrDataURI(taskerURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+			),
+			Div(
+				H3(g.Text("Other platforms")),
+				P(Class("muted"), g.Text("Scan to open this page on the phone you'll set the trigger up on — the instructions below fill in this real token instead of a placeholder.")),
+				g.If(qrDataURI(pageURL) != "", Img(Alt("QR code to open the Triggers page"), Src(qrDataURI(pageURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+			),
+		),
 	)...))
 }
 
@@ -781,6 +820,54 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 	return Page(pd,
 		PageHead("Notifications", "Everything glucava told you about, or tried to."),
 		Card(body),
+	)
+}
+
+// logLevelBadge maps an slog.Level to the existing badge variants, so /logs
+// reuses the same color coding as severity elsewhere (Notifications page).
+func logLevelBadge(level slog.Level) g.Node {
+	switch {
+	case level >= slog.LevelError:
+		return Badge("error", "Error")
+	case level >= slog.LevelWarn:
+		return Badge("warning", "Warn")
+	case level >= slog.LevelInfo:
+		return Badge("info", "Info")
+	default:
+		return Badge("", "Debug")
+	}
+}
+
+// LogRows renders the log table body, newest first. It is also the fragment
+// streamLogs patches in place on every bus wake, so it must be re-renderable
+// standalone (no page chrome), the same shape as LiveDash for the dashboard.
+func LogRows(entries []logging.Entry, loc *time.Location) g.Node {
+	if len(entries) == 0 {
+		return Div(append(comp("empty"), ID("log-rows"), g.Text("No log entries yet."))...)
+	}
+	rows := make([]g.Node, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, Tr(
+			Td(g.Text(e.Time.In(loc).Format("15:04:05"))),
+			Td(logLevelBadge(e.Level)),
+			Td(g.Text(e.Message)),
+			Td(Class("hide-sm"), g.Text(e.Attrs)),
+		))
+	}
+	return Div(append(comp("tablewrap"), ID("log-rows"), Table(append(comp("table"),
+		THead(Tr(Th(g.Text("Time")), Th(g.Text("Level")), Th(g.Text("Message")), Th(Class("hide-sm"), g.Text("Details")))),
+		TBody(g.Group(rows)))...))...)
+}
+
+// LogsPage is an admin-only diagnostic view of recent structured log entries,
+// live-updated via /stream/logs the same way the dashboard streams over
+// /stream/live. No Settings toggle, same as the Notifications/Events page.
+func LogsPage(pd PageData, entries []logging.Entry, loc *time.Location) g.Node {
+	return Page(pd,
+		PageHead("Logs", "Recent structured log entries from this process, newest first."),
+		Card(
+			Div(g.Attr("data-init", "@get('/stream/logs')"), LogRows(entries, loc)),
+		),
 	)
 }
 

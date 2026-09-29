@@ -95,6 +95,37 @@ func (s *PB) ExportSamples(w io.Writer) error {
 	return rows.Err()
 }
 
+// SourceInfo summarises what's stored for one glucose source (e.g. "dexcom"
+// for the live connection, or an import's label): how many readings and when
+// the newest one arrived. It's the signal that a live source is still
+// connected, or that an import actually landed something.
+type SourceInfo struct {
+	Source string
+	Count  int64
+	Latest time.Time
+}
+
+// SourceHealth reports SourceInfo for every distinct source, newest first.
+func (s *PB) SourceHealth(_ context.Context) ([]SourceInfo, error) {
+	rows, err := s.App.DB().NewQuery(
+		"SELECT source, count(*) AS n, max(ts) AS latest FROM glucose_samples GROUP BY source ORDER BY latest DESC").Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []SourceInfo
+	for rows.Next() {
+		var source, latest string
+		var n int64
+		if err := rows.Scan(&source, &n, &latest); err != nil {
+			return nil, err
+		}
+		t, _ := time.Parse("2006-01-02 15:04:05.000Z", latest)
+		out = append(out, SourceInfo{Source: source, Count: n, Latest: t})
+	}
+	return out, rows.Err()
+}
+
 // ExportActivities writes all activities with their glucose summary as CSV.
 func (s *PB) ExportActivities(w io.Writer) error {
 	recs, err := s.App.FindAllRecords("activities")

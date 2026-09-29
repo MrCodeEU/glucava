@@ -9,6 +9,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/overview"
 	"github.com/MrCodeEU/glucava/internal/render"
+	"github.com/MrCodeEU/glucava/internal/store"
 )
 
 // statsRanges are the date-range picker's options, in order, matching the
@@ -35,15 +36,19 @@ func statsRangeBounds(rangeParam string, now time.Time) (key string, from, to ti
 
 // StatsData feeds the stats overview page.
 type StatsData struct {
-	Range    string // the active range key ("7d", "30d", "90d", "all")
-	Overview overview.Data
-	Unit     render.Unit
-	Loc      *time.Location
-	Now      time.Time
+	Range        string // the active range key ("7d", "30d", "90d", "all")
+	Overview     overview.Data
+	General      overview.GeneralData
+	SourceHealth []store.SourceInfo
+	Unit         render.Unit
+	Loc          *time.Location
+	Now          time.Time
 
-	ShowTrend   bool
-	ShowBySport bool
-	ShowTable   bool
+	ShowTrend        bool
+	ShowBySport      bool
+	ShowTable        bool
+	ShowGeneral      bool
+	ShowSourceHealth bool
 }
 
 func rangePicker(active string) g.Node {
@@ -98,6 +103,64 @@ func bySportCard(d StatsData) g.Node {
 	return Card(H2(g.Text("By activity type")), g.Group(rows))
 }
 
+// generalCard shows the whole-range glucose picture, independent of any
+// activity: every stored reading in the range, not just the ones around a
+// workout. This also acts as the simplest possible check that a source (the
+// live connection or a backfill import) actually put data in the database.
+func generalCard(d StatsData) g.Node {
+	g2 := d.General
+	if !g2.HasData {
+		return Card(H2(g.Text("General glucose")), P(Class("muted"), g.Text("No glucose readings stored in this range yet.")))
+	}
+	pts := g2.Trend
+	tir, avg := make([]float64, len(pts)), make([]float64, len(pts))
+	for i, p := range pts {
+		tir[i], avg[i] = p.TIR, p.Avg
+	}
+	s := g2.Overall
+	return Card(
+		H2(g.Text("General glucose")),
+		P(Class("muted"), g.Text("Every stored reading in this range, not just the ones around an activity.")),
+		Grid("",
+			Tile("Time in range", fmt.Sprintf("%.0f%%", s.TIR), fmt.Sprintf("%.0f%% below · %.0f%% above", s.Below, s.Above)),
+			Tile("Average", render.Value(s.Avg, d.Unit), string(d.Unit)),
+			Tile("Min / Max", render.Value(s.Min, d.Unit)+" / "+render.Value(s.Max, d.Unit), string(d.Unit)),
+			Tile("Readings", fmt.Sprint(s.Count), "in this range"),
+		),
+		g.If(len(pts) > 0, Grid("2",
+			Div(H3(g.Text("Time in range")),
+				trendLineChart("var(--ok)", tir, func(v float64) string { return fmt.Sprintf("%.0f%%", v) })),
+			Div(H3(g.Text("Average glucose")),
+				trendLineChart("var(--info)", avg, func(v float64) string { return render.Value(v, d.Unit) + " " + string(d.Unit) })),
+		)),
+	)
+}
+
+// sourceHealthCard lists each glucose source (the live connection, and any
+// backfill import) with its reading count and how long ago the newest one
+// arrived — the signal that a live source is still connected, or that an
+// import actually landed something, without waiting for an activity to show
+// up or not.
+func sourceHealthCard(d StatsData) g.Node {
+	if len(d.SourceHealth) == 0 {
+		return Card(H2(g.Text("Glucose sources")), P(Class("muted"), g.Text("No glucose readings stored yet.")))
+	}
+	rows := make([]g.Node, 0, len(d.SourceHealth))
+	for _, si := range d.SourceHealth {
+		rows = append(rows, Tr(
+			Td(Code(g.Text(si.Source))),
+			Td(Class("num"), g.Textf("%d", si.Count)),
+			Td(g.Text(fmtWhen(si.Latest, d.Loc, d.Now))),
+		))
+	}
+	return Card(H2(g.Text("Glucose sources")),
+		P(Class("muted"), g.Text("When the newest reading from each source arrived, so a stopped live connection or a failed import shows up here.")),
+		Div(append(comp("tablewrap"), Table(append(comp("table"),
+			THead(Tr(Th(g.Text("Source")), Th(Class("num"), g.Text("Readings")), Th(g.Text("Newest reading")))),
+			TBody(g.Group(rows)))...))...),
+	)
+}
+
 func statsTableCard(d StatsData) g.Node {
 	acts := d.Overview.Activities
 	return Card(H2(g.Text("Activities")), activityTable(DashData{Acts: acts, Unit: d.Unit, Loc: d.Loc, Now: d.Now}))
@@ -107,6 +170,12 @@ func statsTableCard(d StatsData) g.Node {
 // breakdown and a raw table, over a selectable date range.
 func StatsPage(pd PageData, d StatsData) g.Node {
 	var cards []g.Node
+	if d.ShowGeneral {
+		cards = append(cards, generalCard(d))
+	}
+	if d.ShowSourceHealth {
+		cards = append(cards, sourceHealthCard(d))
+	}
 	if d.ShowTrend {
 		cards = append(cards, trendCard(d))
 	}

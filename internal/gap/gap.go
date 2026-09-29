@@ -7,7 +7,7 @@ package gap
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -88,7 +88,7 @@ func (m *Monitor) Run(ctx context.Context) {
 	}
 	for {
 		if _, err := m.Once(ctx); err != nil {
-			log.Printf("gap: %v", err)
+			slog.Error("gap", "err", err)
 		}
 		select {
 		case <-ctx.Done():

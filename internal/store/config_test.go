@@ -16,7 +16,8 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 			v = "us"
 		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr", "hr_read",
 			"chart_avg_line", "chart_range_lines", "chart_min_max", "chart_hide_stats",
-			"overview_show_trend", "overview_show_by_sport", "overview_show_table":
+			"overview_show_trend", "overview_show_by_sport", "overview_show_table",
+			"overview_show_general", "overview_show_source_health":
 			v = "true"
 		case "chart_theme":
 			v = "dark"

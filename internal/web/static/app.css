@@ -43,6 +43,8 @@ pre { background: var(--surface-2); border: 1px solid var(--line); border-radius
 [data-component="navlink"]:hover { background: var(--surface-2); text-decoration: none; color: var(--ink); }
 [data-component="navlink"][aria-current="page"] { background: var(--surface-2); color: var(--ink); }
 [data-component="navspacer"] { flex: 1; }
+[data-component="navactions"] { display: flex; align-items: center; gap: .5rem; }
+[data-component="navactions"] form button { max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; }
 main { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
 [data-component="pagehead"] { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
 [data-component="footer"] { text-align: center; padding: 1rem; color: var(--ink-2); font-size: .8rem; }

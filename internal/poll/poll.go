@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -121,7 +121,7 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 	if p.Buffer != nil && set.PostBuffer > 0 {
 		due, err := p.Buffer.DueForBuffer(ctx, now.Add(-maxAge), 50)
 		if err != nil {
-			log.Printf("poll: delayed reprocess: %v", err)
+			slog.Error("delayed reprocess", "err", err)
 		}
 		for _, a := range due {
 			if now.Before(a.End().Add(set.Post + set.PostBuffer)) {
@@ -134,7 +134,7 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 		}
 	}
 	if buffered > 0 {
-		log.Printf("poll: queued %d activities for a delayed reprocess", buffered)
+		slog.Info("queued activities for a delayed reprocess", "count", buffered)
 	}
 	return queued, nil
 }
@@ -146,9 +146,9 @@ func (p *Poller) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("poll: %v", err)
+			slog.Error("poll", "err", err)
 		} else {
-			log.Printf("poll: checked, %d new", n)
+			slog.Info("checked", "new", n)
 		}
 
 		wait := 10 * time.Minute

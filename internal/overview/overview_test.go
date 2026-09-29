@@ -113,6 +113,39 @@ func TestBuildBySportTiesBreakAlphabetically(t *testing.T) {
 	}
 }
 
+func TestBuildGeneralEmptyInput(t *testing.T) {
+	d := BuildGeneral(nil, stats.DefaultRange, utc)
+	if d.HasData {
+		t.Fatalf("HasData = true for no samples, want false")
+	}
+}
+
+func TestBuildGeneralSummarizesWholeRangeAndBucketsByDay(t *testing.T) {
+	day1 := time.Date(2026, 9, 19, 0, 0, 0, 0, utc)
+	day2 := time.Date(2026, 9, 20, 0, 0, 0, 0, utc)
+	samples := []stats.Sample{
+		{Time: day1.Add(8 * time.Hour), Value: 100},
+		{Time: day1.Add(9 * time.Hour), Value: 120},
+		{Time: day2.Add(8 * time.Hour), Value: 200}, // above DefaultRange.High (180)
+	}
+	d := BuildGeneral(samples, stats.DefaultRange, utc)
+	if !d.HasData {
+		t.Fatal("HasData = false, want true")
+	}
+	if d.Overall.Count != 3 {
+		t.Errorf("Overall.Count = %d, want 3", d.Overall.Count)
+	}
+	if len(d.Trend) != 2 || !d.Trend[0].Day.Equal(day1) || !d.Trend[1].Day.Equal(day2) {
+		t.Fatalf("Trend = %+v, want two points on day1 then day2", d.Trend)
+	}
+	if d.Trend[0].Count != 2 || d.Trend[1].Count != 1 {
+		t.Errorf("Trend counts = %d, %d, want 2, 1", d.Trend[0].Count, d.Trend[1].Count)
+	}
+	if d.Trend[1].TIR != 0 {
+		t.Errorf("day2 TIR = %v, want 0 (its one reading is above range)", d.Trend[1].TIR)
+	}
+}
+
 func TestBuildEmptyInput(t *testing.T) {
 	d := Build(nil, utc)
 	if len(d.Trend) != 0 {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/jobs"
+	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
 // TrendPoint is one calendar day's aggregate across the activities that
@@ -110,6 +111,44 @@ func Build(acts []jobs.Activity, loc *time.Location) Data {
 	})
 
 	return Data{Trend: trend, BySport: sports, Activities: acts}
+}
+
+// GeneralData is the whole-range glucose picture, independent of any
+// activity: every stored reading in the range, not just the ones around a
+// workout.
+type GeneralData struct {
+	Overall stats.Summary // over every sample in the range
+	HasData bool          // false when there were no samples at all
+	Trend   []TrendPoint  // one point per calendar day that has at least one sample
+}
+
+// BuildGeneral aggregates every glucose sample in the range (regardless of
+// whether it falls near an activity) into a whole-range summary and a
+// day-by-day trend, bucketed the same way Build buckets activities.
+func BuildGeneral(samples []stats.Sample, rng stats.Range, loc *time.Location) GeneralData {
+	overall, ok := stats.Summarize(samples, rng)
+	if !ok {
+		return GeneralData{}
+	}
+
+	byDay := map[time.Time][]stats.Sample{}
+	for _, s := range samples {
+		day := dayOf(s.Time, loc)
+		byDay[day] = append(byDay[day], s)
+	}
+	days := make([]time.Time, 0, len(byDay))
+	for d := range byDay {
+		days = append(days, d)
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i].Before(days[j]) })
+
+	trend := make([]TrendPoint, len(days))
+	for i, day := range days {
+		sum, _ := stats.Summarize(byDay[day], rng)
+		trend[i] = TrendPoint{Day: day, Count: len(byDay[day]), TIR: sum.TIR, Avg: sum.Avg, CV: sum.CV}
+	}
+
+	return GeneralData{Overall: overall, HasData: true, Trend: trend}
 }
 
 // dayOf returns local midnight for t in loc. Not t.Truncate(24*time.Hour):
