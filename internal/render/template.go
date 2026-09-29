@@ -33,6 +33,13 @@ type TemplateData struct {
 	// (e.g. the chart image is disabled, or in a template preview).
 	TIRWindow string // percent, no "%" suffix
 
+	// Distance and Elevation are pre-formatted totals from the activity
+	// listing ("12.02 km", "143 m"); "" when there is no activity behind the
+	// render (e.g. a template dry-run/preview). Pace is a single sport-aware
+	// field (pace for Run/Hike/Swim, speed for Ride, "" for anything without
+	// a meaningful distance metric) — see formatPace.
+	Distance, Elevation, Pace string
+
 	Sparkline string // "" when disabled or there were no samples to draw
 }
 
@@ -56,6 +63,13 @@ func newTemplateData(sum, windowSum stats.Summary, samples []stats.Sample, opt O
 		End:       num(sum.End, opt.Unit),
 		TIRWindow: pct(windowSum.TIR),
 	}
+	if opt.Distance > 0 {
+		d.Distance = fmt.Sprintf("%.2f km", opt.Distance/1000)
+	}
+	if opt.ElevationGain > 0 {
+		d.Elevation = fmt.Sprintf("%.0f m", opt.ElevationGain)
+	}
+	d.Pace = FormatPace(opt.Sport, opt.Distance, opt.Duration)
 	w := opt.SparkWidth
 	if w == 0 {
 		w = sparkW

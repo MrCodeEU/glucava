@@ -197,6 +197,7 @@ var configKeys = map[string]configKey{
 	"chart_dots":                  boolKey(func(c *Config) *bool { return &c.ChartDots }),
 	"chart_line":                  intKey(func(c *Config) *int { return &c.ChartLine }),
 	"chart_hr":                    boolKey(func(c *Config) *bool { return &c.ChartHR }),
+	"chart_elevation":             boolKey(func(c *Config) *bool { return &c.ChartElevation }),
 	"chart_panel_order":           strKey(func(c *Config) *string { return &c.ChartPanelOrder }),
 	"chart_pre_minutes":           intKey(func(c *Config) *int { return &c.ChartPreMin }),
 	"chart_avg_line":              boolKey(func(c *Config) *bool { return &c.ChartAvgLine }),
@@ -250,16 +251,16 @@ func (c *Config) Set(key, value string) error {
 // order — the fallback order for a panel enabled but missing from (or
 // misspelled in) ChartPanelOrder, so a stale order string can never hide a
 // panel its own boolean turned on.
-var chartPanelTokens = []string{chartimg.PanelActivity, chartimg.PanelBand, chartimg.PanelDots, chartimg.PanelHR}
+var chartPanelTokens = []string{chartimg.PanelActivity, chartimg.PanelBand, chartimg.PanelElevation, chartimg.PanelDots, chartimg.PanelHR}
 
 // ChartStyle converts the chart settings to how the chart is drawn:
-// ChartBand/ChartActivity/ChartDots/ChartHR decide which panels are on,
-// ChartPanelOrder (comma-separated panel names) decides the draw order
-// among the ones that are.
+// ChartBand/ChartActivity/ChartDots/ChartHR/ChartElevation decide which
+// panels are on, ChartPanelOrder (comma-separated panel names) decides the
+// draw order among the ones that are.
 func (c Config) ChartStyle() chartimg.Style {
 	enabled := map[string]bool{
 		chartimg.PanelActivity: c.ChartActivity, chartimg.PanelBand: c.ChartBand,
-		chartimg.PanelDots: c.ChartDots, chartimg.PanelHR: c.ChartHR,
+		chartimg.PanelDots: c.ChartDots, chartimg.PanelHR: c.ChartHR, chartimg.PanelElevation: c.ChartElevation,
 	}
 	seen := map[string]bool{}
 	panels := []string{} // never nil: nil would mean "use chartimg's own default", not "none configured"

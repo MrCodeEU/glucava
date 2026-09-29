@@ -26,11 +26,18 @@ import (
 // HRPoint is one heart rate reading.
 type HRPoint = stats.HRSample
 
+// ElevPoint is one altitude reading, in meters.
+type ElevPoint struct {
+	Time   time.Time
+	Meters float64
+}
+
 // PhotoData is what Photo draws: a square card for the Strava feed, which
 // crops every photo to a square.
 type PhotoData struct {
 	Samples    []stats.Sample
-	HR         []HRPoint // optional; drawn on a second axis
+	HR         []HRPoint   // optional; drawn on a second axis
+	Elevation  []ElevPoint // optional; drawn as a shaded profile behind the glucose curve
 	Range      stats.Range
 	Summary    *stats.Summary // computed from Samples when nil
 	Start, End time.Time      // the activity, shaded
@@ -321,6 +328,34 @@ func Photo(d PhotoData) ([]byte, error) {
 	if d.Style.AvgLine && sum != nil {
 		c.dashedHLine(cl, cr, y(sum.Avg), 3, th.strong)
 		labels = append(labels, label{cr + 14, y(sum.Avg) + 8, "avg " + render.Value(sum.Avg, d.Unit), 24, true, th.strong, 0})
+	}
+
+	// Elevation profile: a faint terrain silhouette behind everything else,
+	// scaled to its own min/max within the same plot box. No numeric axis of
+	// its own (unlike heart rate) — it's a shape to glance at, not a value to
+	// read precisely, so it stays out of the way instead of claiming margin
+	// space or risking a label collision with HR's.
+	if len(d.Elevation) > 1 && d.Style.has(PanelElevation) {
+		elevLo, elevHi := math.Inf(1), math.Inf(-1)
+		for _, e := range d.Elevation {
+			elevLo, elevHi = math.Min(elevLo, e.Meters), math.Max(elevHi, e.Meters)
+		}
+		if elevHi > elevLo {
+			yelev := func(v float64) float64 { return ct + (cb-ct)*(1-(v-elevLo)/(elevHi-elevLo)) }
+			es := append([]ElevPoint(nil), d.Elevation...)
+			sort.Slice(es, func(i, j int) bool { return es[i].Time.Before(es[j].Time) })
+			var xs, ys []float64
+			for _, e := range es {
+				if e.Time.Before(t0) || e.Time.After(t1) {
+					continue
+				}
+				xs, ys = append(xs, x(e.Time)), append(ys, yelev(e.Meters))
+			}
+			if len(xs) > 1 {
+				sx, sy := smooth(xs, ys)
+				c.areaUnder(sx, sy, cb, th.muted, 0.14)
+			}
+		}
 	}
 
 	// Heart rate underneath the glucose curve, on its own axis.

@@ -390,6 +390,53 @@ func TestOverviewGeneralTogglesDefaultOnAndRoundTrip(t *testing.T) {
 	}
 }
 
+// TestChartElevationDefaultOnAndRoundTrip guards migration 020's toggle,
+// same bug class as TestOverviewGeneralTogglesDefaultOnAndRoundTrip.
+func TestChartElevationDefaultOnAndRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	c, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.ChartElevation {
+		t.Fatalf("default = %+v, want true (new content should show up, not need finding)", c)
+	}
+	c.ChartElevation = false
+	if err := s.SaveConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadConfig()
+	if err != nil || got.ChartElevation {
+		t.Fatalf("LoadConfig after save = %+v, %v, want false", got, err)
+	}
+}
+
+// TestActivityDistanceElevationRoundTrip guards migration 020's
+// distance_m/elevation_gain_m/elevation fields, same bug class as the
+// existing heart_rate round trip this codebase already relies on.
+func TestActivityDistanceElevationRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	a := &jobs.Activity{
+		StravaID: "900", Sport: "Run", Start: t0, Duration: 30 * time.Minute, Status: jobs.StatusDone,
+		Distance: 10031.4, ElevationGain: 143,
+		Elevation: []chartimg.ElevPoint{{Time: t0, Meters: 100}, {Time: t0.Add(time.Minute), Meters: 110}},
+	}
+	if err := s.SaveActivity(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Activity(ctx, "900")
+	if err != nil || got == nil {
+		t.Fatalf("Activity = %+v, %v", got, err)
+	}
+	if got.Distance != 10031.4 || got.ElevationGain != 143 {
+		t.Errorf("Distance/ElevationGain = %v/%v, want 10031.4/143", got.Distance, got.ElevationGain)
+	}
+	if len(got.Elevation) != 2 || got.Elevation[1].Meters != 110 {
+		t.Errorf("Elevation = %+v", got.Elevation)
+	}
+}
+
 func TestListActivitiesAndEventsOrderAndChangedHook(t *testing.T) {
 	changes := 0
 	s := &PB{App: newApp(t), Changed: func() { changes++ }}

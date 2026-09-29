@@ -57,6 +57,12 @@ type Activity struct {
 	Start    time.Time
 	Duration time.Duration
 
+	// Distance and ElevationGain come straight from the training-log listing
+	// (checked 2026-09, real response), in meters. Legitimately 0 for a
+	// trainer/manual entry.
+	Distance      float64
+	ElevationGain float64
+
 	Status   string
 	Error    string
 	Attempts int
@@ -78,6 +84,10 @@ type Activity struct {
 	// HeartRate is the activity's heart rate, thinned, once fetched. Never cleared.
 	HeartRate []chartimg.HRPoint
 
+	// Elevation is the activity's altitude profile, thinned, once fetched.
+	// Never cleared, same as HeartRate.
+	Elevation []chartimg.ElevPoint
+
 	// BufferDone marks that the delayed automatic reprocess (PostBuffer) has
 	// run for this activity, so it only happens once.
 	BufferDone bool
@@ -93,13 +103,14 @@ type Settings struct {
 	Pre   time.Duration // glucose window before the start
 	Post  time.Duration // glucose window after the end
 
-	PollInterval time.Duration // how often the poller checks Strava
-	ChartImage   bool          // also attach a glucose chart photo
-	ChartStyle   chartimg.Style
-	ChartHR      bool          // draw the activity's heart rate on the chart
-	ChartPre     time.Duration // glucose lead-in shown on the chart, on top of Pre
-	HRRead       bool          // read heart rate from Strava
-	PostBuffer   time.Duration // delay after Post before one automatic reprocess; 0 disables it
+	PollInterval   time.Duration // how often the poller checks Strava
+	ChartImage     bool          // also attach a glucose chart photo
+	ChartStyle     chartimg.Style
+	ChartHR        bool          // draw the activity's heart rate on the chart
+	ChartElevation bool          // draw the activity's elevation profile on the chart
+	ChartPre       time.Duration // glucose lead-in shown on the chart, on top of Pre
+	HRRead         bool          // read heart rate from Strava
+	PostBuffer     time.Duration // delay after Post before one automatic reprocess; 0 disables it
 
 	// DescriptionTemplate is a Go text/template (see render.RenderBlock).
 	// Empty means render.DefaultTemplate, today's built-in wording.
@@ -146,4 +157,10 @@ type PhotoWriter interface {
 // rate. It is optional, like PhotoWriter.
 type HRSource interface {
 	HeartRate(ctx context.Context, stravaID string, start time.Time) ([]chartimg.HRPoint, error)
+}
+
+// ElevationSource is implemented by a Writer that can also read the
+// activity's elevation profile. It is optional, like HRSource.
+type ElevationSource interface {
+	Elevation(ctx context.Context, stravaID string, start time.Time) ([]chartimg.ElevPoint, error)
 }

@@ -594,6 +594,7 @@ type settingsSignals struct {
 	ChartDots       bool    `json:"chartDots"`
 	ChartLine       int     `json:"chartLine"`
 	ChartHR         bool    `json:"chartHR"`
+	ChartElevation  bool    `json:"chartElevation"`
 	ChartPanelOrder string  `json:"chartPanelOrder"`
 	ChartPre        int     `json:"chartPre"`
 	ChartAvgLine    bool    `json:"chartAvgLine"`
@@ -622,7 +623,7 @@ func (v settingsSignals) config() store.Config {
 		PublicURL: strings.TrimSpace(v.PublicURL), MailAlerts: v.MailAlerts, MailActivity: v.MailActivity, MailWeekly: v.MailWeekly,
 		MailHealth: v.MailHealth, GapAlertHours: v.GapAlertHours, ChartImage: v.ChartImage,
 		ChartTheme: v.ChartTheme, ChartSize: v.ChartSize, ChartBand: v.ChartBand, ChartActivity: v.ChartActivity,
-		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR,
+		ChartDots: v.ChartDots, ChartLine: v.ChartLine, ChartHR: v.ChartHR, ChartElevation: v.ChartElevation,
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
@@ -664,7 +665,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.MailHealth, cfg.GapAlertHours = v.MailHealth, v.GapAlertHours
 	cfg.ChartImage, cfg.ChartTheme, cfg.ChartSize = v.ChartImage, v.ChartTheme, v.ChartSize
 	cfg.ChartBand, cfg.ChartActivity, cfg.ChartDots, cfg.ChartLine = v.ChartBand, v.ChartActivity, v.ChartDots, v.ChartLine
-	cfg.ChartHR, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartPre, v.HRRead
+	cfg.ChartHR, cfg.ChartElevation, cfg.ChartPreMin, cfg.HRRead = v.ChartHR, v.ChartElevation, v.ChartPre, v.HRRead
 	cfg.ChartPanelOrder = v.ChartPanelOrder
 	cfg.ChartAvgLine, cfg.ChartRangeLines = v.ChartAvgLine, v.ChartRangeLines
 	cfg.ChartMinMax, cfg.ChartHideStats = v.ChartMinMax, v.ChartHideStats

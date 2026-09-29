@@ -4,6 +4,7 @@ package render
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -64,6 +65,15 @@ const (
 type Options struct {
 	Unit       Unit
 	SparkWidth int // 0 means default; negative disables the sparkline
+
+	// Sport, Distance (meters) and Duration back {{.Distance}}, {{.Elevation}}
+	// and {{.Pace}}. Zero values (the default, e.g. in a template dry-run
+	// with no real activity) mean those fields render empty, same as an
+	// unset Sparkline.
+	Sport         string
+	Distance      float64 // meters
+	ElevationGain float64 // meters
+	Duration      time.Duration
 }
 
 // Block returns the description block: a summary line and an optional sparkline.

@@ -114,19 +114,23 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		if len(a.HeartRate) == 0 {
 			a.HeartRate = prev.HeartRate
 		}
+		if len(a.Elevation) == 0 {
+			a.Elevation = prev.Elevation
+		}
 	}
 
 	tmpl := set.DescriptionTemplate
 	if tmpl == "" {
 		tmpl = render.DefaultTemplate
 	}
-	block, terr := render.RenderBlock(tmpl, sum, windowSum, samples, render.Options{Unit: set.Unit})
+	ropt := render.Options{Unit: set.Unit, Sport: a.Sport, Distance: a.Distance, ElevationGain: a.ElevationGain, Duration: a.Duration}
+	block, terr := render.RenderBlock(tmpl, sum, windowSum, samples, ropt)
 	if terr != nil {
 		// Validate (see store.Config.Validate) is meant to catch this before
 		// it is ever saved, so this should not happen; if it does anyway,
 		// fall back to the default rather than skip writing the description.
 		slog.Warn("description template invalid, using the default instead", "err", terr)
-		block, _ = render.RenderBlock(render.DefaultTemplate, sum, windowSum, samples, render.Options{Unit: set.Unit})
+		block, _ = render.RenderBlock(render.DefaultTemplate, sum, windowSum, samples, ropt)
 	}
 	p.step(a.StravaID, "Writing description to Strava")
 	var backupErr error
@@ -168,6 +172,10 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 		p.step(a.StravaID, "Reading heart rate")
 		p.fetchHeartRate(ctx, a)
 	}
+	if set.ChartImage && set.ChartElevation && len(a.Elevation) == 0 {
+		p.step(a.StravaID, "Reading elevation profile")
+		p.fetchElevation(ctx, a)
+	}
 	// A chart drawn right when the glucose window first closes can miss the
 	// last few Dexcom readings, which lag behind the wall clock. With a
 	// PostBuffer set, the photo waits for that same deadline as the delayed
@@ -205,7 +213,7 @@ func (p *Processor) uploadChart(ctx context.Context, a *Activity, set Settings, 
 	if !ok {
 		return nil
 	}
-	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, HR: a.HeartRate, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
+	png, err := chartimg.Photo(chartimg.PhotoData{Samples: samples, HR: a.HeartRate, Elevation: a.Elevation, Range: set.Range, Summary: a.Summary, Start: a.Start, End: a.End(), Unit: set.Unit, Loc: time.Local, Style: set.ChartStyle})
 	if err != nil {
 		return fmt.Errorf("draw chart: %w", err)
 	}
@@ -277,4 +285,20 @@ func (p *Processor) fetchHeartRate(ctx context.Context, a *Activity) {
 	}
 	slog.Info("heart rate points for the chart", "activity", a.StravaID, "points", len(pts))
 	a.HeartRate = pts
+}
+
+// fetchElevation reads the activity's altitude profile for the chart. It
+// never fails the run: the chart is still worth attaching without it.
+func (p *Processor) fetchElevation(ctx context.Context, a *Activity) {
+	src, ok := p.Writer.(ElevationSource)
+	if !ok {
+		return
+	}
+	pts, err := src.Elevation(ctx, a.StravaID, a.Start)
+	if err != nil {
+		slog.Warn("no elevation profile for the chart", "activity", a.StravaID, "err", err)
+		return
+	}
+	slog.Info("elevation points for the chart", "activity", a.StravaID, "points", len(pts))
+	a.Elevation = pts
 }

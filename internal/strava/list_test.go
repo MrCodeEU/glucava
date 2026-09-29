@@ -10,15 +10,16 @@ import (
 // seconds live in the _raw variants. The third model has only the plain,
 // numeric-string legacy shape, kept as a fallback case.
 const sampleList = `{"models":[
- {"id":111,"name":"Morning Run","type":"Run","start_time":"2026-09-20T05:00:00Z","elapsed_time":"50:00","elapsed_time_raw":3000,"moving_time":"48:20","moving_time_raw":2900},
+ {"id":111,"name":"Morning Run","type":"Run","start_time":"2026-09-20T05:00:00Z","elapsed_time":"50:00","elapsed_time_raw":3000,"moving_time":"48:20","moving_time_raw":2900,"distance_raw":10031.4,"elevation_gain_raw":143},
  {"id":"22'2","name":"Bad id with a quote","start_time":"2026-09-20T05:00:00Z","elapsed_time_raw":60},
  {"id":"222","name":"Local only","sport_type":"TrailRun","start_date_local_raw":1789887600,"moving_time_raw":1800},
  {"id":333,"name":"No duration","start_time":"2026-09-20T05:00:00Z"},
  {"name":"No id","start_time":"2026-09-20T05:00:00Z","elapsed_time_raw":60},
  {"id":444,"name":"No start","elapsed_time_raw":60},
  {"id":555,"name":"Only formatted, no raw","start_time":"2026-09-20T05:00:00Z","elapsed_time":"46:50","moving_time":"46:50"},
- {"id":666,"name":"Legacy numeric","start_time":"2026-09-20T05:00:00Z","elapsed_time":45}
-],"total":7}`
+ {"id":666,"name":"Legacy numeric","start_time":"2026-09-20T05:00:00Z","elapsed_time":45},
+ {"id":777,"name":"Trainer workout","sport_type":"Workout","start_time":"2026-09-20T05:00:00Z","elapsed_time_raw":2810,"distance_raw":0,"elevation_gain_raw":0}
+],"total":8}`
 
 func TestParseTrainingActivities(t *testing.T) {
 	berlin, _ := time.LoadLocation("Europe/Berlin")
@@ -26,13 +27,14 @@ func TestParseTrainingActivities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("got %d activities, want 3: %+v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("got %d activities, want 4: %+v", len(got), got)
 	}
 
 	a := got[0]
 	if a.StravaID != "111" || a.Sport != "Run" || a.Duration != 50*time.Minute ||
-		!a.Start.Equal(time.Date(2026, 9, 20, 5, 0, 0, 0, time.UTC)) {
+		!a.Start.Equal(time.Date(2026, 9, 20, 5, 0, 0, 0, time.UTC)) ||
+		a.Distance != 10031.4 || a.ElevationGain != 143 {
 		t.Errorf("first = %+v", a)
 	}
 
@@ -47,6 +49,14 @@ func TestParseTrainingActivities(t *testing.T) {
 	c := got[2]
 	if c.StravaID != "666" || c.Duration != 45*time.Second {
 		t.Errorf("third = %+v", c)
+	}
+
+	// "Trainer workout" (777): distance_raw/elevation_gain_raw are explicitly
+	// 0, a legitimate value (not "missing"), so they must stay 0, not fall
+	// through to some other field.
+	d := got[3]
+	if d.StravaID != "777" || d.Distance != 0 || d.ElevationGain != 0 {
+		t.Errorf("fourth = %+v", d)
 	}
 }
 
