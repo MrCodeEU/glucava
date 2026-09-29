@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -809,6 +811,77 @@ func TestRestoreNeedsStoredOriginal(t *testing.T) {
 	if len(e.jobs.got) != 1 || !e.jobs.got[0].Restore {
 		t.Errorf("jobs = %+v", e.jobs.got)
 	}
+}
+
+// TestDataOnExpressionsHaveNoTopLevelAwait guards against the bug found in
+// production on 0.2.0: Datastar compiles data-on:* expressions with the
+// plain (non-async) Function constructor, so a top-level "await" throws
+// GenerateExpression the moment a browser actually clicks the button —
+// invisible to every other test here, which only checks the rendered HTML
+// string, never executes it. postThenGo (the delete confirm button) used to
+// do exactly this; it now chains with .then() instead.
+func TestDataOnExpressionsHaveNoTopLevelAwait(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+	_ = e.srv.Store.SaveActivity(context.Background(), &jobs.Activity{StravaID: "77", Name: "Run", Start: time.Now().Add(-time.Hour), Duration: time.Hour, Status: jobs.StatusDone})
+
+	for _, page := range []string{"/", "/activity/77", "/settings", "/tokens", "/events"} {
+		body := e.get(t, page, c).Body.String()
+		for _, m := range dataOnAttr.FindAllStringSubmatch(body, -1) {
+			expr := html.UnescapeString(m[1])
+			if hasTopLevelAwait(expr) {
+				t.Errorf("%s: data-on expression has a top-level await, which Datastar's non-async Function constructor rejects at click time: %s", page, expr)
+			}
+		}
+	}
+}
+
+var dataOnAttr = regexp.MustCompile(`data-on:[a-z]+="([^"]*)"`)
+
+// TestRoutesCoverHandlerPatterns guards against the bug found alongside the
+// one above in 0.2.0: Handler()'s internal mux served /preview/description.txt,
+// but that pattern was never added to Routes, the list cmd/glucava/main.go
+// forwards from PocketBase's own router. PocketBase's router 404'd the
+// request before Handler() ever ran, and every existing test missed this
+// because they all call Handler() directly, skipping the outer router
+// entirely. This test hardcodes the patterns Handler() registers (they
+// can't be introspected from an http.ServeMux) and checks each is covered by
+// Routes.
+func TestRoutesCoverHandlerPatterns(t *testing.T) {
+	t.Parallel()
+	patterns := []string{
+		"/{$}", "/activity/{id}", "/chart/{name}", "/preview/description.txt", "/strava", "/settings", "/tokens", "/events",
+		"/stream/live", "/stream/activity/{id}",
+		"/actions/poll", "/actions/reprocess/{id}", "/actions/chart/{id}", "/actions/process", "/actions/restore/{id}",
+		"/actions/delete/{id}", "/actions/settings", "/actions/account", "/actions/notify/test", "/actions/strava/cookies",
+		"/actions/strava/test", "/actions/strava/login", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
+		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv",
+	}
+	for _, p := range patterns {
+		if !coveredByRoutes(p) {
+			t.Errorf("Handler() serves %q but it is missing from web.Routes, so PocketBase's own router 404s it before Handler() ever runs", p)
+		}
+	}
+}
+
+func coveredByRoutes(pattern string) bool {
+	for _, r := range Routes {
+		if r == pattern {
+			return true
+		}
+		if prefix, ok := strings.CutSuffix(r, "{path...}"); ok && strings.HasPrefix(pattern, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasTopLevelAwait reports whether expr uses "await" outside any inline
+// arrow/async function body, a crude but sufficient check for the small,
+// hand-written expressions this app generates.
+func hasTopLevelAwait(expr string) bool {
+	return strings.Contains(expr, "await ") && !strings.Contains(expr, "async ")
 }
 
 func TestDeleteActivity(t *testing.T) {

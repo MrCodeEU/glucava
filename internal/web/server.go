@@ -153,7 +153,7 @@ func (s *Server) Handler() http.Handler {
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/settings", "/tokens", "/events",
-	"/chart/{path...}", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 
 // maxBody caps most request bodies. The largest legitimate one otherwise is a
