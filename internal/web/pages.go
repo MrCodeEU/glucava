@@ -1,12 +1,14 @@
 package web
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
+	qrcode "github.com/skip2/go-qrcode"
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 
@@ -16,6 +18,18 @@ import (
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 )
+
+// qrDataURI renders content as a PNG QR code, inline as a data: URI so it
+// needs no extra route or static file. Returns "" if encoding fails (a
+// malformed content string), so a caller can skip the image rather than
+// break the page.
+func qrDataURI(content string) string {
+	png, err := qrcode.Encode(content, qrcode.Medium, 240)
+	if err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+}
 
 // jsQuote escapes s for use inside a single-quoted JavaScript string in a Datastar expression.
 var jsQuote = strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "<", `\x3c`).Replace
@@ -713,8 +727,14 @@ func CopyRow(label, value string) g.Node {
 	)
 }
 
-// SecretReveal shows a new token once, with the values a phone app needs.
-func SecretReveal(name, token, endpoint string) g.Node {
+// SecretReveal shows a new token once, with the values a phone app needs,
+// plus two QR codes while the token is still on screen: one to download a
+// ready-to-import Tasker profile directly (for Android), and one that just
+// opens this page on whatever device scans it (for HTTP Shortcuts,
+// MacroDroid or Apple Shortcuts, which can't be pre-built as a file the
+// same way — the target is this page's own per-platform instructions,
+// filled in with the real token below instead of a placeholder).
+func SecretReveal(name, token, endpoint, taskerURL, pageURL string) g.Node {
 	header := "Bearer " + token
 	return Div(ID("token-reveal"), Div(append(comp("secretbox"),
 		P(Strong(g.Textf("Token “%s” created. Copy it now; it is not shown again.", name))),
@@ -723,6 +743,19 @@ func SecretReveal(name, token, endpoint string) g.Node {
 		CopyRow("Header", "Authorization: "+header),
 		CopyRow("Test", fmt.Sprintf("curl -i -X POST -H 'Authorization: %s' %s", header, endpoint)),
 		P(Class("muted"), g.Text("A working call answers 202, and “Last used” in the list below changes.")),
+		Grid("2",
+			Div(
+				H3(g.Text("Android (Tasker)")),
+				P(Class("muted"), g.Text("A ready-to-import profile: Strava notification → check now, unfiltered (see below for why).")),
+				A(append(comp("button"), Href(taskerURL), g.Attr("download", ""), g.Text("Download Tasker profile"))...),
+				g.If(qrDataURI(taskerURL) != "", Img(Alt("QR code to download the Tasker profile"), Src(qrDataURI(taskerURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+			),
+			Div(
+				H3(g.Text("Other platforms")),
+				P(Class("muted"), g.Text("Scan to open this page on the phone you'll set the trigger up on — the instructions below fill in this real token instead of a placeholder.")),
+				g.If(qrDataURI(pageURL) != "", Img(Alt("QR code to open the Triggers page"), Src(qrDataURI(pageURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+			),
+		),
 	)...))
 }
 

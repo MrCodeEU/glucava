@@ -851,7 +851,9 @@ func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, _ := s.Tokens.List()
-	_ = sse.PatchElements(renderString(SecretReveal(v.TokenName, token, strings.TrimRight(s.baseURL(r), "/")+"/api/trigger")))
+	base := strings.TrimRight(s.baseURL(r), "/")
+	taskerURL := base + "/export/tasker.prf.xml?token=" + url.QueryEscape(token)
+	_ = sse.PatchElements(renderString(SecretReveal(v.TokenName, token, base+"/api/trigger", taskerURL, base+"/tokens")))
 	_ = sse.PatchElements(renderString(TokenList(list, s.loc())))
 	_ = sse.PatchSignals([]byte(`{"tokenName":""}`))
 }

@@ -6,6 +6,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ### Added
 - Two more cards on the Overview page (each independently toggleable, like the existing three): a whole-range glucose summary, independent of activities, and a per-source health list showing each glucose source's reading count and newest reading — the signal that a live connection is still working or a backfill import actually landed something, without waiting for an activity to show up.
+- The Tokens page generates a ready-to-import Tasker `.prf.xml` (download button + QR code, next to a freshly created token): a Notification event on the Strava app, deliberately left unfiltered rather than trying to match specific wording, wired to an HTTP Request task that calls `/api/trigger`. A second QR code opens the Tokens page itself, for HTTP Shortcuts/MacroDroid/Apple Shortcuts, whose per-platform instructions on that page fill in the real token instead of a placeholder.
 
 ### Fixed
 - The nav bar's sign-out button could wrap onto its own line separately from the theme toggle when the signed-in email was long enough, instead of the two wrapping together as a unit. The sign-out button's text is also now truncated instead of stretching the button for a very long email.

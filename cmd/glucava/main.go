@@ -37,6 +37,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
+	"github.com/MrCodeEU/glucava/internal/taskerprofile"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 	"github.com/MrCodeEU/glucava/internal/trigger"
 	"github.com/MrCodeEU/glucava/internal/web"
@@ -276,6 +277,32 @@ func main() {
 		}
 		// Any method reaches the handler, which answers non-POST with 405.
 		e.Router.Any("/api/trigger", apis.WrapStdHandler(h))
+
+		// GET /export/tasker.prf.xml?token=... generates a ready-to-import
+		// Tasker profile for this deployment. Auth is the token itself, same
+		// trust model as /api/trigger: it has to be reachable from the
+		// phone's own browser or camera app, not a logged-in session.
+		e.Router.GET("/export/tasker.prf.xml", apis.WrapStdHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.URL.Query().Get("token")
+			ok, verr := toks.Verify(token)
+			if verr != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				http.Error(w, "invalid or missing token", http.StatusUnauthorized)
+				return
+			}
+			scheme := "http"
+			if proxies.Secure(r) {
+				scheme = "https"
+			}
+			body := taskerprofile.Build(scheme+"://"+r.Host, token)
+			w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+			w.Header().Set("Content-Disposition", `attachment; filename="glucava-tasker.prf.xml"`)
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = w.Write(body)
+		})))
 
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,

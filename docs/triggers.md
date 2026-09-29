@@ -38,39 +38,53 @@ Everything below just repeats this one request from the phone.
 
 ## Tasker (Android)
 
-Tasker's export files use internal numeric codes that are not safe to
-hand-write, so glucava ships no `.prf.xml`. Build it once in the app (about five
-minutes), then use Tasker's own sharing to move it to other devices.
+The Tokens page generates a ready-to-import profile for you: after creating
+a token, a "Download Tasker profile" button and a matching QR code appear
+next to it (the QR is for scanning from a different screen, e.g. a desktop;
+the download button is for opening the Tokens page on the phone itself).
+Importing it in Tasker gives you one profile and one task, done.
 
-1. **Task first.** Tasks tab → **+** → name it `glucava trigger`. Add the action
-   **Net → HTTP Request**: Method `POST`, URL `https://your-host/api/trigger`,
-   Headers `Authorization: Bearer gst_...`, leave Body empty, Timeout `30`.
-   Long-press the task's play button to run it; the Tokens page should show the
-   token as used.
-2. **Profile.** Profiles tab → **+** → **Event → UI → Notification**. Owner
-   Application: **Strava**. Leave Title and Text empty for now. Link the profile
-   to the `glucava trigger` task.
-3. **Find Strava's wording.** Record an activity (or wait for the next one). When
-   Strava posts its "activity saved/uploaded" notification the task fires; if
-   it also fires for unrelated Strava notifications (kudos, comments), open the
-   profile and add a Title or Text filter (`*upload*`, or whatever your Strava
-   version and language actually says). Tasker's Run Log shows the exact text.
-4. Android must let Tasker read notifications (Settings → Notification access)
-   and must not put Tasker to sleep (battery: unrestricted).
+**What it does, and why.** The profile fires on Tasker's Notification event,
+owner app Strava, **deliberately left unfiltered** — no title or text match.
+This is confirmed working, not a guess: a real deployment tested filtering
+first and dropped it, because Strava's own notifications vary by type (a new
+activity, a kudos, a streak reminder all look different) and by locale, so a
+title/text filter is unreliable and needs constant retuning. Firing on every
+Strava notification instead is harmless: the trigger endpoint only means
+"check now", it's idempotent, cheap, and already rate-limited, so an extra
+call just means glucava checked a little earlier than the next scheduled
+poll would have anyway.
 
-**Sharing it (TaskerNet).** Once it works: long-press the profile (or the
-project) → three-dot menu → **Export → As Link**. Tasker uploads it to
-TaskerNet and gives you a `https://taskernet.com/shares/?user=...` link that
-anyone with Tasker can open and import with one tap. The link can only be
-created from the app that holds the profile, which is why one is not
-provided here yet. Remove your token from the task before you share it
-(replace it with a variable such as `%GLUCAVA_TOKEN` set in a Variable Set
-action) and tell importers to fill in their own URL and token.
+The task is one HTTP Request action: `POST` to `/api/trigger` with your
+token in the `Authorization` header, 30s timeout — same request `curl`
+above sends. Android must let Tasker read notifications (Settings →
+Notification access) and must not put Tasker to sleep (battery:
+unrestricted).
 
-Untested end to end against a real Strava notification — check that the
-profile fires before relying on it. Polling covers you either way.
+**Building it by hand instead.** If you'd rather not import a generated
+file, or want to tweak it (e.g. add your own title/text filter after all):
+Tasks tab → **+** → name it `glucava trigger`, action **Net → HTTP
+Request**: Method `POST`, URL `https://your-host/api/trigger`, Headers
+`Authorization: Bearer gst_...`, leave Body empty, Timeout `30`. Then
+Profiles tab → **+** → **Event → UI → Notification**, owner Application
+**Strava**, leave Title and Text empty (or fill them in if you want
+filtering — Tasker's Run Log shows the exact notification text your Strava
+version and language actually use). Link the profile to the task.
+
+**Sharing it (TaskerNet).** Long-press the profile (or the project) →
+three-dot menu → **Export → As Link**. Tasker uploads it to TaskerNet and
+gives you a `https://taskernet.com/shares/?user=...` link that anyone with
+Tasker can open and import with one tap — useful for sharing your own tuned
+version, since the generated download already has your token baked in and
+isn't meant to be shared further as-is.
 
 ## HTTP Shortcuts / MacroDroid (Android, no Tasker)
+
+These can't be pre-built as a file the way Tasker's profile is, so the
+Tokens page's second QR code (next to the Tasker one, right after creating a
+token) just opens the Tokens page itself on whatever device scans it — with
+your real token already filled into the examples below instead of a
+placeholder.
 
 Both apps can do this without a profile file:
 
