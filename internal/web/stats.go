@@ -60,6 +60,12 @@ func rangePicker(active string) g.Node {
 	return Div(append(comp("rangepicker"), g.Group(links))...)
 }
 
+// trendSpan formats the date range a per-day trend chart covers, so a chart
+// is never shown without saying what time frame it's over.
+func trendSpan(first, last time.Time) string {
+	return fmt.Sprintf("%s – %s", first.Format("2 Jan"), last.Format("2 Jan"))
+}
+
 func trendCard(d StatsData) g.Node {
 	pts := d.Overview.Trend
 	if len(pts) == 0 {
@@ -69,8 +75,7 @@ func trendCard(d StatsData) g.Node {
 	for i, p := range pts {
 		tir[i], avg[i] = p.TIR, p.Avg
 	}
-	first, last := pts[0].Day, pts[len(pts)-1].Day
-	span := fmt.Sprintf("%s – %s", first.Format("2 Jan"), last.Format("2 Jan"))
+	span := trendSpan(pts[0].Day, pts[len(pts)-1].Day)
 	return Card(
 		H2(g.Text("Trends")), P(Class("muted"), g.Text(span+", one point per day with a completed activity")),
 		Grid("2",
@@ -127,12 +132,15 @@ func generalCard(d StatsData) g.Node {
 			Tile("Min / Max", render.Value(s.Min, d.Unit)+" / "+render.Value(s.Max, d.Unit), string(d.Unit)),
 			Tile("Readings", fmt.Sprint(s.Count), "in this range"),
 		),
-		g.If(len(pts) > 0, Grid("2",
-			Div(H3(g.Text("Time in range")),
-				trendLineChart("var(--ok)", tir, func(v float64) string { return fmt.Sprintf("%.0f%%", v) })),
-			Div(H3(g.Text("Average glucose")),
-				trendLineChart("var(--info)", avg, func(v float64) string { return render.Value(v, d.Unit) + " " + string(d.Unit) })),
-		)),
+		g.If(len(pts) > 0, g.Group([]g.Node{
+			P(Class("muted"), g.Text(trendSpan(pts[0].Day, pts[len(pts)-1].Day)+", one point per day")),
+			Grid("2",
+				Div(H3(g.Text("Time in range")),
+					trendLineChart("var(--ok)", tir, func(v float64) string { return fmt.Sprintf("%.0f%%", v) })),
+				Div(H3(g.Text("Average glucose")),
+					trendLineChart("var(--info)", avg, func(v float64) string { return render.Value(v, d.Unit) + " " + string(d.Unit) })),
+			),
+		})),
 	)
 }
 
