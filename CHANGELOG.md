@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### Added
 - `GET /metrics`: Prometheus metrics for job outcomes and queue depth, background ingest health (including a "last successful fetch" gauge to catch a silently stopped source), Strava write latency, a recent-window glucose summary, and HTTP request counts/latency/in-flight, alongside the standard Go runtime/process collectors. Needs a bearer token, the same kind and the same tokens as `/api/trigger`.
 - **Overview page** (`/stats`): trends over time (time in range and average glucose, one point per day), a breakdown by activity type, and the raw activity table, over a selectable date range (7/30/90 days or all time). Each card can be turned off independently under Settings → Description and chart → Overview page.
