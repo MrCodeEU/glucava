@@ -70,6 +70,12 @@ type Config struct {
 	OverviewShowTrend   bool
 	OverviewShowBySport bool
 	OverviewShowTable   bool
+
+	// OverviewShowGeneral and OverviewShowSourceHealth show or hide the
+	// whole-range glucose summary and the per-source health list, both
+	// independent of activities.
+	OverviewShowGeneral      bool
+	OverviewShowSourceHealth bool
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -106,11 +112,13 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartPreMin: r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
 		ChartAvgLine: r.GetBool("chart_avg_line"), ChartRangeLines: r.GetBool("chart_range_lines"),
 		ChartMinMax: r.GetBool("chart_min_max"), ChartHideStats: r.GetBool("chart_hide_stats"),
-		PostBufferMin:       r.GetInt("post_buffer_minutes"),
-		DescriptionTemplate: r.GetString("description_template"),
-		OverviewShowTrend:   r.GetBool("overview_show_trend"),
-		OverviewShowBySport: r.GetBool("overview_show_by_sport"),
-		OverviewShowTable:   r.GetBool("overview_show_table"),
+		PostBufferMin:            r.GetInt("post_buffer_minutes"),
+		DescriptionTemplate:      r.GetString("description_template"),
+		OverviewShowTrend:        r.GetBool("overview_show_trend"),
+		OverviewShowBySport:      r.GetBool("overview_show_by_sport"),
+		OverviewShowTable:        r.GetBool("overview_show_table"),
+		OverviewShowGeneral:      r.GetBool("overview_show_general"),
+		OverviewShowSourceHealth: r.GetBool("overview_show_source_health"),
 	}, nil
 }
 
@@ -164,6 +172,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("overview_show_trend", c.OverviewShowTrend)
 	r.Set("overview_show_by_sport", c.OverviewShowBySport)
 	r.Set("overview_show_table", c.OverviewShowTable)
+	r.Set("overview_show_general", c.OverviewShowGeneral)
+	r.Set("overview_show_source_health", c.OverviewShowSourceHealth)
 	return s.App.Save(r)
 }
 

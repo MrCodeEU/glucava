@@ -172,10 +172,23 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
+	samples, err := s.Store.LoadSamplesAny(r.Context(), from, to)
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	sources, err := s.Store.SourceHealth(r.Context())
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
 	loc := s.loc()
+	rng := stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh}
 	d := StatsData{
-		Range: key, Overview: overview.Build(acts, loc), Unit: render.Unit(cfg.Unit), Loc: loc, Now: s.now(),
+		Range: key, Overview: overview.Build(acts, loc), General: overview.BuildGeneral(samples, rng, loc),
+		SourceHealth: sources, Unit: render.Unit(cfg.Unit), Loc: loc, Now: s.now(),
 		ShowTrend: cfg.OverviewShowTrend, ShowBySport: cfg.OverviewShowBySport, ShowTable: cfg.OverviewShowTable,
+		ShowGeneral: cfg.OverviewShowGeneral, ShowSourceHealth: cfg.OverviewShowSourceHealth,
 	}
 	s.html(w, http.StatusOK, StatsPage(s.page(r, "Overview", "stats"), d))
 }
@@ -573,9 +586,11 @@ type settingsSignals struct {
 	PostBuffer      int     `json:"postBuffer"`
 	DescTemplate    string  `json:"descTemplate"`
 
-	OverviewShowTrend   bool `json:"overviewShowTrend"`
-	OverviewShowBySport bool `json:"overviewShowBySport"`
-	OverviewShowTable   bool `json:"overviewShowTable"`
+	OverviewShowTrend        bool `json:"overviewShowTrend"`
+	OverviewShowBySport      bool `json:"overviewShowBySport"`
+	OverviewShowTable        bool `json:"overviewShowTable"`
+	OverviewShowGeneral      bool `json:"overviewShowGeneral"`
+	OverviewShowSourceHealth bool `json:"overviewShowSourceHealth"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -594,6 +609,7 @@ func (v settingsSignals) config() store.Config {
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
 		OverviewShowTrend:   v.OverviewShowTrend, OverviewShowBySport: v.OverviewShowBySport, OverviewShowTable: v.OverviewShowTable,
+		OverviewShowGeneral: v.OverviewShowGeneral, OverviewShowSourceHealth: v.OverviewShowSourceHealth,
 	}
 }
 
@@ -637,6 +653,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.PostBufferMin = v.PostBuffer
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
 	cfg.OverviewShowTrend, cfg.OverviewShowBySport, cfg.OverviewShowTable = v.OverviewShowTrend, v.OverviewShowBySport, v.OverviewShowTable
+	cfg.OverviewShowGeneral, cfg.OverviewShowSourceHealth = v.OverviewShowGeneral, v.OverviewShowSourceHealth
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

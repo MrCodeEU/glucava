@@ -493,6 +493,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
 		"chartPanelOrder":   defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
 		"overviewShowTrend": c.OverviewShowTrend, "overviewShowBySport": c.OverviewShowBySport, "overviewShowTable": c.OverviewShowTable,
+		"overviewShowGeneral": c.OverviewShowGeneral, "overviewShowSourceHealth": c.OverviewShowSourceHealth,
 		"descTemplate": c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 		"settingsTab": "glucose",
 	})
@@ -562,6 +563,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Card(H2(g.Text("Overview page")),
 					P(Class("muted"), g.Text("Turn cards on the Overview page on or off.")),
+					Field("overviewShowGeneral", "General glucose", "Whole-range summary, independent of activities.", Input(ID("overviewShowGeneral"), Type("checkbox"), bind("overviewShowGeneral"))),
+					Field("overviewShowSourceHealth", "Glucose sources", "Per-source reading counts and newest reading, to spot a stopped connection or a failed import.", Input(ID("overviewShowSourceHealth"), Type("checkbox"), bind("overviewShowSourceHealth"))),
 					Field("overviewShowTrend", "Trends over time", "", Input(ID("overviewShowTrend"), Type("checkbox"), bind("overviewShowTrend"))),
 					Field("overviewShowBySport", "By activity type", "", Input(ID("overviewShowBySport"), Type("checkbox"), bind("overviewShowBySport"))),
 					Field("overviewShowTable", "Raw table", "", Input(ID("overviewShowTable"), Type("checkbox"), bind("overviewShowTable"))),
