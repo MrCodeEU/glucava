@@ -34,6 +34,7 @@ func decode(t *testing.T, b []byte) (w, h int) {
 }
 
 func TestGlucoseChartIsAPNGOfFixedSize(t *testing.T) {
+	t.Parallel()
 	b, err := Glucose(series())
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +51,7 @@ func TestGlucoseChartIsAPNGOfFixedSize(t *testing.T) {
 }
 
 func TestGlucoseMmolAndSinglePoint(t *testing.T) {
+	t.Parallel()
 	s := series()
 	s.Unit = render.MmolL
 	if _, err := Glucose(s); err != nil {
@@ -68,6 +70,7 @@ func TestGlucoseMmolAndSinglePoint(t *testing.T) {
 // the zero value means every panel (today's default look, unchanged),
 // a non-nil empty slice means none, and a specific list means only those.
 func TestStyleHasAndPanels(t *testing.T) {
+	t.Parallel()
 	var zero Style
 	for _, p := range []string{PanelActivity, PanelBand, PanelDots, PanelHR} {
 		if !zero.has(p) {
@@ -91,6 +94,7 @@ func TestStyleHasAndPanels(t *testing.T) {
 // shaded rects that can overlap, and whichever is listed later must win
 // there. This proves reordering them actually changes the rendered chart.
 func TestPanelOrderAffectsOverlapRendering(t *testing.T) {
+	t.Parallel()
 	activityFirst := series()
 	activityFirst.Style = Style{Panels: []string{PanelActivity, PanelBand}}
 	bandFirst := series()
@@ -110,6 +114,7 @@ func TestPanelOrderAffectsOverlapRendering(t *testing.T) {
 }
 
 func TestBars(t *testing.T) {
+	t.Parallel()
 	bars := []Bar{{"Easy run", 0, 92, 8}, {"Intervals", 6, 71, 23}, {"Long run with a very long name here", 0, 85, 15}}
 	b, err := Bars(bars)
 	if err != nil {
@@ -131,6 +136,7 @@ func TestBars(t *testing.T) {
 }
 
 func TestFitTransliteratesAndCutsByCharacter(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"Easy Run":                       "Easy Run",
 		"Läufer Übung ß":                 "Laufer Ubung ss",
@@ -159,6 +165,7 @@ func photoData() PhotoData {
 }
 
 func TestPhotoIsSquareAndSizesFollowStyle(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		style Style
 		side  int
@@ -177,6 +184,7 @@ func TestPhotoIsSquareAndSizesFollowStyle(t *testing.T) {
 }
 
 func TestPhotoNeedsSamplesAndToleratesOddData(t *testing.T) {
+	t.Parallel()
 	if _, err := Photo(PhotoData{}); err == nil {
 		t.Error("no samples must be an error")
 	}
@@ -200,6 +208,7 @@ func TestPhotoNeedsSamplesAndToleratesOddData(t *testing.T) {
 // baseline (otherwise the toggle would silently do nothing, the same class
 // of bug as the panel reorder buttons in 0.2.0).
 func TestPhotoOverlayTogglesChangeOutput(t *testing.T) {
+	t.Parallel()
 	base := photoData()
 	basePNG, err := Photo(base)
 	if err != nil {
@@ -215,6 +224,7 @@ func TestPhotoOverlayTogglesChangeOutput(t *testing.T) {
 		{"hide stats", func(s *Style) { s.HideStats = true }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			d := photoData()
 			tc.style(&d.Style)
 			b, err := Photo(d)
@@ -233,6 +243,7 @@ func TestPhotoOverlayTogglesChangeOutput(t *testing.T) {
 // bottom (y 748-996 of the 1000-unit layout), which should be untouched
 // background when hidden.
 func TestPhotoHideStatsActuallyHidesTheBar(t *testing.T) {
+	t.Parallel()
 	d := photoData()
 	d.Style.HideStats = true
 	b, err := Photo(d)

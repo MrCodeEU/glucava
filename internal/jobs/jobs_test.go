@@ -142,6 +142,7 @@ func runOne(t *testing.T, q *Queue, j Job) {
 }
 
 func TestSuccess(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -162,6 +163,7 @@ func TestSuccess(t *testing.T) {
 // activity page needs to see step names while a run is in flight, and see
 // none once it stops, whether it succeeded or failed.
 func TestProgressReportsStepsThenClears(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	st := newStore()
 	prog := NewProgress()
@@ -195,6 +197,7 @@ func TestProgressReportsStepsThenClears(t *testing.T) {
 // TestProgressClearsOnFailureToo covers the failure path specifically: a
 // stuck "Working on it" step for a failed activity would be misleading.
 func TestProgressClearsOnFailureToo(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{ErrSessionExpired}}
 	st := newStore()
 	prog := NewProgress()
@@ -208,6 +211,7 @@ func TestProgressClearsOnFailureToo(t *testing.T) {
 }
 
 func TestDoneActivitySkippedUnlessForced(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	st.acts["42"] = Activity{StravaID: "42", Status: StatusDone}
@@ -223,6 +227,7 @@ func TestDoneActivitySkippedUnlessForced(t *testing.T) {
 }
 
 func TestRetryThenSuccess(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{errors.New("boom"), errors.New("boom")}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -236,6 +241,7 @@ func TestRetryThenSuccess(t *testing.T) {
 }
 
 func TestRetriesExhausted(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{errors.New("a"), errors.New("b"), errors.New("c")}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -250,6 +256,7 @@ func TestRetriesExhausted(t *testing.T) {
 }
 
 func TestSessionExpiredNotRetried(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{ErrSessionExpired}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -260,6 +267,7 @@ func TestSessionExpiredNotRetried(t *testing.T) {
 }
 
 func TestActivityNotFoundNotRetried(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{ErrActivityNotFound}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -273,6 +281,7 @@ func TestActivityNotFoundNotRetried(t *testing.T) {
 }
 
 func TestNoDataRetriedThenReported(t *testing.T) {
+	t.Parallel()
 	src := &fakeSource{}
 	q, st := setup(src, &fakeWriter{})
 	runOne(t, q, Job{Activity: activity()})
@@ -286,6 +295,7 @@ func TestNoDataRetriedThenReported(t *testing.T) {
 }
 
 func TestTooOldFallsBackToStoredSamples(t *testing.T) {
+	t.Parallel()
 	src := &fakeSource{errs: []error{glucose.ErrTooOld}}
 	w := &fakeWriter{}
 	q, st := setup(src, w)
@@ -298,6 +308,7 @@ func TestTooOldFallsBackToStoredSamples(t *testing.T) {
 }
 
 func TestTooOldWithoutStoredDataFailsOnce(t *testing.T) {
+	t.Parallel()
 	src := &fakeSource{errs: []error{glucose.ErrTooOld}}
 	q, st := setup(src, &fakeWriter{})
 	runOne(t, q, Job{Activity: activity()})
@@ -311,6 +322,7 @@ func TestTooOldWithoutStoredDataFailsOnce(t *testing.T) {
 }
 
 func TestEnqueueDedupeAndRun(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 
@@ -350,6 +362,7 @@ func TestEnqueueDedupeAndRun(t *testing.T) {
 }
 
 func TestQueueFull(t *testing.T) {
+	t.Parallel()
 	st := newStore()
 	q := NewQueue(&Processor{Store: st}, nil, 1)
 	a, b := activity(), activity()
@@ -363,6 +376,7 @@ func TestQueueFull(t *testing.T) {
 }
 
 func TestOriginalSavedBeforeWriteAndKeptOnReprocess(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run\nfelt good"}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -379,6 +393,7 @@ func TestOriginalSavedBeforeWriteAndKeptOnReprocess(t *testing.T) {
 }
 
 func TestEmptyOriginalIsStored(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -388,6 +403,7 @@ func TestEmptyOriginalIsStored(t *testing.T) {
 }
 
 func TestBackupFailureLeavesDescriptionUntouched(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	st.failSave = true
@@ -401,6 +417,7 @@ func TestBackupFailureLeavesDescriptionUntouched(t *testing.T) {
 }
 
 func TestRestore(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -414,6 +431,7 @@ func TestRestore(t *testing.T) {
 }
 
 func TestRestoreWithoutOriginalReportsEvent(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "keep"}
 	q, st := setup(&fakeSource{}, w)
 	runOne(t, q, Job{Activity: activity(), Restore: true})
@@ -425,6 +443,7 @@ func TestRestoreWithoutOriginalReportsEvent(t *testing.T) {
 // A merge that would damage the user's own text is refused before anything is
 // written, and the failure says why.
 func TestUnsafeMergeIsRefused(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	st := newStore()
 	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w,
@@ -443,6 +462,7 @@ func TestUnsafeMergeIsRefused(t *testing.T) {
 }
 
 func TestOnDoneCalledOnceForFirstRunOnly(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
 	q, _ := setup(&fakeSource{samples: readings()}, w)
 	var got []Activity
@@ -460,6 +480,7 @@ func TestOnDoneCalledOnceForFirstRunOnly(t *testing.T) {
 }
 
 func TestOnDoneNotCalledOnFailure(t *testing.T) {
+	t.Parallel()
 	q, _ := setup(&fakeSource{}, &fakeWriter{})
 	called := false
 	q.OnDone = func(context.Context, Activity) { called = true }
@@ -491,6 +512,7 @@ func chartSetup(w Writer, on bool) (*Queue, *memStore) {
 }
 
 func TestChartUploadedOnceAndOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
 	w := &photoWriter{}
 	q, st := chartSetup(w, true)
 	runOne(t, q, Job{Activity: activity()})
@@ -512,6 +534,7 @@ func TestChartUploadedOnceAndOnlyWhenEnabled(t *testing.T) {
 }
 
 func TestChartFailureFailsTheRunButKeepsDescription(t *testing.T) {
+	t.Parallel()
 	w := &photoWriter{err: errors.New("no file input")}
 	w.desc = "My run"
 	q, st := chartSetup(w, true)
@@ -525,6 +548,7 @@ func TestChartFailureFailsTheRunButKeepsDescription(t *testing.T) {
 }
 
 func TestChartSkippedForWriterWithoutPhotos(t *testing.T) {
+	t.Parallel()
 	q, st := chartSetup(&fakeWriter{}, true)
 	runOne(t, q, Job{Activity: activity()})
 	if a := st.acts["42"]; a.Status != StatusDone || a.ChartUploaded {
@@ -538,6 +562,7 @@ func (permErr) Error() string   { return "no such element" }
 func (permErr) Permanent() bool { return true }
 
 func TestPermanentErrorIsNotRetried(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{permErr{}, permErr{}, permErr{}}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	runOne(t, q, Job{Activity: activity()})
@@ -550,6 +575,7 @@ func TestPermanentErrorIsNotRetried(t *testing.T) {
 }
 
 func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{errs: []error{errors.New("chrome hiccup")}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
 	var seen string
@@ -570,6 +596,7 @@ func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
 }
 
 func TestRetryChartAttachesAgain(t *testing.T) {
+	t.Parallel()
 	w := &photoWriter{}
 	q, _ := chartSetup(w, true)
 	runOne(t, q, Job{Activity: activity()})
@@ -594,6 +621,7 @@ func (w *hrWriter) HeartRate(context.Context, string, time.Time) ([]chartimg.HRP
 }
 
 func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
+	t.Parallel()
 	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 130}, {Time: start.Add(time.Minute), BPM: 140}}}
 	q, st := chartSetup(w, true)
 	st.set.HRRead = true
@@ -611,6 +639,7 @@ func TestHeartRateFetchedOnceForTheChart(t *testing.T) {
 }
 
 func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
+	t.Parallel()
 	w := &hrWriter{err: errors.New("streams down")}
 	q, st := chartSetup(w, true)
 	st.set.HRRead = true
@@ -627,6 +656,7 @@ func TestHeartRateFailureDoesNotFailTheChart(t *testing.T) {
 }
 
 func TestChartLeadInDoesNotChangeTheNumbers(t *testing.T) {
+	t.Parallel()
 	early := stats.Sample{Time: start.Add(-20 * time.Minute), Value: 300}
 	src := &fakeSource{samples: append([]stats.Sample{early}, readings()...)}
 	w := &photoWriter{}
@@ -644,6 +674,7 @@ func TestChartLeadInDoesNotChangeTheNumbers(t *testing.T) {
 }
 
 func TestPostWindowWidensTheChartOnlyNotTheText(t *testing.T) {
+	t.Parallel()
 	// A reading 10 minutes after the activity ends: inside Post (30m, set
 	// below) so the chart's fetch window covers it, but the description
 	// text is activity-only and must never see it.
@@ -668,6 +699,7 @@ func TestPostWindowWidensTheChartOnlyNotTheText(t *testing.T) {
 // Settings.DescriptionTemplate actually reaches the Strava description,
 // not just the render package in isolation.
 func TestCustomDescriptionTemplateIsUsed(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{}
 	st := newStore()
 	st.set.DescriptionTemplate = "Custom: {{.TIR}}% in range"
@@ -683,6 +715,7 @@ func TestCustomDescriptionTemplateIsUsed(t *testing.T) {
 // it was ever saved, but if one somehow got through anyway, Process must
 // still write a description rather than skip the activity.
 func TestBadDescriptionTemplateFallsBackToDefault(t *testing.T) {
+	t.Parallel()
 	w := &fakeWriter{}
 	st := newStore()
 	st.set.DescriptionTemplate = "{{.NoSuchField}}"
@@ -694,6 +727,7 @@ func TestBadDescriptionTemplateFallsBackToDefault(t *testing.T) {
 }
 
 func TestHeartRateReadWithoutTheChart(t *testing.T) {
+	t.Parallel()
 	w := &hrWriter{hr: []chartimg.HRPoint{{Time: start, BPM: 131}}}
 	q, st := chartSetup(w, false) // chart off
 	st.set.HRRead = true
@@ -704,6 +738,7 @@ func TestHeartRateReadWithoutTheChart(t *testing.T) {
 }
 
 func TestChartDelayedUntilPostBufferElapses(t *testing.T) {
+	t.Parallel()
 	w := &photoWriter{}
 	st := newStore()
 	st.set.ChartImage = true
@@ -734,6 +769,7 @@ func TestChartDelayedUntilPostBufferElapses(t *testing.T) {
 }
 
 func TestChartNotDelayedWhenPostBufferIsZero(t *testing.T) {
+	t.Parallel()
 	w := &photoWriter{}
 	q, st := chartSetup(w, true) // PostBuffer defaults to 0
 	runOne(t, q, Job{Activity: activity()})

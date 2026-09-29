@@ -102,7 +102,7 @@ lint:
 	golangci-lint run
 
 vuln: ## govulncheck
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 check: vet test lint vuln ## everything CI runs
 
