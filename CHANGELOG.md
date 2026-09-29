@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-29
+
+### Fixed
+- The Overview page's General glucose card showed trend charts with no indication of what date range they covered, unlike the activity-based Trends card right above it.
+
 ## [0.5.0] - 2026-09-29
 
 ### Added
