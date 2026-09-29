@@ -23,20 +23,12 @@ jobs:
         with:
           name: release-notes
           path: release-notes.md
-  verify:
-    needs: notes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-      - run: go vet ./...
-      - run: go test -race ./...
-        env:
-          CHROME_PATH: /usr/bin/google-chrome
+  # No separate test/vet job here: branch protection already requires ci.yml
+  # green before a commit reaches main, and a tag only ever points at a
+  # commit already on main, so re-running the same checks here would only
+  # duplicate ~8 minutes of work for no new information.
   image:
-    needs: [notes, verify]
+    needs: notes
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,7 +69,7 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
   release:
-    needs: [notes, verify, image]
+    needs: [notes, image]
     runs-on: ubuntu-latest
     permissions:
       contents: write

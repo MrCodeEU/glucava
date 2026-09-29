@@ -4,6 +4,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Fixed
+- The chart photo's font cache reused a `font.Face` across concurrent chart renders (e.g. two browser tabs, or the settings page's live preview refetching while another view also draws a chart), which is not safe: `font.Face` keeps private state that drawing mutates. Two charts rendered at close enough to the same time could corrupt each other's text. Each render now gets its own `Face` instead of a shared, cached one.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

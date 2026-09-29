@@ -43,14 +43,21 @@ type PhotoData struct {
 const lg = 1000.0
 
 var (
-	fontOnce  sync.Once
-	fontReg   *opentype.Font
-	fontBold  *opentype.Font
-	fontErr   error
-	faceMu    sync.Mutex
-	faceCache = map[string]font.Face{}
+	fontOnce sync.Once
+	fontReg  *opentype.Font
+	fontBold *opentype.Font
+	fontErr  error
 )
 
+// face returns a fresh font.Face for each call. It used to cache and reuse
+// Face values by size, but a Face from opentype.NewFace is not safe for
+// concurrent use (it keeps private rasterization state that DrawString
+// mutates) — sharing one across goroutines was a real, if rare, data race:
+// two chart requests rendered around the same time (two browser tabs, or a
+// settings-page preview refetching mid-keystroke while another view also
+// draws a chart) could corrupt each other's glyphs. fontReg/fontBold, the
+// parsed *opentype.Font values this wraps, are immutable after Parse and
+// safe to share.
 func face(bold bool, px float64) (font.Face, error) {
 	fontOnce.Do(func() {
 		if fontReg, fontErr = opentype.Parse(goregular.TTF); fontErr != nil {
@@ -61,22 +68,11 @@ func face(bold bool, px float64) (font.Face, error) {
 	if fontErr != nil {
 		return nil, fontErr
 	}
-	key := fmt.Sprintf("%v/%.1f", bold, px)
-	faceMu.Lock()
-	defer faceMu.Unlock()
-	if f, ok := faceCache[key]; ok {
-		return f, nil
-	}
 	src := fontReg
 	if bold {
 		src = fontBold
 	}
-	f, err := opentype.NewFace(src, &opentype.FaceOptions{Size: px, DPI: 72, Hinting: font.HintingNone})
-	if err != nil {
-		return nil, err
-	}
-	faceCache[key] = f
-	return f, nil
+	return opentype.NewFace(src, &opentype.FaceOptions{Size: px, DPI: 72, Hinting: font.HintingNone})
 }
 
 // pcanvas draws shapes in logical units at a supersampled resolution.

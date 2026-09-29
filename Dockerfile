@@ -1,10 +1,17 @@
-FROM golang:1.27@sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244 AS build
+# --platform=$BUILDPLATFORM pins this stage to the build host's native arch
+# (amd64, on GitHub's runners) regardless of which platform buildx is
+# assembling: Go cross-compiles natively via GOOS/GOARCH, so the arm64
+# binary is built without QEMU emulating the whole compile, which used to
+# make the multi-platform image build take ~15 minutes.
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:3680233e3204827fbdc66088528ae6d4b3d034f51d03a99d454f6de034888244 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.buildID=${VERSION}" -o /glucava ./cmd/glucava
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.buildID=${VERSION}" -o /glucava ./cmd/glucava
 
 FROM debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
 RUN apt-get update \
