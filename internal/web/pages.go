@@ -28,9 +28,12 @@ func post(url string) g.Node {
 // here has no 'unsafe-inline', so a server-sent ExecuteScript (an injected
 // <script> tag, e.g. datastar.Redirect) is silently blocked by the browser;
 // navigating from inside this already-permitted eval'd expression
-// ('unsafe-eval' is granted for exactly this) is not.
+// ('unsafe-eval' is granted for exactly this) is not. Datastar compiles
+// data-on expressions with the plain (non-async) Function constructor, so
+// a top-level "await" throws GenerateExpression at click time; chain with
+// .then() instead, which works on the plain Promise @post(...) returns.
 func postThenGo(url, dest string) g.Node {
-	return g.Attr("data-on:click", fmt.Sprintf("await @post('%s'); window.location='%s'", jsQuote(url), jsQuote(dest)))
+	return g.Attr("data-on:click", fmt.Sprintf("@post('%s').then(() => window.location='%s')", jsQuote(url), jsQuote(dest)))
 }
 
 // SessionInfo summarises the stored Strava cookies and the last session test.
@@ -537,10 +540,12 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 							Field("hrRead", "Read heart rate from Strava", "Fetched when an activity is processed (one extra page load) and kept, for the numbers on the activity page and in emails, and for the chart.", Input(ID("hrRead"), Type("checkbox"), bind("hrRead"))),
 							Label(g.Text("Panels")),
 							P(Class("muted"), g.Text("Toggle which layers are drawn, and reorder them: where activity and target-range shading overlap, the one listed lower wins.")),
-							chartPanelRow("chartActivity", "activity", "Shade the activity span"),
-							chartPanelRow("chartBand", "band", "Shade the target range"),
-							chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
-							chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
+							Div(g.Attr("style", "display:flex;flex-direction:column"),
+								chartPanelRow("chartActivity", "activity", "Shade the activity span"),
+								chartPanelRow("chartBand", "band", "Shade the target range"),
+								chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
+								chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
+							),
 						),
 						Div(
 							Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
@@ -787,9 +792,14 @@ func panelMoveExpr(panel string, dir int) string {
 // chartPanelRow is one row of the chart panel list: a checkbox toggling the
 // panel on/off (sig, an existing boolean signal like "chartBand"), plus
 // up/down buttons that reorder it within $chartPanelOrder. id is the
-// chartimg panel name ("activity", "band", "dots" or "hr").
+// chartimg panel name ("activity", "band", "dots" or "hr"). The row's CSS
+// "order" tracks its position in $chartPanelOrder, so the list itself
+// visibly reorders as the buttons are clicked, inside a flex-column
+// container (see the "Panels" list in the chart card) — without it, the
+// buttons changed the draw order but nothing on screen showed it happened.
 func chartPanelRow(sig, id, label string) g.Node {
 	return Div(g.Attr("style", "display:flex;align-items:center;gap:.5rem;margin:0 0 .5rem"),
+		g.Attr("data-style:order", fmt.Sprintf("$chartPanelOrder.split(',').indexOf(%q)", id)),
 		Input(Type("checkbox"), g.Attr("data-bind", sig)),
 		Span(g.Text(label)),
 		Btn("", "↑ Earlier", g.Attr("data-on:click", panelMoveExpr(id, -1))),

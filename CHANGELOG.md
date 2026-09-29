@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-29
+
+### Fixed
+- Delete stopped working again in 0.2.0: the confirm button's expression used `await`, which Datastar compiles with a plain, non-async `Function` constructor and rejects at click time. Chains with `.then()` instead, like the fix in 0.1.5.
+- Chart panel reorder buttons (Earlier/Later) worked but gave no visual feedback, so they looked broken. Rows now reflect the current order via CSS `order`.
+- The description template preview never updated and never showed template errors: `/preview/description.txt` was missing from `web.Routes`, so PocketBase's own router 404'd the request before it ever reached this app's handler.
+
 ## [0.2.0] - 2026-09-28
 
 ### Added
