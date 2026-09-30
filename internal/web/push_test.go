@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/notify"
 )
 
@@ -274,7 +275,7 @@ func TestDeviceName(t *testing.T) {
 		"Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0":                                              "Firefox on Linux",
 		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36 Edg/130.0":                   "Edge on Windows",
 	} {
-		if got := deviceName(ua); got != want {
+		if got := deviceName(i18n.English(), ua); got != want {
 			t.Errorf("deviceName(%q) = %q, want %q", ua, got, want)
 		}
 	}

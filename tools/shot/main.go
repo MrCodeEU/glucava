@@ -226,6 +226,13 @@ func main() {
 			slog.Error("navigate", "path", p, "err", err)
 			os.Exit(1)
 		}
+		// "/settings#tab=notify" opens that Settings tab before the shot.
+		if _, tab, ok := strings.Cut(p, "#tab="); ok {
+			if err := chromedp.Run(ctx, chromedp.Click(fmt.Sprintf(`button[data-on\:click="$settingsTab = \"%s\""]`, tab), chromedp.ByQuery), chromedp.Sleep(300*time.Millisecond)); err != nil {
+				slog.Error("open settings tab", "tab", tab, "err", err)
+				os.Exit(1)
+			}
+		}
 		shot(name)
 	}
 	list := strings.Split(*paths, ",")
@@ -326,7 +333,7 @@ func runFlow(ctx context.Context, base string, shot func(string), setMode chrome
 	// overviewOn.<id> and the reorder buttons for real).
 	var kpisOn, order string
 	must(chromedp.Run(ctx, chromedp.Navigate(base+"/settings"), setMode, chromedp.Sleep(800*time.Millisecond),
-		chromedp.Click(`//button[contains(., "Description and chart")]`, chromedp.BySearch), chromedp.Sleep(300*time.Millisecond),
+		chromedp.Click(`button[data-on\:click="$settingsTab = \"customize\""]`, chromedp.ByQuery), chromedp.Sleep(300*time.Millisecond),
 		chromedp.Click(`#overviewOn_kpis`, chromedp.ByQuery),
 		chromedp.Click(`#overview-move-tir-down`, chromedp.ByQuery),
 		chromedp.SetValue("#overviewOpt_heatmap_metric", "tir", chromedp.ByQuery),

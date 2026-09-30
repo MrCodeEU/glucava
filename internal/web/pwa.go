@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"html"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -41,10 +42,11 @@ func (s *Server) pwaRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sw.js", s.serviceWorker)
 }
 
-func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	m := map[string]any{
-		"name": "glucava", "short_name": "glucava",
-		"description": "Glucose numbers for your Strava activities",
+		"name": "glucava", "short_name": "glucava", "lang": tr.Lang(),
+		"description": tr.T("pwa.description"),
 		"id":          "/", "start_url": "/", "scope": "/",
 		"display": "standalone", "orientation": "any",
 		"background_color": themeLight, "theme_color": themeLight,
@@ -57,13 +59,16 @@ func (s *Server) manifest(w http.ResponseWriter, _ *http.Request) {
 	b, _ := json.Marshal(m)
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Add("Vary", "Accept-Language")
 	_, _ = w.Write(b)
 }
 
 // serviceWorker serves static/sw.js at the root scope, with the build and the
-// precache list filled in. It is never cached by the browser's HTTP cache, so
-// an updated worker is picked up on the next visit.
-func (s *Server) serviceWorker(w http.ResponseWriter, _ *http.Request) {
+// precache list and the offline page's text (in the request's language)
+// filled in. It is never cached by the browser's HTTP cache, so an updated
+// worker is picked up on the next visit.
+func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	src, err := fs.ReadFile(staticFS, "static/sw.js")
 	if err != nil {
 		http.Error(w, "service worker missing", http.StatusInternalServerError)
@@ -71,7 +76,13 @@ func (s *Server) serviceWorker(w http.ResponseWriter, _ *http.Request) {
 	}
 	assets, _ := json.Marshal(precacheAssets(s.Build))
 	build, _ := json.Marshal(s.Build)
-	js := strings.NewReplacer("__BUILD__", string(build), "__ASSETS__", string(assets)).Replace(string(src))
+	// The offline page is HTML inside a JS string: escape for HTML first, then
+	// quote for JS (json.Marshal also escapes < and > again).
+	quote := func(s string) string { b, _ := json.Marshal(html.EscapeString(s)); return string(b) }
+	js := strings.NewReplacer("__BUILD__", string(build), "__ASSETS__", string(assets),
+		"__LANG__", quote(tr.Lang()),
+		"__OFFLINE_TITLE__", quote(tr.T("pwa.offline.title")), "__OFFLINE_BODY__", quote(tr.T("pwa.offline.body"))).Replace(string(src))
+	w.Header().Add("Vary", "Accept-Language")
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Service-Worker-Allowed", "/")

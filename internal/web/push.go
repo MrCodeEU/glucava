@@ -32,15 +32,16 @@ func (s *Server) pushDevices(ctx context.Context) []notify.PushSub {
 
 // patchPushDevices re-renders the device list in place.
 func (s *Server) patchPushDevices(sse *datastar.ServerSentEventGenerator, r *http.Request) {
-	_ = sse.PatchElements(renderString(PushDevices(s.pushDevices(r.Context()), s.loc(), s.now())))
+	_ = sse.PatchElements(renderString(PushDevicesT(s.tr(r), s.pushDevices(r.Context()), s.loc(), s.now())))
 }
 
 func (s *Server) actionPushSubscribe(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	var v pushSignals
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil {
-		s.toast(sse, "error", "Could not read the subscription.")
+		s.toast(sse, "error", tr.T("push.toast.read_sub"))
 		return
 	}
 	var sub struct {
@@ -51,57 +52,60 @@ func (s *Server) actionPushSubscribe(w http.ResponseWriter, r *http.Request) {
 		} `json:"keys"`
 	}
 	if err := json.Unmarshal([]byte(v.PushSub), &sub); err != nil {
-		s.toast(sse, "error", "The browser sent an unreadable subscription.")
+		s.toast(sse, "error", tr.T("push.toast.bad_sub"))
 		return
 	}
 	if err := notify.ValidPushEndpoint(sub.Endpoint); err != nil {
-		s.toast(sse, "error", "Not subscribed: "+err.Error()+".")
+		s.toast(sse, "error", tr.T("push.toast.not_subscribed", "err", err.Error()))
 		return
 	}
 	if err := notify.ValidPushKeys(sub.Keys.P256dh, sub.Keys.Auth); err != nil {
-		s.toast(sse, "error", "Not subscribed: "+err.Error()+".")
+		s.toast(sse, "error", tr.T("push.toast.not_subscribed", "err", err.Error()))
 		return
 	}
 	err := s.Store.UpsertPushSubscription(r.Context(), notify.PushSub{
 		Endpoint: sub.Endpoint, P256dh: sub.Keys.P256dh, Auth: sub.Keys.Auth, UserAgent: r.UserAgent(),
 	})
 	if err != nil {
-		s.toast(sse, "error", "Could not save the device: "+err.Error())
+		s.toast(sse, "error", tr.T("push.toast.save_failed", "err", err.Error()))
 		return
 	}
 	s.patchPushDevices(sse, r)
-	s.toast(sse, "ok", "This device will now get push notifications.")
+	s.toast(sse, "ok", tr.T("push.toast.subscribed"))
 }
 
 func (s *Server) actionPushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	var v pushSignals
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil {
-		s.toast(sse, "error", "Could not read the request.")
+		s.toast(sse, "error", tr.T("push.toast.read_req"))
 		return
 	}
 	if ep := strings.TrimSpace(v.PushSub); ep != "" {
 		if err := s.Store.DeletePushSubscription(r.Context(), ep); err != nil {
-			s.toast(sse, "error", "Could not remove the device: "+err.Error())
+			s.toast(sse, "error", tr.T("push.toast.remove_failed", "err", err.Error()))
 			return
 		}
 	}
 	s.patchPushDevices(sse, r)
-	s.toast(sse, "ok", "Push notifications are off on this device.")
+	s.toast(sse, "ok", tr.T("push.toast.off"))
 }
 
 func (s *Server) actionPushRemove(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	sse := datastar.NewSSE(w, r)
 	if err := s.Store.DeletePushSubscriptionID(r.Context(), r.PathValue("id")); err != nil {
-		s.toast(sse, "error", "Could not remove the device: "+err.Error())
+		s.toast(sse, "error", tr.T("push.toast.remove_failed", "err", err.Error()))
 		return
 	}
 	s.patchPushDevices(sse, r)
-	s.toast(sse, "ok", "Device removed.")
+	s.toast(sse, "ok", tr.T("push.toast.removed"))
 }
 
 func (s *Server) actionPushTest(w http.ResponseWriter, r *http.Request) {
+	tr := s.tr(r)
 	sse := datastar.NewSSE(w, r)
 	cfg, err := s.Store.LoadConfig()
 	if err != nil {
@@ -110,16 +114,16 @@ func (s *Server) actionPushTest(w http.ResponseWriter, r *http.Request) {
 	}
 	ch, err := notify.NewWebPush(s.Store, s.Vault, cfg.PublicURL, cfg.EmailTo, s.Demo)
 	if err != nil {
-		s.toast(sse, "error", "Push is not available: "+err.Error())
+		s.toast(sse, "error", tr.T("push.toast.unavailable", "err", err.Error()))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	msg := notify.Message{Type: notify.TypeTest, Severity: "info", Title: "glucava test", Body: "Push notifications work on this device.", Time: s.now()}
+	msg := notify.Message{Type: notify.TypeTest, Severity: "info", Title: tr.T("push.test.title"), Body: tr.T("push.test.body"), Time: s.now()}
 	if err := ch.Send(ctx, msg); err != nil {
-		s.toast(sse, "error", "Test failed: "+err.Error())
+		s.toast(sse, "error", tr.T("push.toast.test_failed", "err", err.Error()))
 	} else {
-		s.toast(sse, "ok", "Test push sent.")
+		s.toast(sse, "ok", tr.T("push.toast.test_sent"))
 	}
 	s.patchPushDevices(sse, r) // last success / error may have changed
 }

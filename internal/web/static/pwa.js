@@ -38,6 +38,13 @@
     });
   }
 
+  // text reads a message the server put on the card (data-msg-denied,
+  // data-msg-error) in the page's language; the script has no text of its own.
+  function text(name) {
+    var card = document.getElementById('push-card');
+    return (card && card.dataset[name]) || '';
+  }
+
   window.gvPush = {
     // state resolves to one of: insecure, ios-install, unsupported, denied, off, on.
     state: function () {
@@ -55,7 +62,7 @@
     enable: function (vapidKey) {
       var key = b64ToBytes(vapidKey);
       return Notification.requestPermission().then(function (p) {
-        if (p !== 'granted') throw new Error('Notifications were not allowed. Allow them for this site in the browser settings.');
+        if (p !== 'granted') throw new Error(text('msgDenied'));
         return registration();
       }).then(function (reg) {
         return reg.pushManager.getSubscription().then(function (old) {
@@ -79,7 +86,7 @@
     },
     // message turns a failure into text for the card.
     message: function (e) {
-      return e && e.message ? e.message : 'Something went wrong.';
+      return e && e.message ? e.message : text('msgError');
     },
   };
 })();

@@ -14,6 +14,7 @@ import (
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -74,16 +75,16 @@ type CookieInfo struct {
 	Expires time.Time // zero for a session cookie
 }
 
-func (s SessionInfo) headline() (value, sub string) {
+func (s SessionInfo) headline(tr *i18n.Translator) (value, sub string) {
 	switch {
 	case !s.Configured:
-		return "Not set up", "Import your Strava cookies"
+		return tr.T("strava.session.none"), tr.T("strava.session.none.sub")
 	case !s.CheckedAt.IsZero() && !s.CheckOK:
-		return "Expired", "Last test failed"
+		return tr.T("strava.session.expired"), tr.T("strava.session.expired.sub")
 	case !s.CheckedAt.IsZero():
-		return "Valid", "Tested " + s.CheckedAt.Format("2 Jan 15:04")
+		return tr.T("strava.session.valid"), tr.T("strava.session.valid.sub", "when", tr.Date(s.CheckedAt, false)+" "+tr.Time(s.CheckedAt))
 	}
-	return "Stored", fmt.Sprintf("%d cookies, not tested yet", len(s.Cookies))
+	return tr.T("strava.session.stored"), tr.Tn("strava.session.stored.sub", len(s.Cookies))
 }
 
 // ---------------------------------------------------------------- dashboard
@@ -108,8 +109,11 @@ type DashData struct {
 	Thr    analytics.Thresholds
 }
 
-// LiveDash is the part of the dashboard that updates without a reload.
-func LiveDash(d DashData) g.Node {
+// LiveDash is LiveDashT in English, for callers without a request.
+func LiveDash(d DashData) g.Node { return LiveDashT(i18n.English(), d) }
+
+// LiveDashT is the part of the dashboard that updates without a reload.
+func LiveDashT(tr *i18n.Translator, d DashData) g.Node {
 	var done, failed, tirN int
 	var tirSum float64
 	cutoff := d.Now.Add(-14 * 24 * time.Hour)
@@ -129,109 +133,113 @@ func LiveDash(d DashData) g.Node {
 	if tirN > 0 {
 		tir = fmt.Sprintf("%.0f%%", tirSum/float64(tirN))
 	}
-	sv, ss := d.Session.headline()
-	attention := "Nothing to fix"
+	sv, ss := d.Session.headline(tr)
+	attention := tr.T("dash.tile.failed.ok")
 	if failed > 0 {
-		attention = "Open an activity to reprocess"
+		attention = tr.T("dash.tile.failed.fix")
 	}
 
 	return Div(ID("live"),
 		nowCard(d),
 		Grid("",
-			Tile("Annotated, 14 days", fmt.Sprint(done), "activities with a glucose block"),
-			Tile("Average time in range", tir, "across those activities"),
-			Tile("Failed", fmt.Sprint(failed), attention),
-			Tile("Strava session", sv, ss),
+			Tile(tr.T("dash.tile.annotated.label"), fmt.Sprint(done), tr.T("dash.tile.annotated.sub")),
+			Tile(tr.T("dash.tile.tir.label"), tir, tr.T("dash.tile.tir.sub")),
+			Tile(tr.T("dash.tile.failed.label"), fmt.Sprint(failed), attention),
+			Tile(tr.T("dash.tile.session.label"), sv, ss),
 		),
 		Card(
-			H2(g.Text("Recent activities")),
-			activityTable(d),
+			H2(g.Text(tr.T("dash.recent"))),
+			activityTableT(tr, d),
 		),
 	)
 }
 
-func activityTable(d DashData) g.Node {
+// activityTable is activityTableT in English, for callers without a request.
+func activityTable(d DashData) g.Node { return activityTableT(i18n.English(), d) }
+
+func activityTableT(tr *i18n.Translator, d DashData) g.Node {
 	if len(d.Acts) == 0 {
-		hint := "New Strava activities appear here once polling finds them. Use “Check Strava now” to look right away."
+		hint := tr.T("dash.empty.hint")
 		var action []g.Node
 		if !d.Session.Configured {
-			hint = "glucava needs your Strava session before it can find activities."
-			action = append(action, A(append(comp("button"), Href("/strava"), g.Text("Set up the Strava session"))...))
+			hint = tr.T("dash.empty.nosession")
+			action = append(action, A(append(comp("button"), Href("/strava"), g.Text(tr.T("dash.empty.setup")))...))
 		}
-		return EmptyState("activity", "No activities yet", hint, action...)
+		return EmptyState("activity", tr.T("dash.empty.title"), hint, action...)
 	}
 	rows := make([]g.Node, 0, len(d.Acts))
 	for _, a := range d.Acts {
-		rows = append(rows, activityRow(a, d))
+		rows = append(rows, activityRow(tr, a, d))
 	}
 	return Div(append(comp("tablewrap"),
 		Table(append(comp("table"),
 			THead(Tr(
-				Th(g.Text("When")), Th(g.Text("Activity")), Th(Class("hide-sm"), g.Text("Duration")),
-				Th(Class("hide-sm"), g.Text("Distance")),
-				Th(g.Text("Time in range")), Th(Class("hide-sm num"), g.Text("Min / Max")),
-				Th(Class("hide-sm num"), g.Text("Avg")), Th(g.Text("Status")),
+				Th(g.Text(tr.T("dash.col.when"))), Th(g.Text(tr.T("dash.col.activity"))), Th(Class("hide-sm"), g.Text(tr.T("dash.col.duration"))),
+				Th(Class("hide-sm"), g.Text(tr.T("dash.col.distance"))),
+				Th(g.Text(tr.T("dash.col.tir"))), Th(Class("hide-sm num"), g.Text(tr.T("dash.col.minmax"))),
+				Th(Class("hide-sm num"), g.Text(tr.T("dash.col.avg"))), Th(g.Text(tr.T("dash.col.status"))),
 			)),
 			TBody(g.Group(rows)),
 		)...),
 	)...)
 }
 
-func activityRow(a jobs.Activity, d DashData) g.Node {
+func activityRow(tr *i18n.Translator, a jobs.Activity, d DashData) g.Node {
 	href := "/activity/" + a.StravaID
 	name := a.Name
 	if name == "" {
-		name = "Activity " + a.StravaID
+		name = tr.T("dash.activity.untitled", "id", a.StravaID)
 	}
 	tirCell, minmax, avg := g.Node(Span(Class("muted"), g.Text("-"))), "-", "-"
 	if a.Summary != nil {
 		s := a.Summary
-		tirCell = tirBar(*s)
+		tirCell = tirBar(tr, *s)
 		minmax = render.Value(s.Min, d.Unit) + " / " + render.Value(s.Max, d.Unit)
 		avg = render.Value(s.Avg, d.Unit)
 	}
 	return Tr(g.Attr("data-href", href), g.Attr("data-on:click", fmt.Sprintf("window.location='%s'", jsQuote(href))),
-		Td(g.Text(fmtWhen(a.Start, d.Loc, d.Now))),
+		Td(g.Text(fmtWhenT(tr, a.Start, d.Loc, d.Now))),
 		Td(Div(Class("flex items-start gap-2"),
 			Span(Class("mt-0.5 text-ink-2"), g.Attr("title", orDash(a.Sport)), icon(sportIcon(a.Sport), "size-4")),
 			Div(A(Href(href), g.Text(name)), g.If(a.Sport != "", Span(Class("muted"), g.Text(" · "+a.Sport)))))),
 		Td(Class("hide-sm"), g.Text(fmtDuration(a.Duration))),
-		Td(Class("hide-sm"), distanceCell(a)),
+		Td(Class("hide-sm"), distanceCell(tr, a)),
 		Td(tirCell),
 		Td(Class("hide-sm num"), g.Text(minmax)),
 		Td(Class("hide-sm num"), g.Text(avg)),
-		Td(StatusBadge(a.Status)),
+		Td(StatusBadgeT(tr, a.Status)),
 	)
 }
 
 // distanceCell is "12.0 km · 5:30 /km", or a dash when the activity has no distance.
-func distanceCell(a jobs.Activity) g.Node {
+func distanceCell(tr *i18n.Translator, a jobs.Activity) g.Node {
 	if a.Distance <= 0 {
 		return Span(Class("muted"), g.Text("-"))
 	}
-	txt := fmt.Sprintf("%.1f km", a.Distance/1000)
+	txt := tr.T("dash.distance", "km", tr.Num(a.Distance/1000, 1))
 	if pace := render.FormatPace(a.Sport, a.Distance, a.Duration); pace != "" {
 		txt += " · " + pace
 	}
 	return g.Text(txt)
 }
 
-func tirBar(s stats.Summary) g.Node {
+func tirBar(tr *i18n.Translator, s stats.Summary) g.Node {
 	w := func(v float64) g.Node { return Span(g.Attr("style", fmt.Sprintf("width:%.1f%%", v))) }
 	return Div(append(comp("tircell"),
 		B(g.Textf("%.0f%%", s.TIR)),
 		Div(append(comp("tirbar"), g.Attr("role", "img"),
-			g.Attr("aria-label", fmt.Sprintf("%.0f%% below, %.0f%% in range, %.0f%% above", s.Below, s.TIR, s.Above)),
+			g.Attr("aria-label", tr.T("dash.tir.aria", "below", tr.Num(s.Below, 0), "in", tr.Num(s.TIR, 0), "above", tr.Num(s.Above, 0))),
 			w(s.Below), w(s.TIR), w(s.Above))...),
 	)...)
 }
 
 // DashboardPage is the home page.
 func DashboardPage(pd PageData, d DashData) g.Node {
+	tr := pd.translator()
 	return Page(pd,
-		PageHead("Activities", "Strava activities and the glucose data added to them.",
-			IndicatorBtn("primary", "Check Strava now", "/actions/poll", "polling")),
-		Div(g.Attr("data-init", "@get('/stream/live')"), LiveDash(d)),
+		PageHead(tr.T("dash.title"), tr.T("dash.sub"),
+			IndicatorBtn("primary", tr.T("dash.check"), "/actions/poll", "polling")),
+		Div(g.Attr("data-init", "@get('/stream/live')"), LiveDashT(tr, d)),
 	)
 }
 
@@ -262,23 +270,24 @@ type ActivityData struct {
 
 // ActivityPage shows one activity with its glucose chart.
 func ActivityPage(pd PageData, d ActivityData) g.Node {
+	tr := pd.translator()
 	a := d.Act
 	title := a.Name
 	if title == "" {
-		title = "Activity " + a.StravaID
+		title = tr.T("dash.activity.untitled", "id", a.StravaID)
 	}
 
 	return Page(pd,
-		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhen(a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
+		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhenT(tr, a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
 			g.Group(activityNav(d)),
-			A(append(comp("button"), Href("/"), g.Text("Back"))...),
+			A(append(comp("button"), Href("/"), g.Text(tr.T("activity.head.back")))...),
 			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
-				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
-			g.If(a.Original != nil, Btn("", "Restore original", post("/actions/restore/"+a.StravaID))),
-			g.If(d.Cfg.ChartImage, Btn("", "Attach chart again", post("/actions/chart/"+a.StravaID))),
-			IndicatorBtn("primary", "Reprocess", "/actions/reprocess/"+a.StravaID, "reprocessing"),
-			ConfirmDialog("delete-dialog", "danger", "Delete", "Delete this activity?",
-				"Removes glucava's record of this activity. This does not touch Strava, other than trying to restore the original description first if one was saved.",
+				Target("_blank"), Rel("noopener noreferrer"), g.Text(tr.T("activity.head.strava")))...),
+			g.If(a.Original != nil, Btn("", tr.T("activity.head.restore"), post("/actions/restore/"+a.StravaID))),
+			g.If(d.Cfg.ChartImage, Btn("", tr.T("activity.head.chart"), post("/actions/chart/"+a.StravaID))),
+			IndicatorBtn("primary", tr.T("activity.head.reprocess"), "/actions/reprocess/"+a.StravaID, "reprocessing"),
+			ConfirmDialogT(tr, "delete-dialog", "danger", tr.T("activity.head.delete"), tr.T("activity.head.delete.title"),
+				tr.T("activity.head.delete.body"),
 				postThenGo("/actions/delete/"+a.StravaID, "/"))),
 		Div(g.Attr("data-init", "@get('"+jsQuote("/stream/activity/"+a.StravaID)+"')"), ActivityBody(d)),
 	)
@@ -287,11 +296,15 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 // processingText is the "Working on it" body: the live step name when it is
 // known, or the old generic wording otherwise (progress tracking is off, or
 // the step just hasn't arrived yet).
-func processingText(step string) string {
+func processingText(step string) string { return processingTextT(i18n.English(), step) }
+
+// processingTextT is processingText in the request's language. The step name
+// itself comes from the pipeline and is not translated.
+func processingTextT(tr *i18n.Translator, step string) string {
 	if step == "" {
-		return "Starting the browser and writing to Strava usually takes under a minute; this page updates by itself."
+		return tr.T("activity.processing.generic")
 	}
-	return step + "… this page updates by itself."
+	return tr.T("activity.processing.step", "step", step)
 }
 
 func orDash(s string) string {
@@ -302,84 +315,90 @@ func orDash(s string) string {
 }
 
 func eventList(evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
+	return eventListT(i18n.English(), evs, loc, now)
+}
+
+func eventListT(tr *i18n.Translator, evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
 	if len(evs) == 0 {
-		return P(Class("muted"), g.Text("No notifications for this activity."))
+		return P(Class("muted"), g.Text(tr.T("activity.events.none")))
 	}
 	items := make([]g.Node, 0, len(evs))
 	for _, e := range evs {
-		items = append(items, P(SeverityBadge(e.Severity), g.Text(" "+fmtWhen(e.Created, loc, now)+" · "+e.Message)))
+		items = append(items, P(SeverityBadgeT(tr, e.Severity), g.Text(" "+fmtWhenT(tr, e.Created, loc, now)+" · "+e.Message)))
 	}
 	return g.Group(items)
 }
 
 // ------------------------------------------------------------------- strava
 
-// StravaStatusCard is patched after imports and tests.
-func StravaStatusCard(s SessionInfo) g.Node {
-	value, sub := s.headline()
-	list := g.Node(P(Class("muted"), g.Text("No cookies stored.")))
+// StravaStatusCard is StravaStatusCardT in English, for callers without a request.
+func StravaStatusCard(s SessionInfo) g.Node { return StravaStatusCardT(i18n.English(), s) }
+
+// StravaStatusCardT is patched after imports and tests.
+func StravaStatusCardT(tr *i18n.Translator, s SessionInfo) g.Node {
+	value, sub := s.headline(tr)
+	list := g.Node(P(Class("muted"), g.Text(tr.T("strava.cookies.none"))))
 	if len(s.Cookies) > 0 {
 		rows := make([]g.Node, 0, len(s.Cookies))
 		for _, c := range s.Cookies {
-			exp := "browser session"
+			exp := tr.T("strava.cookies.browsersession")
 			if !c.Expires.IsZero() {
-				exp = c.Expires.Format("2 Jan 2006")
+				exp = tr.Date(c.Expires, true)
 			}
 			rows = append(rows, Tr(Td(Code(g.Text(c.Name))), Td(g.Text(exp))))
 		}
 		list = Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("Cookie")), Th(g.Text("Expires")))), TBody(g.Group(rows)))...))...)
+			THead(Tr(Th(g.Text(tr.T("strava.cookies.col.name"))), Th(g.Text(tr.T("strava.cookies.col.expires"))))), TBody(g.Group(rows)))...))...)
 	}
 	return Card(ID("strava-status"),
-		H2(g.Text("Session status")),
-		P(Strong(g.Text(value+". ")), g.Text(sub+".")),
-		g.If(s.Configured && !s.HasSession, Notice("warning", g.Text("The session cookie (_strava4_session) is missing, so Strava will probably reject these cookies."))),
+		H2(g.Text(tr.T("strava.status.title"))),
+		P(Strong(g.Text(value+".")), g.Text(" "+sub+".")),
+		g.If(s.Configured && !s.HasSession, Notice("warning", g.Text(tr.T("strava.missing")))),
 		g.If(s.CheckErr != "", Notice("error", g.Text(s.CheckErr))),
 		list,
-		Div(append(comp("actions"), IndicatorBtn("", "Test session", "/actions/strava/test", "testing"))...),
+		Div(append(comp("actions"), IndicatorBtn("", tr.T("strava.test"), "/actions/strava/test", "testing"))...),
 	)
 }
 
 // StravaPage is the cookie import page.
 func StravaPage(pd PageData, s SessionInfo) g.Node {
+	tr := pd.translator()
 	return Page(pd,
-		PageHead("Strava session", "glucava logs in to Strava with your own browser cookies. It does not use the Strava API."),
-		StravaStatusCard(s),
+		PageHead(tr.T("strava.title"), tr.T("strava.sub")),
+		StravaStatusCardT(tr, s),
 		Card(g.Attr("data-signals", `{"loginEmail":"","loginPassword":""}`),
-			H2(g.Text("Sign in automatically (experimental)")),
-			Notice("warning", g.Text("Unverified against the real Strava login form. It gives up at the first CAPTCHA, verification code or wrong-password message and never guesses past one; nothing is stored unless it reaches your dashboard. If it fails, use cookie import below instead. Strava may notice a new sign-in and email you about it, same as any other browser login.")),
-			Field("loginEmail", "Strava email", "", Input(ID("loginEmail"), Type("email"), AutoComplete("off"), g.Attr("data-bind", "loginEmail"))),
-			Field("loginPassword", "Strava password", "Never stored; only the resulting session cookies are, exactly like cookie import.",
+			H2(g.Text(tr.T("strava.login.title"))),
+			Notice("warning", g.Text(tr.T("strava.login.warning"))),
+			Field("loginEmail", tr.T("strava.login.email.label"), "", Input(ID("loginEmail"), Type("email"), AutoComplete("off"), g.Attr("data-bind", "loginEmail"))),
+			Field("loginPassword", tr.T("strava.login.password.label"), tr.T("strava.login.password.help"),
 				Input(ID("loginPassword"), Type("password"), AutoComplete("off"), g.Attr("data-bind", "loginPassword"))),
-			IndicatorBtn("", "Try automatic sign-in", "/actions/strava/login", "signingin"),
+			IndicatorBtn("", tr.T("strava.login.button"), "/actions/strava/login", "signingin"),
 		),
 		Card(g.Attr("data-signals", `{"cookies":""}`),
-			H2(g.Text("Import cookies")),
-			P(g.Text("Log in to strava.com in your browser, export the cookies for strava.com, and paste them here. Three formats work:")),
+			H2(g.Text(tr.T("strava.import.title"))),
+			P(g.Text(tr.T("strava.import.intro"))),
 			Ul(
-				Li(g.Text("a JSON export from a cookie extension (Cookie-Editor and similar)")),
-				Li(g.Text("a Netscape cookies.txt file")),
-				Li(g.Text("a Cookie header copied from the browser's network tab")),
+				Li(g.Text(tr.T("strava.import.format.json"))),
+				Li(g.Text(tr.T("strava.import.format.netscape"))),
+				Li(g.Text(tr.T("strava.import.format.header"))),
 			),
-			Field("cookies", "Cookies", "Stored encrypted. Only the cookie names are ever shown again.",
-				Textarea(ID("cookies"), g.Attr("data-bind", "cookies"), Placeholder("Paste cookies here"), g.Attr("spellcheck", "false"), g.Attr("autocomplete", "off"))),
-			Btn("primary", "Import cookies", post("/actions/strava/cookies")),
+			Field("cookies", tr.T("strava.import.label"), tr.T("strava.import.help"),
+				Textarea(ID("cookies"), g.Attr("data-bind", "cookies"), Placeholder(tr.T("strava.import.placeholder")), g.Attr("spellcheck", "false"), g.Attr("autocomplete", "off"))),
+			Btn("primary", tr.T("strava.import.button"), post("/actions/strava/cookies")),
 		),
 		g.If(s.CanFindActivity, Card(g.Attr("data-signals", `{"processActivityId":""}`),
-			H2(g.Text("Process a specific activity")),
-			P(Class("muted"), g.Text("Write the glucose description onto an activity that was never auto-detected, for "+
-				"example one from before glucava was running, or older than the polling window. It is looked up in your "+
-				"Strava training log if it isn't already known here.")),
-			Field("processActivityId", "Strava activity id", "The number at the end of the activity's URL on strava.com.",
+			H2(g.Text(tr.T("strava.process.title"))),
+			P(Class("muted"), g.Text(tr.T("strava.process.intro"))),
+			Field("processActivityId", tr.T("strava.process.label"), tr.T("strava.process.help"),
 				Input(ID("processActivityId"), Type("text"), g.Attr("inputmode", "numeric"), Placeholder("1234567890"),
 					AutoComplete("off"), g.Attr("data-bind", "processActivityId"))),
-			IndicatorBtn("primary", "Process activity", "/actions/process", "processing"),
+			IndicatorBtn("primary", tr.T("strava.process.button"), "/actions/process", "processing"),
 		)),
-		Card(H2(g.Text("Good to know")),
+		Card(H2(g.Text(tr.T("strava.good.title"))),
 			Ul(
-				Li(g.Text("Automating the Strava website goes against Strava's terms of service. glucava uses one browser, one account and a few page loads per activity. Use it at your own risk.")),
-				Li(g.Text("Treat these cookies like a password: anyone who has them is logged in as you. Log out of the browser session you exported from only if you want to invalidate them.")),
-				Li(g.Text("When Strava ends the session, you get a notification and need to import fresh cookies.")),
+				Li(g.Text(tr.T("strava.good.tos"))),
+				Li(g.Text(tr.T("strava.good.cookies"))),
+				Li(g.Text(tr.T("strava.good.expiry"))),
 			)),
 	)
 }
@@ -397,52 +416,73 @@ type SettingsData struct {
 	Push                                                               PushCardData
 }
 
-// AccountEmail shows the signed-in address; it is patched after a change.
-func AccountEmail(email string) g.Node {
-	return P(ID("account-email"), g.Text("Signed in as "), Strong(g.Text(email)))
-}
+// AccountEmail is AccountEmailT in English, for callers without a request.
+func AccountEmail(email string) g.Node { return AccountEmailT(i18n.English(), email) }
 
-// secretHelp describes whether a secret field has a stored value.
-func secretHelp(set bool, what string) string {
-	if set {
-		return what + " is stored. Leave empty to keep it, or type a new one to replace it."
-	}
-	return what + " is not set."
+// AccountEmailT shows the signed-in address; it is patched after a change.
+func AccountEmailT(tr *i18n.Translator, email string) g.Node {
+	return P(ID("account-email"), g.Text(tr.T("settings.account.signedin", "email", "")), Strong(g.Text(email)))
 }
 
 // DexcomSecretStatus renders the part of the settings page that depends on
 // whether the Dexcom password is stored: the help text under the field, plus
 // the Test connection button. NtfySecretStatus and WebhookSecretStatus below
 // do the same for their own secrets. Each has a stable ID so actionSettings
-// can patch it in place after a save, without a full page reload.
-func DexcomSecretStatus(has bool) g.Node {
+// can patch it in place after a save, without a full page reload. The plain
+// names render English; the T variants take the request's translator.
+func DexcomSecretStatus(has bool) g.Node { return DexcomSecretStatusT(i18n.English(), has) }
+
+func DexcomSecretStatusT(tr *i18n.Translator, has bool) g.Node {
+	help := tr.T("settings.secret.password.unset")
+	if has {
+		help = tr.T("settings.secret.password.set")
+	}
 	return Div(ID("dexcom-secret-status"),
-		Div(Class("help"), g.Text(secretHelp(has, "A password"))),
+		Div(Class("help"), g.Text(help)),
 		g.If(has, Div(append(comp("actions"),
-			IndicatorBtn("", "Test connection", "/actions/dexcom/test", "dxtest"),
-			IndicatorBtn("", "Resync now", "/actions/glucose/resync", "dxresync"))...)),
+			IndicatorBtn("", tr.T("settings.dexcom.test"), "/actions/dexcom/test", "dxtest"),
+			IndicatorBtn("", tr.T("settings.dexcom.resync"), "/actions/glucose/resync", "dxresync"))...)),
 	)
 }
 
-func NtfySecretStatus(has bool) g.Node {
+func NtfySecretStatus(has bool) g.Node { return NtfySecretStatusT(i18n.English(), has) }
+
+func NtfySecretStatusT(tr *i18n.Translator, has bool) g.Node {
+	help := tr.T("settings.secret.token.unset")
+	if has {
+		help = tr.T("settings.secret.token.set")
+	}
 	return Div(ID("ntfy-secret-status"), Class("help"),
-		g.Text(secretHelp(has, "A token")+" Only needed for protected topics."))
+		g.Text(help+" "+tr.T("settings.ntfyToken.help")))
 }
 
-func WebhookSecretStatus(has bool) g.Node {
+func WebhookSecretStatus(has bool) g.Node { return WebhookSecretStatusT(i18n.English(), has) }
+
+func WebhookSecretStatusT(tr *i18n.Translator, has bool) g.Node {
+	help := tr.T("settings.secret.secret.unset")
+	if has {
+		help = tr.T("settings.secret.secret.set")
+	}
 	return Div(ID("webhook-secret-status"), Class("help"),
-		g.Text(secretHelp(has, "A secret")+" Used for the X-Glucava-Signature header."))
+		g.Text(help+" "+tr.T("settings.webhookSecret.help")))
 }
 
-func SMTPSecretStatus(has bool) g.Node {
-	return Div(ID("smtp-secret-status"), Class("help"), g.Text(secretHelp(has, "A password")))
+func SMTPSecretStatus(has bool) g.Node { return SMTPSecretStatusT(i18n.English(), has) }
+
+func SMTPSecretStatusT(tr *i18n.Translator, has bool) g.Node {
+	help := tr.T("settings.secret.password.unset")
+	if has {
+		help = tr.T("settings.secret.password.set")
+	}
+	return Div(ID("smtp-secret-status"), Class("help"), g.Text(help))
 }
 
 // GlucoseImportStatus renders the outcome of a glucose import: exactly one
 // of ok/errMsg is non-empty, or both empty for the initial page render. It
 // has a stable ID so both the plain-form flash render and the progressive-
 // enhancement fetch response (static/glucose-import.js) use the same markup,
-// letting the script swap it in without a page reload.
+// letting the script swap it in without a page reload. The messages arrive
+// already translated (or are importer errors), so it has no text of its own.
 func GlucoseImportStatus(ok, errMsg string) g.Node {
 	return Div(ID("glucose-import-status"),
 		g.If(ok != "", Notice("ok", g.Text(ok))),
@@ -483,179 +523,175 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 	}
 	sig, _ := json.Marshal(sigMap)
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
+	tr := pd.translator()
 
 	return Page(pd,
-		PageHead("Settings", "Changes apply to the next poll; no restart needed."),
+		PageHead(tr.T("settings.title"), tr.T("settings.sub")),
 		Div(g.Attr("data-signals", string(sig)),
-			settingsTabs(),
+			settingsTabs(tr),
 			tabSection("glucose",
 				Grid("2",
-					Card(H2(g.Text("Glucose and timing")),
+					Card(H2(g.Text(tr.T("settings.glucose.title"))),
 						languageField(pd),
-						Field("unit", "Unit", "", Select(ID("unit"), bind("unit"),
+						Field("unit", tr.T("settings.unit.label"), "", Select(ID("unit"), bind("unit"),
 							Option(Value("mg/dL"), g.Text("mg/dL")), Option(Value("mmol/L"), g.Text("mmol/L")))),
 						Div(append(comp("fieldrow"),
-							Field("rangeLow", "Target low (mg/dL)", "", Input(ID("rangeLow"), Type("number"), Min("40"), Max("200"), bind("rangeLow"))),
-							Field("rangeHigh", "Target high (mg/dL)", "", Input(ID("rangeHigh"), Type("number"), Min("80"), Max("400"), bind("rangeHigh"))),
-							Field("veryLow", "Very low below (mg/dL)", "Level-2 hypoglycemia threshold (consensus: 54). Used by the Overview analytics.", Input(ID("veryLow"), Type("number"), Min("20"), Max("100"), bind("veryLow"))),
-							Field("veryHigh", "Very high above (mg/dL)", "Level-2 hyperglycemia threshold (consensus: 250).", Input(ID("veryHigh"), Type("number"), Min("150"), Max("600"), bind("veryHigh"))),
+							Field("rangeLow", tr.T("settings.rangeLow.label"), "", Input(ID("rangeLow"), Type("number"), Min("40"), Max("200"), bind("rangeLow"))),
+							Field("rangeHigh", tr.T("settings.rangeHigh.label"), "", Input(ID("rangeHigh"), Type("number"), Min("80"), Max("400"), bind("rangeHigh"))),
+							Field("veryLow", tr.T("settings.veryLow.label"), tr.T("settings.veryLow.help"), Input(ID("veryLow"), Type("number"), Min("20"), Max("100"), bind("veryLow"))),
+							Field("veryHigh", tr.T("settings.veryHigh.label"), tr.T("settings.veryHigh.help"), Input(ID("veryHigh"), Type("number"), Min("150"), Max("600"), bind("veryHigh"))),
 						)...),
 						Div(append(comp("fieldrow"),
-							Field("preMin", "Minutes before start", "", Input(ID("preMin"), Type("number"), Min("0"), Max("240"), bind("preMin"))),
-							Field("postMin", "Minutes after end", "Cooldown glucose shown on the chart photo only; the description text is always activity-only and does not wait for this.", Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
+							Field("preMin", tr.T("settings.preMin.label"), "", Input(ID("preMin"), Type("number"), Min("0"), Max("240"), bind("preMin"))),
+							Field("postMin", tr.T("settings.postMin.label"), tr.T("settings.postMin.help"), Input(ID("postMin"), Type("number"), Min("0"), Max("240"), bind("postMin"))),
 						)...),
-						Field("pollMin", "Check Strava every (minutes)", "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
-						Field("postBuffer", "Reprocess once more after (minutes)", "Catches glucose readings that had not arrived yet the first time, for both the description text and (with the chart photo on) its first upload, which waits for this so it is not attached with an incomplete curve. 0 turns both off.", Input(ID("postBuffer"), Type("number"), Min("0"), Max("180"), bind("postBuffer"))),
+						Field("pollMin", tr.T("settings.pollMin.label"), "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
+						Field("postBuffer", tr.T("settings.postBuffer.label"), tr.T("settings.postBuffer.help"), Input(ID("postBuffer"), Type("number"), Min("0"), Max("180"), bind("postBuffer"))),
 					),
-					Card(H2(g.Text("Dexcom Share")),
-						P(Class("muted"), g.Text("Turn on Dexcom Share in the Dexcom app first. The account is the one that owns the sensor.")),
-						Field("dexcomRegion", "Region", "", Select(ID("dexcomRegion"), bind("dexcomRegion"),
-							Option(Value("ous"), g.Text("Outside the US")), Option(Value("us"), g.Text("United States")), Option(Value("jp"), g.Text("Japan")))),
-						Field("dexcomUsername", "Username, email or phone", "", Input(ID("dexcomUsername"), Type("text"), AutoComplete("off"), bind("dexcomUsername"))),
-						Field("dexcomPassword", "Password", "", Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
-						DexcomSecretStatus(d.HasDexcomPassword),
+					Card(H2(g.Text(tr.T("settings.dexcom.title"))),
+						P(Class("muted"), g.Text(tr.T("settings.dexcom.intro"))),
+						Field("dexcomRegion", tr.T("settings.dexcom.region.label"), "", Select(ID("dexcomRegion"), bind("dexcomRegion"),
+							Option(Value("ous"), g.Text(tr.T("settings.dexcom.region.ous"))), Option(Value("us"), g.Text(tr.T("settings.dexcom.region.us"))), Option(Value("jp"), g.Text(tr.T("settings.dexcom.region.jp"))))),
+						Field("dexcomUsername", tr.T("settings.dexcom.username.label"), "", Input(ID("dexcomUsername"), Type("text"), AutoComplete("off"), bind("dexcomUsername"))),
+						Field("dexcomPassword", tr.T("settings.dexcom.password.label"), "", Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
+						DexcomSecretStatusT(tr, d.HasDexcomPassword),
 					),
 				),
 			),
 			tabSection("customize",
-				Card(H2(g.Text("Chart photo")),
-					P(Class("muted"), g.Text("Optionally attach the glucose chart to the Strava activity as a photo. The preview below updates as you change the options, using your latest activity (or sample data), before anything is saved.")),
-					Field("chartImage", "Attach the chart to each activity", "Once per activity. Experimental: glucava cannot remove photos again, and a first photo can replace the map as the activity's cover.", Input(ID("chartImage"), Type("checkbox"), bind("chartImage"))),
+				Card(H2(g.Text(tr.T("settings.chart.title"))),
+					P(Class("muted"), g.Text(tr.T("settings.chart.intro"))),
+					Field("chartImage", tr.T("settings.chartImage.label"), tr.T("settings.chartImage.help"), Input(ID("chartImage"), Type("checkbox"), bind("chartImage"))),
 					Grid("2",
 						Div(
-							Field("chartTheme", "Theme", "", Select(ID("chartTheme"), bind("chartTheme"),
-								Option(Value("light"), g.Text("Light")), Option(Value("dark"), g.Text("Dark")))),
-							Field("chartSize", "Size", "Strava shows the photo as a square. Large is 1620 px, otherwise 1080 px.", Select(ID("chartSize"), bind("chartSize"),
-								Option(Value("standard"), g.Text("Standard (1080 px)")), Option(Value("large"), g.Text("Large (1620 px)")))),
-							Field("chartPre", "Glucose before the activity (minutes)", "How far back the chart starts. Only the chart uses this; the numbers use the window under Glucose and timing.", Input(ID("chartPre"), Type("number"), Min("0"), Max("240"), bind("chartPre"))),
-							Field("chartLine", "Line thickness (1 to 4)", "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
-							Field("hrRead", "Read heart rate from Strava", "Fetched when an activity is processed (one extra page load) and kept, for the numbers on the activity page and in emails, and for the chart.", Input(ID("hrRead"), Type("checkbox"), bind("hrRead"))),
-							Label(g.Text("Panels")),
-							P(Class("muted"), g.Text("Toggle which layers are drawn, and reorder them: where activity and target-range shading overlap, the one listed lower wins.")),
+							Field("chartTheme", tr.T("settings.chartTheme.label"), "", Select(ID("chartTheme"), bind("chartTheme"),
+								Option(Value("light"), g.Text(tr.T("settings.chartTheme.light"))), Option(Value("dark"), g.Text(tr.T("settings.chartTheme.dark"))))),
+							Field("chartSize", tr.T("settings.chartSize.label"), tr.T("settings.chartSize.help"), Select(ID("chartSize"), bind("chartSize"),
+								Option(Value("standard"), g.Text(tr.T("settings.chartSize.standard"))), Option(Value("large"), g.Text(tr.T("settings.chartSize.large"))))),
+							Field("chartPre", tr.T("settings.chartPre.label"), tr.T("settings.chartPre.help"), Input(ID("chartPre"), Type("number"), Min("0"), Max("240"), bind("chartPre"))),
+							Field("chartLine", tr.T("settings.chartLine.label"), "", Input(ID("chartLine"), Type("number"), Min("1"), Max("4"), bind("chartLine"))),
+							Field("hrRead", tr.T("settings.hrRead.label"), tr.T("settings.hrRead.help"), Input(ID("hrRead"), Type("checkbox"), bind("hrRead"))),
+							Label(g.Text(tr.T("settings.panels.label"))),
+							P(Class("muted"), g.Text(tr.T("settings.panels.help"))),
 							Div(g.Attr("style", "display:flex;flex-direction:column"),
-								chartPanelRow("chartActivity", "activity", "Shade the activity span"),
-								chartPanelRow("chartBand", "band", "Shade the target range"),
-								chartPanelRow("chartDots", "dots", "Mark out-of-range readings"),
-								chartPanelRow("chartHR", "hr", "Show heart rate (second axis)"),
-								chartPanelRow("chartElevation", "elevation", "Show elevation profile (background; fetched from Strava when on)"),
+								chartPanelRow(tr, "chartActivity", "activity", tr.T("settings.panel.activity")),
+								chartPanelRow(tr, "chartBand", "band", tr.T("settings.panel.band")),
+								chartPanelRow(tr, "chartDots", "dots", tr.T("settings.panel.dots")),
+								chartPanelRow(tr, "chartHR", "hr", tr.T("settings.panel.hr")),
+								chartPanelRow(tr, "chartElevation", "elevation", tr.T("settings.panel.elevation")),
 							),
-							Field("chartAvgLine", "Average line", "A dashed line at the average glucose value.", Input(ID("chartAvgLine"), Type("checkbox"), bind("chartAvgLine"))),
-							Field("chartRangeLines", "Low/high lines", "Dashed lines at the target range low and high.", Input(ID("chartRangeLines"), Type("checkbox"), bind("chartRangeLines"))),
-							Field("chartMinMax", "Min/max markers", "Marker dots at the curve's lowest and highest points.", Input(ID("chartMinMax"), Type("checkbox"), bind("chartMinMax"))),
-							Field("chartHideStats", "Hide the TIR number and stats bar", "Turns off the big time-in-range number and the below/in-range/above bar at the bottom.", Input(ID("chartHideStats"), Type("checkbox"), bind("chartHideStats"))),
+							Field("chartAvgLine", tr.T("settings.chartAvgLine.label"), tr.T("settings.chartAvgLine.help"), Input(ID("chartAvgLine"), Type("checkbox"), bind("chartAvgLine"))),
+							Field("chartRangeLines", tr.T("settings.chartRangeLines.label"), tr.T("settings.chartRangeLines.help"), Input(ID("chartRangeLines"), Type("checkbox"), bind("chartRangeLines"))),
+							Field("chartMinMax", tr.T("settings.chartMinMax.label"), tr.T("settings.chartMinMax.help"), Input(ID("chartMinMax"), Type("checkbox"), bind("chartMinMax"))),
+							Field("chartHideStats", tr.T("settings.chartHideStats.label"), tr.T("settings.chartHideStats.help"), Input(ID("chartHideStats"), Type("checkbox"), bind("chartHideStats"))),
 						),
 						Div(
-							Img(ID("chartPreview"), Alt("Preview of the chart photo"), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
+							Img(ID("chartPreview"), Alt(tr.T("settings.chartPreview.alt")), g.Attr("style", "max-width:100%;height:auto;border:1px solid var(--border, #ccc);border-radius:8px"),
 								g.Attr("data-attr:src", chartPreviewExpr)),
 						),
 					),
 				),
 				overviewSettingsCard(c),
-				Card(H2(g.Text("Description text")),
-					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
-						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.TIRBar}}, {{.TIRWindowBar}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+
-						"{{.Distance}}, {{.Elevation}}, {{.Pace}}, {{.Sparkline}}; {{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; "+
-						"{{.TIRWindow}} is the wider pre/post window the chart draws from below, so the two can differ — add both if you want to show that. {{.Pace}} is a single "+
-						"field that's already the right unit for the activity's sport (pace for a run/hike/walk/swim, speed for a ride), empty when there's no meaningful distance "+
-						"metric for the sport. The preview below updates as you type, using your latest activity or sample data.")),
-					Field("descPreset", "Preset", "Selecting one replaces the template below; keep editing afterwards to customize it further.",
+				Card(H2(g.Text(tr.T("settings.desc.title"))),
+					P(Class("muted"), g.Text(tr.T("settings.desc.intro"))),
+					Field("descPreset", tr.T("settings.descPreset.label"), tr.T("settings.descPreset.help"),
 						g.El("select", append([]g.Node{ID("descPreset"), bind("descPreset"), g.Attr("data-on:change", descPresetChangeExpr),
-							Option(Value("custom"), g.Text("Custom"))}, presetOptions()...)...)),
+							Option(Value("custom"), g.Text(tr.T("settings.descPreset.custom")))}, presetOptions(tr)...)...)),
 					Grid("2",
 						Div(
-							Field("descTemplate", "Template", "", Textarea(ID("descTemplate"), Rows("6"), bind("descTemplate"),
+							Field("descTemplate", tr.T("settings.descTemplate.label"), "", Textarea(ID("descTemplate"), Rows("6"), bind("descTemplate"),
 								g.Attr("data-on:input__debounce.400ms", descPreviewExpr), g.Attr("spellcheck", "false"))),
 						),
 						Div(
-							Label(g.Text("Preview")),
+							Label(g.Text(tr.T("settings.descPreview.label"))),
 							Pre(ID("descPreviewBox"), g.Attr("data-text", "$descPreview")),
 						),
 					),
 				),
 			),
 			tabSection("notify",
-				Card(H2(g.Text("Notifications")),
-					P(Class("muted"), g.Text("Sent when something fails, for example an expired Strava session or missing glucose data.")),
-					Field("gapAlertHours", "Alert when no glucose reading arrives for (hours)", "Catches a stopped sensor share or a broken Dexcom login. 0 turns it off.", Input(ID("gapAlertHours"), Type("number"), Min("0"), Max("168"), bind("gapAlertHours"))),
+				Card(H2(g.Text(tr.T("settings.notify.title"))),
+					P(Class("muted"), g.Text(tr.T("settings.notify.intro"))),
+					Field("gapAlertHours", tr.T("settings.gapAlertHours.label"), tr.T("settings.gapAlertHours.help"), Input(ID("gapAlertHours"), Type("number"), Min("0"), Max("168"), bind("gapAlertHours"))),
 					Grid("2",
 						Div(
-							Field("ntfyURL", "ntfy topic URL", "For example https://ntfy.sh/my-topic. Leave empty to turn off.", Input(ID("ntfyURL"), Type("url"), bind("ntfyURL"))),
-							Field("ntfyToken", "ntfy access token", "", Input(ID("ntfyToken"), Type("password"), AutoComplete("new-password"), bind("ntfyToken"))),
-							NtfySecretStatus(d.HasNtfyToken),
+							Field("ntfyURL", tr.T("settings.ntfyURL.label"), tr.T("settings.ntfyURL.help"), Input(ID("ntfyURL"), Type("url"), bind("ntfyURL"))),
+							Field("ntfyToken", tr.T("settings.ntfyToken.label"), "", Input(ID("ntfyToken"), Type("password"), AutoComplete("new-password"), bind("ntfyToken"))),
+							NtfySecretStatusT(tr, d.HasNtfyToken),
 						),
 						Div(
-							Field("webhookURL", "Webhook URL", "Receives each event as JSON. Leave empty to turn off.", Input(ID("webhookURL"), Type("url"), bind("webhookURL"))),
-							Field("webhookSecret", "Webhook signing secret", "", Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
-							WebhookSecretStatus(d.HasWebhookSecret),
+							Field("webhookURL", tr.T("settings.webhookURL.label"), tr.T("settings.webhookURL.help"), Input(ID("webhookURL"), Type("url"), bind("webhookURL"))),
+							Field("webhookSecret", tr.T("settings.webhookSecret.label"), "", Input(ID("webhookSecret"), Type("password"), AutoComplete("new-password"), bind("webhookSecret"))),
+							WebhookSecretStatusT(tr, d.HasWebhookSecret),
 						),
 					),
-					Card(H2(g.Text("Email")),
-						P(Class("muted"), g.Text("Send notifications by email through your own SMTP server. Leave the recipient empty to turn email off.")),
-						Field("emailTo", "Send to", "", Input(ID("emailTo"), Type("email"), bind("emailTo"))),
+					Card(H2(g.Text(tr.T("settings.email.title"))),
+						P(Class("muted"), g.Text(tr.T("settings.email.intro"))),
+						Field("emailTo", tr.T("settings.emailTo.label"), "", Input(ID("emailTo"), Type("email"), bind("emailTo"))),
 						Div(append(comp("fieldrow"),
-							Field("smtpHost", "SMTP host", "", Input(ID("smtpHost"), Type("text"), AutoComplete("off"), bind("smtpHost"))),
-							Field("smtpPort", "Port", "Usually 587 (StartTLS) or 465 (TLS).", Input(ID("smtpPort"), Type("number"), Min("1"), Max("65535"), bind("smtpPort"))),
+							Field("smtpHost", tr.T("settings.smtpHost.label"), "", Input(ID("smtpHost"), Type("text"), AutoComplete("off"), bind("smtpHost"))),
+							Field("smtpPort", tr.T("settings.smtpPort.label"), tr.T("settings.smtpPort.help"), Input(ID("smtpPort"), Type("number"), Min("1"), Max("65535"), bind("smtpPort"))),
 						)...),
 						Div(append(comp("fieldrow"),
-							Field("smtpUsername", "Username", "", Input(ID("smtpUsername"), Type("text"), AutoComplete("off"), bind("smtpUsername"))),
-							Field("smtpPassword", "Password", "", Input(ID("smtpPassword"), Type("password"), AutoComplete("new-password"), bind("smtpPassword"))),
+							Field("smtpUsername", tr.T("settings.smtpUsername.label"), "", Input(ID("smtpUsername"), Type("text"), AutoComplete("off"), bind("smtpUsername"))),
+							Field("smtpPassword", tr.T("settings.smtpPassword.label"), "", Input(ID("smtpPassword"), Type("password"), AutoComplete("new-password"), bind("smtpPassword"))),
 						)...),
-						SMTPSecretStatus(d.HasSMTPPassword),
+						SMTPSecretStatusT(tr, d.HasSMTPPassword),
 						Div(append(comp("fieldrow"),
-							Field("smtpSender", "From address", "", Input(ID("smtpSender"), Type("email"), bind("smtpSender"))),
-							Field("smtpSenderName", "From name", "", Input(ID("smtpSenderName"), Type("text"), bind("smtpSenderName"))),
+							Field("smtpSender", tr.T("settings.smtpSender.label"), "", Input(ID("smtpSender"), Type("email"), bind("smtpSender"))),
+							Field("smtpSenderName", tr.T("settings.smtpSenderName.label"), "", Input(ID("smtpSenderName"), Type("text"), bind("smtpSenderName"))),
 						)...),
-						Field("smtpTLS", "Require TLS", "Tick for port 465. Otherwise StartTLS is used when the server offers it.", Input(ID("smtpTLS"), Type("checkbox"), bind("smtpTLS"))),
-						H3(g.Text("What to email")),
-						Field("mailAlerts", "Failure alerts", "Expired session, failed update, missing glucose data, canary failures.", Input(ID("mailAlerts"), Type("checkbox"), bind("mailAlerts"))),
-						Field("mailActivity", "Summary after each activity", "One mail per processed activity with its glucose numbers.", Input(ID("mailActivity"), Type("checkbox"), bind("mailActivity"))),
-						Field("mailWeekly", "Weekly summary", "Every Monday morning: last week's activities and glucose numbers, or a short note if there were none.", Input(ID("mailWeekly"), Type("checkbox"), bind("mailWeekly"))),
-						Field("mailHealth", "Monthly health report", "On the 1st, 08:00: activities annotated or failed, glucose data coverage, alerts of the month. Doubles as a sign that glucava is still running.", Input(ID("mailHealth"), Type("checkbox"), bind("mailHealth"))),
-						Field("publicURL", "Public URL of this web UI", "Used for links in emails, for example https://glucava.example.com. Leave empty for no links.", Input(ID("publicURL"), Type("url"), bind("publicURL"))),
+						Field("smtpTLS", tr.T("settings.smtpTLS.label"), tr.T("settings.smtpTLS.help"), Input(ID("smtpTLS"), Type("checkbox"), bind("smtpTLS"))),
+						H3(g.Text(tr.T("settings.email.what"))),
+						Field("mailAlerts", tr.T("settings.mailAlerts.label"), tr.T("settings.mailAlerts.help"), Input(ID("mailAlerts"), Type("checkbox"), bind("mailAlerts"))),
+						Field("mailActivity", tr.T("settings.mailActivity.label"), tr.T("settings.mailActivity.help"), Input(ID("mailActivity"), Type("checkbox"), bind("mailActivity"))),
+						Field("mailWeekly", tr.T("settings.mailWeekly.label"), tr.T("settings.mailWeekly.help"), Input(ID("mailWeekly"), Type("checkbox"), bind("mailWeekly"))),
+						Field("mailHealth", tr.T("settings.mailHealth.label"), tr.T("settings.mailHealth.help"), Input(ID("mailHealth"), Type("checkbox"), bind("mailHealth"))),
+						Field("publicURL", tr.T("settings.publicURL.label"), tr.T("settings.publicURL.help"), Input(ID("publicURL"), Type("url"), bind("publicURL"))),
 					),
 				),
-				PushCard(d.Push),
+				PushCardT(tr, d.Push),
 			),
 			tabSection("data",
 				g.If(len(d.ImportFormats) > 0, Card(
-					H2(g.Text("Import glucose readings")),
-					P(Class("muted"), g.Text("Backfill readings from an export file, e.g. switching from another app or restoring a period the live source no longer serves. This adds to what is already stored; nothing existing is touched.")),
+					H2(g.Text(tr.T("settings.import.title"))),
+					P(Class("muted"), g.Text(tr.T("settings.import.intro"))),
 					GlucoseImportStatus(d.ImportOK, d.ImportErr),
 					Form(ID("glucose-import-form"), Method("post"), Action("/actions/glucose/import"), g.Attr("enctype", "multipart/form-data"),
-						Field("glucoseFormat", "Format", "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
-						Field("glucoseSource", "Label (optional)", "Distinguishes these readings from the live source; defaults to the format name.",
+						Field("glucoseFormat", tr.T("settings.import.format.label"), "", Select(Name("format"), Required(), importFormatOptions(d.ImportFormats))),
+						Field("glucoseSource", tr.T("settings.import.source.label"), tr.T("settings.import.source.help"),
 							Input(Type("text"), Name("source"), AutoComplete("off"))),
-						Field("glucoseFile", "Export file", "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt,.zip"), Required())),
-						SubmitBtn("primary", "", "Import"),
+						Field("glucoseFile", tr.T("settings.import.file.label"), "", Input(Type("file"), Name("file"), g.Attr("accept", ".csv,.json,.txt,.zip"), Required())),
+						SubmitBtn("primary", "", tr.T("settings.import.submit")),
 					),
 					Script(Src("/static/glucose-import.js")),
 				)),
 				Card(g.Attr("data-signals", `{"accountCurrent":"","accountEmail":"","accountNew":"","accountConfirm":""}`),
-					H2(g.Text("Account")),
-					AccountEmail(d.AccountEmail),
-					P(Class("muted"), g.Text("Change the email or the password you sign in to this page with. Both need your current password, and every other browser is signed out. Leave a field empty to keep it.")),
-					Field("accountCurrent", "Current password", "", Input(ID("accountCurrent"), Type("password"), AutoComplete("current-password"), bind("accountCurrent"))),
-					Field("accountEmail", "New email", "", Input(ID("accountEmail"), Type("email"), AutoComplete("off"), bind("accountEmail"))),
-					Field("accountNew", "New password", "At least 12 characters.", Input(ID("accountNew"), Type("password"), AutoComplete("new-password"), bind("accountNew"))),
-					Field("accountConfirm", "Repeat the new password", "", Input(ID("accountConfirm"), Type("password"), AutoComplete("new-password"), bind("accountConfirm"))),
-					Btn("", "Change account", post("/actions/account")),
+					H2(g.Text(tr.T("settings.account.title"))),
+					AccountEmailT(tr, d.AccountEmail),
+					P(Class("muted"), g.Text(tr.T("settings.account.intro"))),
+					Field("accountCurrent", tr.T("settings.account.current.label"), "", Input(ID("accountCurrent"), Type("password"), AutoComplete("current-password"), bind("accountCurrent"))),
+					Field("accountEmail", tr.T("settings.account.email.label"), "", Input(ID("accountEmail"), Type("email"), AutoComplete("off"), bind("accountEmail"))),
+					Field("accountNew", tr.T("settings.account.new.label"), tr.T("settings.account.new.help"), Input(ID("accountNew"), Type("password"), AutoComplete("new-password"), bind("accountNew"))),
+					Field("accountConfirm", tr.T("settings.account.confirm.label"), "", Input(ID("accountConfirm"), Type("password"), AutoComplete("new-password"), bind("accountConfirm"))),
+					Btn("", tr.T("settings.account.button"), post("/actions/account")),
 				),
-				Card(H2(g.Text("Your data")),
-					P(Class("muted"), g.Text("Glucose readings, activities and events are stored on this server only. Old readings and events are deleted after the number of days below; 0 keeps them forever.")),
-					Field("retentionDays", "Keep readings and events for (days)", "", Input(ID("retentionDays"), Type("number"), Min("0"), Max("3650"), bind("retentionDays"))),
+				Card(H2(g.Text(tr.T("settings.data.title"))),
+					P(Class("muted"), g.Text(tr.T("settings.data.intro"))),
+					Field("retentionDays", tr.T("settings.retentionDays.label"), "", Input(ID("retentionDays"), Type("number"), Min("0"), Max("3650"), bind("retentionDays"))),
 					Div(append(comp("actions"),
-						A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text("Download readings (CSV)"))...),
-						A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text("Download activities (CSV)"))...),
-						A(append(comp("button"), Href("/export/report.pdf?range=30d"), g.Attr("download", ""), g.Text("Download report, last 30 days (PDF)"))...),
+						A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text(tr.T("settings.data.samples")))...),
+						A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text(tr.T("settings.data.activities")))...),
+						A(append(comp("button"), Href("/export/report.pdf?range=30d"), g.Attr("download", ""), g.Text(tr.T("settings.data.report")))...),
 					)...),
-					Field("purgeConfirm", "Delete all data", "Removes every reading, activity and event. Settings, credentials and tokens stay. Type DELETE to enable the button.",
+					Field("purgeConfirm", tr.T("settings.purge.label"), tr.T("settings.purge.help"),
 						Input(ID("purgeConfirm"), Type("text"), AutoComplete("off"), bind("purgeConfirm"))),
-					Btn("danger", "Delete all data", post("/actions/data/purge"), g.Attr("data-attr:disabled", "$purgeConfirm !== 'DELETE'")),
+					Btn("danger", tr.T("settings.purge.label"), post("/actions/data/purge"), g.Attr("data-attr:disabled", "$purgeConfirm !== 'DELETE'")),
 				),
 			),
 			Div(append(comp("actions"),
-				Btn("primary", "Save settings", post("/actions/settings")),
-				Btn("", "Send test notification", post("/actions/notify/test")),
+				Btn("primary", tr.T("settings.save"), post("/actions/settings")),
+				Btn("", tr.T("settings.test"), post("/actions/notify/test")),
 			)...),
 		),
 	)
@@ -663,70 +699,80 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 
 // ------------------------------------------------------------------- tokens
 
-// TokenList is patched after creating or revoking a token.
+// TokenList is TokenListT in English, for callers without a request.
 func TokenList(list []tokens.Info, loc *time.Location) g.Node {
+	return TokenListT(i18n.English(), list, loc)
+}
+
+// TokenListT is patched after creating or revoking a token.
+func TokenListT(tr *i18n.Translator, list []tokens.Info, loc *time.Location) g.Node {
 	if len(list) == 0 {
-		return Card(ID("token-list"), H2(g.Text("Trigger tokens")), Div(append(comp("empty"), g.Text("No tokens yet."))...))
+		return Card(ID("token-list"), H2(g.Text(tr.T("tokens.list.title"))), Div(append(comp("empty"), g.Text(tr.T("tokens.list.empty")))...))
 	}
 	rows := make([]g.Node, 0, len(list))
 	for _, t := range list {
-		used := "never"
+		used := tr.T("tokens.never")
 		if !t.LastUsed.IsZero() {
-			used = t.LastUsed.In(loc).Format("2 Jan 2006, 15:04")
+			used = fmtWhenT(tr, t.LastUsed, loc, time.Now())
 		}
-		state := Badge("ok", "Active")
-		action := g.Node(revokeButton(t.Name))
+		state := Badge("ok", tr.T("tokens.state.active"))
+		action := g.Node(revokeButton(tr, t.Name))
 		if t.Revoked {
-			state, action = Badge("", "Revoked"), Span()
+			state, action = Badge("", tr.T("tokens.state.revoked")), Span()
 		}
 		rows = append(rows, Tr(Td(g.Text(t.Name)), Td(state), Td(g.Text(used)), Td(action)))
 	}
-	return Card(ID("token-list"), H2(g.Text("Trigger tokens")),
+	return Card(ID("token-list"), H2(g.Text(tr.T("tokens.list.title"))),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("Name")), Th(g.Text("State")), Th(g.Text("Last used")), Th())), TBody(g.Group(rows)))...))...))
+			THead(Tr(Th(g.Text(tr.T("tokens.col.name"))), Th(g.Text(tr.T("tokens.col.state"))), Th(g.Text(tr.T("tokens.col.lastused"))), Th())), TBody(g.Group(rows)))...))...))
 }
 
-func revokeButton(name string) g.Node {
-	return BtnSized("danger", "sm", "Revoke", post("/actions/tokens/revoke/"+url.PathEscape(name)))
+func revokeButton(tr *i18n.Translator, name string) g.Node {
+	return BtnSized("danger", "sm", tr.T("tokens.revoke"), post("/actions/tokens/revoke/"+url.PathEscape(name)))
 }
 
 // CopyRow shows a value with a button that copies it.
-func CopyRow(label, value string) g.Node {
+func CopyRow(tr *i18n.Translator, label, value string) g.Node {
 	return Div(Class("copyrow"),
 		Span(Class("muted"), g.Text(label)),
 		Code(g.Text(value)),
-		BtnSized("", "sm", "Copy", g.Attr("data-on:click",
-			fmt.Sprintf("navigator.clipboard.writeText('%s'); evt.currentTarget.textContent = 'Copied'", jsQuote(value)))),
+		BtnSized("", "sm", tr.T("tokens.copy"), g.Attr("data-on:click",
+			fmt.Sprintf("navigator.clipboard.writeText('%s'); evt.currentTarget.textContent = '%s'", jsQuote(value), jsQuote(tr.T("tokens.copied"))))),
 	)
 }
 
-// SecretReveal shows a new token once, with the values a phone app needs,
+// SecretReveal is SecretRevealT in English, for callers without a request.
+func SecretReveal(name, token, endpoint, taskerURL, pageURL string) g.Node {
+	return SecretRevealT(i18n.English(), name, token, endpoint, taskerURL, pageURL)
+}
+
+// SecretRevealT shows a new token once, with the values a phone app needs,
 // plus two QR codes while the token is still on screen: one to download a
 // ready-to-import Tasker profile directly (for Android), and one that just
 // opens this page on whatever device scans it (for HTTP Shortcuts,
 // MacroDroid or Apple Shortcuts, which can't be pre-built as a file the
 // same way — the target is this page's own per-platform instructions,
 // filled in with the real token below instead of a placeholder).
-func SecretReveal(name, token, endpoint, taskerURL, pageURL string) g.Node {
+func SecretRevealT(tr *i18n.Translator, name, token, endpoint, taskerURL, pageURL string) g.Node {
 	header := "Bearer " + token
 	return Div(ID("token-reveal"), Div(append(comp("secretbox"),
-		P(Strong(g.Textf("Token “%s” created. Copy it now; it is not shown again.", name))),
-		CopyRow("Token", token),
-		CopyRow("URL (POST)", endpoint),
-		CopyRow("Header", "Authorization: "+header),
-		CopyRow("Test", fmt.Sprintf("curl -i -X POST -H 'Authorization: %s' %s", header, endpoint)),
-		P(Class("muted"), g.Text("A working call answers 202, and “Last used” in the list below changes.")),
+		P(Strong(g.Text(tr.T("tokens.reveal.created", "name", name)))),
+		CopyRow(tr, tr.T("tokens.reveal.token"), token),
+		CopyRow(tr, tr.T("tokens.reveal.url"), endpoint),
+		CopyRow(tr, tr.T("tokens.reveal.header"), "Authorization: "+header),
+		CopyRow(tr, tr.T("tokens.reveal.test"), fmt.Sprintf("curl -i -X POST -H 'Authorization: %s' %s", header, endpoint)),
+		P(Class("muted"), g.Text(tr.T("tokens.reveal.hint"))),
 		Grid("2",
 			Div(
-				H3(g.Text("Android (Tasker)")),
-				P(Class("muted"), g.Text("A ready-to-import profile: Strava notification → check now, unfiltered (see below for why).")),
-				A(append(comp("button"), Href(taskerURL), g.Attr("download", ""), g.Text("Download Tasker profile"))...),
-				g.If(qrDataURI(taskerURL) != "", Img(Alt("QR code to download the Tasker profile"), Src(qrDataURI(taskerURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+				H3(g.Text(tr.T("tokens.tasker.title"))),
+				P(Class("muted"), g.Text(tr.T("tokens.tasker.intro"))),
+				A(append(comp("button"), Href(taskerURL), g.Attr("download", ""), g.Text(tr.T("tokens.tasker.download")))...),
+				g.If(qrDataURI(taskerURL) != "", Img(Alt(tr.T("tokens.tasker.qr")), Src(qrDataURI(taskerURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
 			),
 			Div(
-				H3(g.Text("Other platforms")),
-				P(Class("muted"), g.Text("Scan to open this page on the phone you'll set the trigger up on — the instructions below fill in this real token instead of a placeholder.")),
-				g.If(qrDataURI(pageURL) != "", Img(Alt("QR code to open the Triggers page"), Src(qrDataURI(pageURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
+				H3(g.Text(tr.T("tokens.other.title"))),
+				P(Class("muted"), g.Text(tr.T("tokens.other.intro"))),
+				g.If(qrDataURI(pageURL) != "", Img(Alt(tr.T("tokens.other.qr")), Src(qrDataURI(pageURL)), g.Attr("style", "width:160px;height:160px;margin-top:.5rem"))),
 			),
 		),
 	)...))
@@ -734,32 +780,33 @@ func SecretReveal(name, token, endpoint, taskerURL, pageURL string) g.Node {
 
 // TokensPage manages the push-trigger tokens and explains how to use them.
 func TokensPage(pd PageData, list []tokens.Info, baseURL string, loc *time.Location) g.Node {
+	tr := pd.translator()
 	endpoint := strings.TrimRight(baseURL, "/") + "/api/trigger"
 	return Page(pd,
-		PageHead("Triggers", "Tell glucava about a new activity right away instead of waiting for the next poll."),
+		PageHead(tr.T("tokens.title"), tr.T("tokens.sub")),
 		Card(g.Attr("data-signals", `{"tokenName":""}`),
-			H2(g.Text("New token")),
+			H2(g.Text(tr.T("tokens.new.title"))),
 			Div(append(comp("fieldrow"),
-				Field("tokenName", "Name", "For example the device it is for.", Input(ID("tokenName"), Type("text"), Placeholder("phone"), g.Attr("data-bind", "tokenName"))),
+				Field("tokenName", tr.T("tokens.name.label"), tr.T("tokens.name.help"), Input(ID("tokenName"), Type("text"), Placeholder(tr.T("tokens.name.placeholder")), g.Attr("data-bind", "tokenName"))),
 			)...),
-			Btn("primary", "Create token", post("/actions/tokens/create")),
+			Btn("primary", tr.T("tokens.create"), post("/actions/tokens/create")),
 			Div(ID("token-reveal")),
 		),
-		TokenList(list, loc),
-		Card(H2(g.Text("How to call it")),
-			P(g.Text("Send a POST request with the token. The call only asks glucava to check Strava now; it carries no other data. “Last used” in the list above shows whether your phone's call arrived.")),
+		TokenListT(tr, list, loc),
+		Card(H2(g.Text(tr.T("tokens.how.title"))),
+			P(g.Text(tr.T("tokens.how.intro"))),
 			Pre(g.Textf("curl -i -X POST %s \\\n  -H \"Authorization: Bearer <token>\"", endpoint)),
-			H2(g.Text("Android (Tasker)")),
+			H2(g.Text(tr.T("tokens.how.android.title"))),
 			Ol(
-				Li(g.Text("Task: Net → HTTP Request. Method POST, URL and header as above, empty body, timeout 30. Run it once by hand and check “Last used”.")),
-				Li(g.Text("Profile: Event → UI → Notification, owner application Strava, no filter yet. Link it to the task.")),
-				Li(g.Text("After Strava's next “activity saved” notification, look at Tasker's run log. If the profile also fires for kudos or comments, add a title or text filter with the wording you see there.")),
-				Li(g.Text("Tasker needs notification access and unrestricted battery use.")),
+				Li(g.Text(tr.T("tokens.how.android.1"))),
+				Li(g.Text(tr.T("tokens.how.android.2"))),
+				Li(g.Text(tr.T("tokens.how.android.3"))),
+				Li(g.Text(tr.T("tokens.how.android.4"))),
 			),
-			P(Class("muted"), g.Text("HTTP Shortcuts and MacroDroid work the same way: trigger on a Strava notification, then send the request.")),
-			H2(g.Text("iPhone (Shortcuts)")),
-			P(g.Text("Personal automation → Workout → Ends (or App → Strava → Is Closed), set to Run Immediately. Actions: Wait 30 seconds, then Get Contents of URL with method POST and the header above. iOS cannot react to another app's notification. This has not been tested yet.")),
-			P(Class("muted"), g.Text("Without any trigger, polling still picks up new activities on the interval from Settings.")),
+			P(Class("muted"), g.Text(tr.T("tokens.how.android.other"))),
+			H2(g.Text(tr.T("tokens.how.iphone.title"))),
+			P(g.Text(tr.T("tokens.how.iphone.body"))),
+			P(Class("muted"), g.Text(tr.T("tokens.how.fallback"))),
 		),
 	)
 }
@@ -796,37 +843,42 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 
 // logLevelBadge maps an slog.Level to the existing badge variants, so /logs
 // reuses the same color coding as severity elsewhere (Notifications page).
-func logLevelBadge(level slog.Level) g.Node {
+func logLevelBadge(tr *i18n.Translator, level slog.Level) g.Node {
 	switch {
 	case level >= slog.LevelError:
-		return Badge("error", "Error")
+		return Badge("error", tr.T("logs.level.error"))
 	case level >= slog.LevelWarn:
-		return Badge("warning", "Warn")
+		return Badge("warning", tr.T("logs.level.warn"))
 	case level >= slog.LevelInfo:
-		return Badge("info", "Info")
+		return Badge("info", tr.T("logs.level.info"))
 	default:
-		return Badge("", "Debug")
+		return Badge("", tr.T("logs.level.debug"))
 	}
 }
 
-// LogRows renders the log table body, newest first. It is also the fragment
+// LogRows is LogRowsT in English, for callers without a request.
+func LogRows(entries []logging.Entry, loc *time.Location) g.Node {
+	return LogRowsT(i18n.English(), entries, loc)
+}
+
+// LogRowsT renders the log table body, newest first. It is also the fragment
 // streamLogs patches in place on every bus wake, so it must be re-renderable
 // standalone (no page chrome), the same shape as LiveDash for the dashboard.
-func LogRows(entries []logging.Entry, loc *time.Location) g.Node {
+func LogRowsT(tr *i18n.Translator, entries []logging.Entry, loc *time.Location) g.Node {
 	if len(entries) == 0 {
-		return Div(append(comp("empty"), ID("log-rows"), g.Text("No log entries yet."))...)
+		return Div(append(comp("empty"), ID("log-rows"), g.Text(tr.T("logs.empty")))...)
 	}
 	rows := make([]g.Node, 0, len(entries))
 	for _, e := range entries {
 		rows = append(rows, Tr(
 			Td(g.Text(e.Time.In(loc).Format("15:04:05"))),
-			Td(logLevelBadge(e.Level)),
+			Td(logLevelBadge(tr, e.Level)),
 			Td(g.Text(e.Message)),
 			Td(Class("hide-sm"), g.Text(e.Attrs)),
 		))
 	}
 	return Div(append(comp("tablewrap"), ID("log-rows"), Table(append(comp("table"),
-		THead(Tr(Th(g.Text("Time")), Th(g.Text("Level")), Th(g.Text("Message")), Th(Class("hide-sm"), g.Text("Details")))),
+		THead(Tr(Th(g.Text(tr.T("logs.col.time"))), Th(g.Text(tr.T("logs.col.level"))), Th(g.Text(tr.T("logs.col.message"))), Th(Class("hide-sm"), g.Text(tr.T("logs.col.details"))))),
 		TBody(g.Group(rows)))...))...)
 }
 
@@ -834,10 +886,11 @@ func LogRows(entries []logging.Entry, loc *time.Location) g.Node {
 // live-updated via /stream/logs the same way the dashboard streams over
 // /stream/live. No Settings toggle, same as the Notifications/Events page.
 func LogsPage(pd PageData, entries []logging.Entry, loc *time.Location) g.Node {
+	tr := pd.translator()
 	return Page(pd,
-		PageHead("Logs", "Recent structured log entries from this process, newest first."),
+		PageHead(tr.T("logs.title"), tr.T("logs.sub")),
 		Card(
-			Div(g.Attr("data-init", "@get('/stream/logs')"), LogRows(entries, loc)),
+			Div(g.Attr("data-init", "@get('/stream/logs')"), LogRowsT(tr, entries, loc)),
 		),
 	)
 }
@@ -869,13 +922,13 @@ func panelMoveExpr(panel string, dir int) string {
 // visibly reorders as the buttons are clicked, inside a flex-column
 // container (see the "Panels" list in the chart card) — without it, the
 // buttons changed the draw order but nothing on screen showed it happened.
-func chartPanelRow(sig, id, label string) g.Node {
+func chartPanelRow(tr *i18n.Translator, sig, id, label string) g.Node {
 	return Div(g.Attr("style", "display:flex;align-items:center;gap:.5rem;margin:0 0 .5rem"),
 		g.Attr("data-style:order", fmt.Sprintf("$chartPanelOrder.split(',').indexOf(%q)", id)),
 		Input(Type("checkbox"), g.Attr("data-bind", sig)),
 		Span(g.Text(label)),
-		Btn("", "↑ Earlier", g.Attr("data-on:click", panelMoveExpr(id, -1))),
-		Btn("", "↓ Later", g.Attr("data-on:click", panelMoveExpr(id, 1))),
+		Btn("", tr.T("settings.panel.earlier"), g.Attr("data-on:click", panelMoveExpr(id, -1))),
+		Btn("", tr.T("settings.panel.later"), g.Attr("data-on:click", panelMoveExpr(id, 1))),
 	)
 }
 
@@ -883,20 +936,20 @@ func chartPanelRow(sig, id, label string) g.Node {
 // field on the page still lives under one Div per tab (data-signals covers
 // the whole page regardless of which is shown), so Save always saves
 // everything: switching tabs never loses or hides a change.
-var settingsTabIDs = []struct{ id, label string }{
-	{"glucose", "Glucose and timing"},
-	{"customize", "Description and chart"},
-	{"notify", "Notifications"},
-	{"data", "Data and account"},
+var settingsTabIDs = []struct{ id, labelKey string }{
+	{"glucose", i18n.Key("settings.tab.glucose")},
+	{"customize", i18n.Key("settings.tab.customize")},
+	{"notify", i18n.Key("settings.tab.notify")},
+	{"data", i18n.Key("settings.tab.data")},
 }
 
 // settingsTabs renders the tab bar. Each button sets $settingsTab and is
 // shown pressed (the primary variant) exactly when it is the active one.
-func settingsTabs() g.Node {
+func settingsTabs(tr *i18n.Translator) g.Node {
 	btns := make([]g.Node, len(settingsTabIDs))
 	for i, t := range settingsTabIDs {
 		active := fmt.Sprintf("$settingsTab === %q", t.id)
-		btns[i] = Btn("", t.label,
+		btns[i] = Btn("", tr.T(t.labelKey), // i18n:dynamic (keys registered in settingsTabIDs)
 			g.Attr("data-on:click", fmt.Sprintf("$settingsTab = %q", t.id)),
 			g.Attr("data-attr:data-variant", active+" ? 'primary' : ''"),
 			g.Attr("data-attr:aria-current", active+" ? 'true' : 'false'"),
@@ -943,10 +996,11 @@ func buildDescPresetChangeExpr() string {
 }
 
 // presetOptions lists the built-in description templates as <option>s.
-func presetOptions() []g.Node {
+func presetOptions(tr *i18n.Translator) []g.Node {
 	opts := make([]g.Node, len(render.Presets))
 	for i, p := range render.Presets {
-		opts[i] = Option(Value(p.ID), g.Text(p.Name+" — "+p.Description))
+		name, desc := render.PresetText(tr, p.ID)
+		opts[i] = Option(Value(p.ID), g.Text(name+" — "+desc))
 	}
 	return opts
 }

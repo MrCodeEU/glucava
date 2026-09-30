@@ -27,10 +27,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// The offline page's text and language are filled in by the server (pwa.go),
+// already HTML-escaped, in the language of the request that fetched this file.
 const OFFLINE =
-  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<!doctype html><html lang=' + __LANG__ + '><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>glucava</title><body style="font:16px system-ui;padding:2rem;max-width:32rem;margin:auto">' +
-  '<h1>You are offline</h1><p>glucava needs a connection to show your data. Try again when you are back online.</p>';
+  '<h1>' + __OFFLINE_TITLE__ + '</h1><p>' + __OFFLINE_BODY__ + '</p>';
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;

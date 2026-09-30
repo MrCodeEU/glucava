@@ -15,12 +15,15 @@ import (
 // functions are checked (files still being converted). Add a file here in the
 // same change that converts it.
 var convertedFiles = map[string][]string{
-	"layout.go":      nil,
-	"events_i18n.go": nil,
-	"i18n.go":        nil,
-	"auth.go":        nil,
-	"pages.go":       {"EventsPage"},
-	"components.go":  {"StatusBadgeT", "SeverityBadgeT", "ConfirmDialogT", "fmtWhenT"},
+	"layout.go":       nil,
+	"events_i18n.go":  nil,
+	"i18n.go":         nil,
+	"auth.go":         nil,
+	"pages.go":        nil,
+	"pushsettings.go": nil,
+	"push.go":         nil,
+	"pwa.go":          nil,
+	"components.go":   {"StatusBadgeT", "SeverityBadgeT", "ConfirmDialogT", "fmtWhenT"},
 }
 
 // english is what a hard-coded UI sentence or label looks like: a capitalised
