@@ -17,10 +17,10 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 	g "maragu.dev/gomponents"
 
+	"github.com/MrCodeEU/glucava/internal/analytics"
 	"github.com/MrCodeEU/glucava/internal/glucose/importers"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
-	"github.com/MrCodeEU/glucava/internal/overview"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -167,13 +167,9 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	key, from, to := statsRangeBounds(r.URL.Query().Get("range"), s.now())
-	acts, err := s.Store.ActivitiesInRangeLight(r.Context(), from, to)
-	if err != nil {
-		s.serverError(w, err)
-		return
-	}
-	samples, err := s.Store.LoadSamplesFast(r.Context(), from, to)
+	loc, now := s.loc(), s.now()
+	rng := parseStatsRange(r.URL.Query(), cfg.OverviewRange(), now, loc)
+	model, err := s.overviewModelFor(r.Context(), rng, cfg)
 	if err != nil {
 		s.serverError(w, err)
 		return
@@ -183,13 +179,9 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	loc := s.loc()
-	rng := cfg.Range()
 	d := StatsData{
-		Range: key, Overview: overview.Build(acts, loc), General: overview.BuildGeneral(samples, rng, loc),
-		SourceHealth: sources, Unit: render.Unit(cfg.Unit), Loc: loc, Now: s.now(),
-		ShowTrend: cfg.OverviewShowTrend, ShowBySport: cfg.OverviewShowBySport, ShowTable: cfg.OverviewShowTable,
-		ShowGeneral: cfg.OverviewShowGeneral, ShowSourceHealth: cfg.OverviewShowSourceHealth,
+		Range: rng, Model: model, Cards: cfg.OverviewCards(), Sources: sources,
+		Unit: render.Unit(cfg.Unit), Thr: analytics.FromRange(cfg.Range()), Loc: loc, Now: now,
 	}
 	s.html(w, http.StatusOK, StatsPage(s.page(r, "Overview", "stats"), d))
 }
@@ -607,11 +599,13 @@ type settingsSignals struct {
 	PostBuffer      int     `json:"postBuffer"`
 	DescTemplate    string  `json:"descTemplate"`
 
-	OverviewShowTrend        bool `json:"overviewShowTrend"`
-	OverviewShowBySport      bool `json:"overviewShowBySport"`
-	OverviewShowTable        bool `json:"overviewShowTable"`
-	OverviewShowGeneral      bool `json:"overviewShowGeneral"`
-	OverviewShowSourceHealth bool `json:"overviewShowSourceHealth"`
+	// The Overview layout: card order (comma-separated ids), enabled flag per
+	// card id, and one string per card option keyed "<card>_<option>" (see
+	// overviewSignals and store.OverviewCards).
+	OverviewOrder string            `json:"overviewOrder"`
+	OverviewOn    map[string]bool   `json:"overviewOn"`
+	OverviewOpt   map[string]string `json:"overviewOpt"`
+	OverviewRange string            `json:"overviewRange"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -629,8 +623,7 @@ func (v settingsSignals) config() store.Config {
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
-		OverviewShowTrend:   v.OverviewShowTrend, OverviewShowBySport: v.OverviewShowBySport, OverviewShowTable: v.OverviewShowTable,
-		OverviewShowGeneral: v.OverviewShowGeneral, OverviewShowSourceHealth: v.OverviewShowSourceHealth,
+		OverviewLayout:      v.overviewLayout(), OverviewDefaultRange: v.OverviewRange,
 	}
 }
 
@@ -674,8 +667,12 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartMinMax, cfg.ChartHideStats = v.ChartMinMax, v.ChartHideStats
 	cfg.PostBufferMin = v.PostBuffer
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
-	cfg.OverviewShowTrend, cfg.OverviewShowBySport, cfg.OverviewShowTable = v.OverviewShowTrend, v.OverviewShowBySport, v.OverviewShowTable
-	cfg.OverviewShowGeneral, cfg.OverviewShowSourceHealth = v.OverviewShowGeneral, v.OverviewShowSourceHealth
+	if v.OverviewOrder != "" { // a form without the layout signals leaves the stored one alone
+		cfg.OverviewLayout = v.overviewLayout()
+	}
+	if v.OverviewRange != "" {
+		cfg.OverviewDefaultRange = v.OverviewRange
+	}
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return

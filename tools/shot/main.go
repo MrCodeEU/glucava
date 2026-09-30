@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +22,16 @@ import (
 )
 
 // defaultPaths covers every page: dashboard, two activities, every Overview
-// range, and the settings/ops pages.
-const defaultPaths = "/,/activity/140100,/activity/140098,/stats?range=7d,/stats?range=30d,/stats?range=90d,/stats?range=all,/strava,/settings,/tokens,/events,/logs"
+// range (presets, compare, a custom range and a rejected one), and the
+// settings/ops pages. {today-N} in a path is the date N days ago.
+const defaultPaths = "/,/activity/140100,/activity/140098,/stats?range=7d,/stats?range=14d,/stats?range=30d,/stats?range=90d,/stats?range=all," +
+	"/stats?range=30d&compare=prev,/stats?from={today-20}&to={today-6},/stats?from=2001-01-01&to=2000-01-01," +
+	"/strava,/settings,/tokens,/events,/logs"
+
+var (
+	todayRe = regexp.MustCompile(`\{today-(\d+)\}`)
+	nonName = regexp.MustCompile(`[^A-Za-z0-9]+`)
+)
 
 // problems collects browser console errors, uncaught exceptions and CSP
 // violations, so a page that looks fine but is broken still fails the run.
@@ -200,10 +209,14 @@ func main() {
 	}
 
 	visit := func(p string) {
-		name := strings.Trim(strings.NewReplacer("/", "-", "?range=", "-").Replace(p), "-")
+		name := strings.Trim(nonName.ReplaceAllString(strings.NewReplacer("?range=", "-", "&compare=prev", "-compare", "?from=", "-custom-").Replace(todayRe.ReplaceAllString(p, "d$1")), "-"), "-")
 		if name == "" {
 			name = "dashboard"
 		}
+		p = todayRe.ReplaceAllStringFunc(p, func(m string) string {
+			n, _ := strconv.Atoi(todayRe.FindStringSubmatch(m)[1])
+			return time.Now().AddDate(0, 0, -n).Format("2006-01-02")
+		})
 		probs.setWhere(fmt.Sprintf("%s (%dpx, %s)", p, curWidth, curMode))
 		if err := chromedp.Run(ctx, chromedp.Navigate(*base+p), setMode, chromedp.Sleep(900*time.Millisecond)); err != nil {
 			slog.Error("navigate", "path", p, "err", err)
@@ -282,4 +295,22 @@ func runFlow(ctx context.Context, base string, shot func(string), setMode chrome
 		chromedp.Click(`button[data-on\:click*="/actions/strava/test"]`, chromedp.ByQuery), chromedp.Sleep(2500*time.Millisecond)))
 	shot("flow5-session-test")
 	fmt.Println("session shows Valid:", strings.Contains(text("#strava-status"), "Valid"))
+
+	// 6. Overview layout: hide a card and move another down in the settings,
+	// save, reload, and read both back (this exercises the nested signals
+	// overviewOn.<id> and the reorder buttons for real).
+	var kpisOn, order string
+	must(chromedp.Run(ctx, chromedp.Navigate(base+"/settings"), setMode, chromedp.Sleep(800*time.Millisecond),
+		chromedp.Click(`//button[contains(., "Description and chart")]`, chromedp.BySearch), chromedp.Sleep(300*time.Millisecond),
+		chromedp.Click(`#overviewOn_kpis`, chromedp.ByQuery),
+		chromedp.Click(`#overview-move-tir-down`, chromedp.ByQuery),
+		chromedp.SetValue("#overviewOpt_heatmap_metric", "tir", chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector('#overviewOpt_heatmap_metric').dispatchEvent(new Event('change',{bubbles:true}))`, nil),
+		chromedp.Click(`button[data-on\:click*="/actions/settings"]`, chromedp.ByQuery), chromedp.Sleep(1500*time.Millisecond)))
+	shot("flow6-overview-layout-saved")
+	must(chromedp.Run(ctx, chromedp.Navigate(base+"/settings"), chromedp.Sleep(800*time.Millisecond),
+		chromedp.Evaluate(`String(document.querySelector('#overviewOn_kpis').checked)`, &kpisOn),
+		chromedp.Evaluate(`Array.from(document.querySelectorAll('[id^="overviewOn_"]')).sort((a,b)=>a.parentElement.style.order-b.parentElement.style.order).map(e=>e.id.slice(10)).join(',')`, &order)))
+	fmt.Println("kpis card enabled after reload (want false):", kpisOn)
+	fmt.Println("card order after reload (want agp before tir):", order)
 }

@@ -298,6 +298,7 @@ type TrendSeries struct {
 	Color  string // empty picks the default
 	Points []TrendPoint
 	Area   bool
+	Thin   bool // a fine, faded line, for context such as a daily minimum or maximum
 }
 
 // TrendInput describes a time-axis line chart with optional zoom and target
@@ -342,6 +343,10 @@ func TrendOption(in TrendInput) map[string]any {
 		if s.Color != "" {
 			it["itemStyle"] = map[string]any{"color": s.Color}
 			it["lineStyle"] = map[string]any{"width": 2, "color": s.Color}
+		}
+		if s.Thin {
+			ls := it["lineStyle"].(map[string]any)
+			ls["width"], ls["opacity"] = 1, 0.7
 		}
 		if s.Area {
 			it["areaStyle"] = map[string]any{"opacity": 0.12}
