@@ -134,6 +134,25 @@ type ArtifactOptions struct {
 	Windows []Window
 }
 
+// Why is a reason as a code plus numbers, so the page can put it in the
+// reader's language. Code is a translation key suffix ("fall_rate"); Args
+// holds the numbers the text mentions, in mg/dL and minutes.
+type Why struct {
+	Code string             `json:"code"`
+	Args map[string]float64 `json:"args,omitempty"`
+}
+
+func why(code string, kv ...any) Why {
+	w := Why{Code: code}
+	for i := 0; i+1 < len(kv); i += 2 {
+		if w.Args == nil {
+			w.Args = map[string]float64{}
+		}
+		w.Args[kv[i].(string)] = kv[i+1].(float64)
+	}
+	return w
+}
+
 // Artifact is one suspected sensor artifact.
 type Artifact struct {
 	Kind ArtifactKind `json:"kind"`
@@ -145,11 +164,15 @@ type Artifact struct {
 	Reason string `json:"reason"`
 	// Reasons lists every factor behind the confidence, for a tooltip:
 	// what supports the call and what makes it doubtful.
-	Reasons    []string `json:"reasons,omitempty"`
-	Confidence float64  `json:"confidence"` // 0 to 1
-	Nadir      float64  `json:"nadir"`      // lowest reading in the span, mg/dL
-	PreLevel   float64  `json:"preLevel"`   // the level before it, mg/dL
-	PostLevel  float64  `json:"postLevel"`  // the first reading after it, mg/dL
+	Reasons []string `json:"reasons,omitempty"`
+	// ReasonWhy and Why are Reason and Reasons as codes, for translation; the
+	// English text above stays as the fallback.
+	ReasonWhy  Why     `json:"reasonWhy"`
+	Why        []Why   `json:"why,omitempty"`
+	Confidence float64 `json:"confidence"` // 0 to 1
+	Nadir      float64 `json:"nadir"`      // lowest reading in the span, mg/dL
+	PreLevel   float64 `json:"preLevel"`   // the level before it, mg/dL
+	PostLevel  float64 `json:"postLevel"`  // the first reading after it, mg/dL
 	// Marked is true when a person confirmed the span by hand.
 	Marked bool `json:"marked,omitempty"`
 }
@@ -264,16 +287,25 @@ func DetectArtifacts(samples []stats.Sample, thr Thresholds, o ArtifactOptions) 
 type score struct {
 	conf    float64
 	reasons []string
+	whys    []Why
 }
 
-func (sc *score) plus(v float64, why string) {
+func (sc *score) plus(v float64, text string, w Why) {
 	sc.conf += v
-	sc.reasons = append(sc.reasons, why)
+	sc.reasons = append(sc.reasons, text)
+	sc.whys = append(sc.whys, w)
 }
 
-func (sc *score) minus(v float64, why string) {
+func (sc *score) minus(v float64, text string, w Why) {
 	sc.conf -= v
-	sc.reasons = append(sc.reasons, why)
+	sc.reasons = append(sc.reasons, text)
+	sc.whys = append(sc.whys, w)
+}
+
+// note records a factor that does not change the confidence.
+func (sc *score) note(text string, w Why) {
+	sc.reasons = append(sc.reasons, text)
+	sc.whys = append(sc.whys, w)
 }
 
 func (sc *score) final() float64 { return math.Max(0, math.Min(sc.conf, 1)) }
@@ -335,30 +367,31 @@ func detectCompression(s []stats.Sample, thr Thresholds, loc *time.Location, nig
 		}
 		dur := s[end].Time.Sub(s[start].Time)
 		sc := score{conf: 0.5}
-		sc.reasons = append(sc.reasons, fmt.Sprintf("fell %.1f mg/dL per min", onset))
+		sc.note(fmt.Sprintf("fell %.1f mg/dL per min", onset), why("fall_rate", "rate", onset))
 		if onset >= artifactFastFall {
-			sc.plus(bonusFall, "faster than interstitial glucose usually falls")
+			sc.plus(bonusFall, "faster than interstitial glucose usually falls", why("fast_fall"))
 		}
 		if rec >= artifactFastFall {
-			sc.plus(bonusRecovery, "recovered fast")
+			sc.plus(bonusRecovery, "recovered fast", why("fast_recovery"))
 		}
 		if dur <= 45*time.Minute {
-			sc.plus(0.1, "short")
+			sc.plus(0.1, "short", why("short"))
 		}
 		if gapBefore || gapAfter {
-			sc.plus(bonusGap, "signal gap next to the low")
+			sc.plus(bonusGap, "signal gap next to the low", why("gap_low"))
 		}
 		// A slow decline before the low suggests a real nocturnal low.
 		if back := valueBefore(s, start, 30*time.Minute); !math.IsNaN(back) && back-pre >= artifactSlowDecline {
-			sc.minus(penaltySlowDecline, fmt.Sprintf("declined %.0f mg/dL over the half hour before (real lows usually decline gradually)", back-pre))
+			sc.minus(penaltySlowDecline, fmt.Sprintf("declined %.0f mg/dL over the half hour before (real lows usually decline gradually)", back-pre), why("decline", "drop", back-pre))
 		}
 		if overlapsWindow(windows, s[start].Time, s[end].Time) {
-			sc.minus(penaltyActivity, "during an activity (real fast falls happen in exercise)")
+			sc.minus(penaltyActivity, "during an activity (real fast falls happen in exercise)", why("activity"))
 		}
 		out = append(out, Artifact{
 			Kind: ArtifactCompression, Start: s[start].Time, End: s[end].Time,
-			Reason:  fmt.Sprintf("fast fall and fast recovery, %d min, overnight", int(dur.Minutes())),
-			Reasons: sc.reasons, Confidence: sc.final(), Nadir: nadir, PreLevel: pre, PostLevel: post,
+			Reason:    fmt.Sprintf("fast fall and fast recovery, %d min, overnight", int(dur.Minutes())),
+			ReasonWhy: why("compression", "min", float64(int(dur.Minutes()))),
+			Reasons:   sc.reasons, Why: sc.whys, Confidence: sc.final(), Nadir: nadir, PreLevel: pre, PostLevel: post,
 		})
 	}
 	applyRecurrence(out, loc)
@@ -411,6 +444,7 @@ func applyRecurrence(arts []Artifact, loc *time.Location) {
 		if len(nights) >= artifactRecurrenceOthers {
 			arts[i].Confidence = math.Min(1, arts[i].Confidence+bonusRecurrence)
 			arts[i].Reasons = append(arts[i].Reasons, fmt.Sprintf("similar low near this hour on %d other nights", len(nights)))
+			arts[i].Why = append(arts[i].Why, why("recurrence", "nights", float64(len(nights))))
 		}
 	}
 }
@@ -499,27 +533,28 @@ func detectDips(s []stats.Sample, windows []Window) []Artifact {
 		fall := (s[last].Value - s[j].Value) / minutes(s[j].Time.Sub(s[last].Time))
 
 		sc := score{conf: 0.5}
-		sc.reasons = append(sc.reasons, fmt.Sprintf("dropped %.0f mg/dL below the earlier level", baseline-nadir))
+		sc.note(fmt.Sprintf("dropped %.0f mg/dL below the earlier level", baseline-nadir), why("dropped", "drop", baseline-nadir))
 		if hasGap(s, j, k) {
-			sc.plus(bonusGap, "signal gap during the dip")
+			sc.plus(bonusGap, "signal gap during the dip", why("gap_dip"))
 		}
 		if fall >= artifactFastFall {
-			sc.plus(bonusFall, fmt.Sprintf("fell %.1f mg/dL per min, faster than interstitial glucose usually falls", fall))
+			sc.plus(bonusFall, fmt.Sprintf("fell %.1f mg/dL per min, faster than interstitial glucose usually falls", fall), why("fall_rate_fast", "rate", fall))
 		}
 		if math.Abs(s[k].Value-baseline) <= 10 {
-			sc.plus(bonusRecovery, "returned to within 10 mg/dL of the earlier level")
+			sc.plus(bonusRecovery, "returned to within 10 mg/dL of the earlier level", why("returned"))
 		}
 		if spread(base) <= 10 {
-			sc.plus(bonusFlat, "flat before the drop")
+			sc.plus(bonusFlat, "flat before the drop", why("flat"))
 		}
 		if overlapsWindow(windows, s[j].Time, s[k-1].Time) {
-			sc.minus(penaltyActivity, "during an activity (real fast falls happen in exercise)")
+			sc.minus(penaltyActivity, "during an activity (real fast falls happen in exercise)", why("activity"))
 		}
 		out = append(out, Artifact{
 			Kind: ArtifactDip, Start: s[j].Time, End: s[k-1].Time,
 			Reason: fmt.Sprintf("sudden drop of %.0f mg/dL for %d readings, then back to the earlier level",
 				baseline-nadir, k-j),
-			Reasons: sc.reasons, Confidence: sc.final(), Nadir: nadir, PreLevel: baseline, PostLevel: s[k].Value,
+			ReasonWhy: why("dip", "drop", baseline-nadir, "n", float64(k-j)),
+			Reasons:   sc.reasons, Why: sc.whys, Confidence: sc.final(), Nadir: nadir, PreLevel: baseline, PostLevel: s[k].Value,
 		})
 		j = k - 1
 	}
@@ -618,7 +653,7 @@ func ApplyMarks(spans []Artifact, marks []Mark, samples []stats.Sample) []Artifa
 }
 
 func markedSpan(s []stats.Sample, m Mark) Artifact {
-	a := Artifact{Kind: ArtifactMarked, Start: m.Start, End: m.End, Reason: "marked by you", Confidence: 1, Marked: true}
+	a := Artifact{Kind: ArtifactMarked, Start: m.Start, End: m.End, Reason: "marked by you", ReasonWhy: why("marked"), Confidence: 1, Marked: true}
 	lo := sort.Search(len(s), func(i int) bool { return !s[i].Time.Before(m.Start) })
 	hi := sort.Search(len(s), func(i int) bool { return s[i].Time.After(m.End) })
 	if lo < hi {
