@@ -84,6 +84,8 @@ func (c Config) Validate() string {
 		}
 	case !ValidChartPanelOrder(c.ChartPanelOrder):
 		return "Chart panel order must only list activity, band, dots, hr."
+	case !validArtifactMode(c.ArtifactMode):
+		return "Suspected artifacts must be handled as flagged or exclude."
 	case !validOverviewRange(c.OverviewDefaultRange):
 		return "The default Overview range must be one of " + strings.Join(OverviewRanges, ", ") + "."
 	}
@@ -238,6 +240,7 @@ var configKeys = map[string]configKey{
 	"description_template":   strKey(func(c *Config) *string { return &c.DescriptionTemplate }),
 	"overview_layout":        strKey(func(c *Config) *string { return &c.OverviewLayout }),
 	"overview_default_range": strKey(func(c *Config) *string { return &c.OverviewDefaultRange }),
+	"artifact_mode":          strKey(func(c *Config) *string { return &c.ArtifactMode }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

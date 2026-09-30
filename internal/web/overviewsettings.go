@@ -34,7 +34,7 @@ func overviewSignals(cfg store.Config) map[string]any {
 		}
 	}
 	return map[string]any{
-		"overviewOrder": strings.Join(order, ","), "overviewOn": on, "overviewOpt": opt, "overviewRange": cfg.OverviewRange(),
+		"overviewOrder": strings.Join(order, ","), "overviewOn": on, "overviewOpt": opt, "overviewRange": cfg.OverviewRange(), "artifactMode": cfg.ArtifactsMode(),
 	}
 }
 
@@ -116,6 +116,7 @@ func overviewSettingsCard(cfg store.Config) g.Node {
 		P(Class("muted"), g.Text("Choose which cards the Overview shows, in which order, and the range it opens with.")),
 		Field("overviewRange", "Opens with", "You can still switch range, or pick a custom one, on the page itself.",
 			g.El("select", append([]g.Node{ID("overviewRange"), g.Attr("data-bind", "overviewRange")}, rangeOpts...)...)),
+		artifactModeField(),
 		Label(g.Text("Cards")),
 		Div(Class("flex flex-col"), g.Group(rows)),
 	)

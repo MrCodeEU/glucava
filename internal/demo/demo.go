@@ -294,6 +294,9 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 	if err := st.SaveSamples(ctx, SourceName, rest); err != nil {
 		return err
 	}
+	if err := st.SaveSamples(ctx, SourceName, artifactDays(now, seen)); err != nil {
+		return err
+	}
 
 	events := []struct {
 		e        jobs.Event
@@ -324,6 +327,42 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// artifactDays is a continuous trace for the two days before the background
+// trace, with one overnight compression low and one sudden 30 mg/dL sensor dip
+// in it, so the Overview has suspected artifacts to flag. Times in skip keep
+// their activity readings.
+func artifactDays(now time.Time, skip map[int64]bool) []stats.Sample {
+	end := now.Add(-26 * time.Hour)
+	begin := end.Add(-48 * time.Hour)
+	at := func(daysAgo, hour, min int) time.Time {
+		d := now.AddDate(0, 0, -daysAgo)
+		return time.Date(d.Year(), d.Month(), d.Day(), hour, min, 0, 0, now.Location())
+	}
+	over := map[int64]float64{}
+	put := func(t time.Time, vals ...float64) {
+		for i, v := range vals {
+			over[t.Add(time.Duration(i)*5*time.Minute).Truncate(5*time.Minute).Unix()] = v
+		}
+	}
+	// 02:30, a step down, held near 55 for about half an hour, then back.
+	put(at(2, 1, 45), 116, 117, 116, 117, 116, 116, 117, 116, 116, 117, 60, 55, 54, 55, 56, 57, 100, 116, 118)
+	// 13:00, a drop of 32 that is over in two readings.
+	put(at(2, 12, 15), 128, 130, 129, 128, 130, 129, 128, 129, 130, 97, 98, 128, 130)
+	var out []stats.Sample
+	for t := begin.Truncate(5 * time.Minute); !t.After(end); t = t.Add(5 * time.Minute) {
+		if v, ok := over[t.Unix()]; ok {
+			out = append(out, stats.Sample{Time: t, Value: v})
+			continue
+		}
+		if skip[t.Unix()] {
+			continue
+		}
+		v := 118 + 12*math.Sin(float64(t.Unix()%86400)/86400*2*math.Pi)
+		out = append(out, stats.Sample{Time: t, Value: math.Round(v)})
+	}
+	return out
 }
 
 func sq(x float64) float64 { return x * x }

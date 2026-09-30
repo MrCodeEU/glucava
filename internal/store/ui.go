@@ -78,6 +78,10 @@ type Config struct {
 	// OverviewDefaultRange is the range preset the Overview opens with: one
 	// of OverviewRanges, empty meaning 30d.
 	OverviewDefaultRange string
+
+	// ArtifactMode says what the Overview does with suspected CGM artifacts
+	// (ArtifactFlagged or ArtifactExclude); empty means flagged.
+	ArtifactMode string
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -120,6 +124,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		DescriptionTemplate:  r.GetString("description_template"),
 		OverviewLayout:       r.GetString("overview_layout"),
 		OverviewDefaultRange: r.GetString("overview_default_range"),
+		ArtifactMode:         r.GetString("artifact_mode"),
 	}, nil
 }
 
@@ -175,6 +180,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("description_template", c.DescriptionTemplate)
 	r.Set("overview_layout", c.OverviewLayout)
 	r.Set("overview_default_range", c.OverviewDefaultRange)
+	r.Set("artifact_mode", c.ArtifactMode)
 	return s.App.Save(r)
 }
 
