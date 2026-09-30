@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- `{{.TIRBar}}` and `{{.TIRWindowBar}}` description-template fields: the below/in-range/above split drawn as ten emoji blocks (🟥 low, 🟩 in range, 🟨 high). New "Bar + window" preset shows the bar and, when it differs, a second one for the wider before/after window. The Default preset is unchanged, so existing descriptions do not change.
+
+### Changed
+- The System pages (Strava session, Triggers, Logs) are links in the top bar on wide screens; the System dropdown only appears where the bar is too narrow.
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

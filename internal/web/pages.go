@@ -598,7 +598,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 				),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
-						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+
+						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.TIRBar}}, {{.TIRWindowBar}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+
 						"{{.Distance}}, {{.Elevation}}, {{.Pace}}, {{.Sparkline}}; {{if .Sparkline}}...{{end}} to only show a line when it's there). {{.TIR}} is the activity window; "+
 						"{{.TIRWindow}} is the wider pre/post window the chart draws from below, so the two can differ — add both if you want to show that. {{.Pace}} is a single "+
 						"field that's already the right unit for the activity's sport (pace for a run/hike/walk/swim, speed for a ride), empty when there's no meaningful distance "+
