@@ -169,7 +169,7 @@ func main() {
 			// Same window the description used, so the chart shows what was summarized.
 			samples, _ := st.LoadSamplesAny(ctx, a.Start.Add(-set.Pre), a.End().Add(set.Post))
 			if m, ok := digest.ActivityMessage(a, set.Unit, set.Range, samples, time.Local); ok {
-				if err := sendSummary(ctx, st, vault, m); err != nil {
+				if err := sendSummary(ctx, st, vault, demoMode, m); err != nil {
 					slog.Error("notify activity summary", "err", err)
 				}
 			}
@@ -231,14 +231,14 @@ func main() {
 				}
 				return render.MgDL
 			},
-			Send: func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, m) },
+			Send: func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, demoMode, m) },
 		}
 		go weekly.Run(ctx)
 
 		health := &digest.Health{
 			Store: st, Loc: func() *time.Location { return time.Local }, Build: buildID,
 			Enabled: func() bool { cfg, err := st.LoadConfig(); return err == nil && cfg.MailHealth },
-			Send:    func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, m) },
+			Send:    func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, demoMode, m) },
 		}
 		go health.Run(ctx)
 
@@ -255,7 +255,7 @@ func main() {
 			}).Run(ctx)
 		}
 
-		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Channels: func() []notify.Channel { return channels(st, vault) }}
+		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Channels: func() []notify.Channel { return channels(st, vault, demoMode) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
@@ -317,7 +317,7 @@ func main() {
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,
 			Logs:    logHandler,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
-			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault)) },
+			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault, demoMode)) },
 			StravaLogin: stravaLogin,
 			GlucoseTest: func(ctx context.Context) error {
 				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
@@ -396,7 +396,7 @@ func storeDemoCookies(vault *secrets.Vault) error {
 // sendTest delivers a test message to every configured channel.
 func sendTest(ctx context.Context, chans []notify.Channel) error {
 	if len(chans) == 0 {
-		return errors.New("no channel is set up; save a ntfy or webhook URL, or an email recipient (with SMTP configured), first")
+		return errors.New("no channel is set up; save a ntfy or webhook URL, an email recipient (with SMTP configured), or enable push on a device, first")
 	}
 	msg := notify.Message{
 		Type: "test", Severity: "info", Title: "glucava test",
@@ -412,7 +412,7 @@ func sendTest(ctx context.Context, chans []notify.Channel) error {
 }
 
 // channels builds the notification channels from the current settings.
-func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
+func channels(st *store.PB, vault *secrets.Vault, demo bool) []notify.Channel {
 	cfg, err := st.LoadConfig()
 	if err != nil {
 		slog.Error("notify read settings", "err", err)
@@ -430,7 +430,27 @@ func channels(st *store.PB, vault *secrets.Vault) []notify.Channel {
 	if e := newEmail(cfg, vault, func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.MailAlerts) }); e != nil {
 		out = append(out, e)
 	}
+	wants := func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.PushAlerts) }
+	if p := newPush(st, vault, cfg, demo, wants); p != nil {
+		out = append(out, p)
+	}
 	return out
+}
+
+// newPush builds the Web Push channel, or returns nil while no device is
+// subscribed (so events stay pending instead of counting as delivered).
+func newPush(st *store.PB, vault *secrets.Vault, cfg store.Config, demo bool, wants func(msgType string) bool) *notify.WebPush {
+	subs, err := st.PushSubscriptions(context.Background())
+	if err != nil || len(subs) == 0 {
+		return nil
+	}
+	p, err := notify.NewWebPush(st, vault, cfg.PublicURL, cfg.EmailTo, demo)
+	if err != nil {
+		slog.Error("notify: web push setup", "err", err)
+		return nil
+	}
+	p.Wants = wants
+	return p
 }
 
 // newEmail builds the email channel from settings, or returns nil when email
@@ -449,21 +469,30 @@ func newEmail(cfg store.Config, vault *secrets.Vault, wants func(msgType string)
 	}
 }
 
-// sendSummary emails a summary message if that kind is switched on. Summaries
-// go to email only; ntfy and webhooks carry alerts.
-func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, m notify.Message) error {
+// sendSummary sends a summary message to email and to push devices, each if
+// that kind is switched on for it. ntfy and webhooks carry alerts only.
+func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, demo bool, m notify.Message) error {
 	cfg, err := st.LoadConfig()
 	if err != nil {
 		return err
 	}
-	on := (m.Type == notify.TypeActivitySummary && cfg.MailActivity) || (m.Type == notify.TypeWeeklySummary && cfg.MailWeekly) ||
-		(m.Type == notify.TypeHealthReport && cfg.MailHealth)
-	e := newEmail(cfg, vault, nil)
-	if !on || e == nil {
-		return nil
-	}
+	isType := func(t string) bool { return m.Type == t }
+	mailOn := (isType(notify.TypeActivitySummary) && cfg.MailActivity) || (isType(notify.TypeWeeklySummary) && cfg.MailWeekly) ||
+		(isType(notify.TypeHealthReport) && cfg.MailHealth)
+	pushOn := cfg.PushSummaries && (isType(notify.TypeActivitySummary) || isType(notify.TypeWeeklySummary) || isType(notify.TypeHealthReport))
 	m.Link, m.LinkLabel = notify.LinkFor(cfg.PublicURL, m)
-	return e.Send(ctx, m)
+	var errs []error
+	if e := newEmail(cfg, vault, nil); mailOn && e != nil {
+		if err := e.Send(ctx, m); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if p := newPush(st, vault, cfg, demo, nil); pushOn && p != nil {
+		if err := p.Send(ctx, m); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // publicLink adds a web UI link to alert messages when a public URL is set.

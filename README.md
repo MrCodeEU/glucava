@@ -136,6 +136,22 @@ Summaries are email-only; ntfy and webhooks keep receiving alerts only. Scripted
 
 The variables only seed the settings while no SMTP host is saved yet; after that the web UI is the source of truth and later edits in `.env` are ignored (except a password added while none is stored). Glucava does not expose the SMTP auth method or EHLO name, so servers that need LOGIN auth or a custom EHLO name (e.g. Gmail SMTP-relay) are not supported.
 
+## Push notifications and the installable app
+
+glucava is an installable web app (a PWA) and can send **Web Push** notifications to phones and computers, with no app store and no third-party account. It pushes what email does: failure alerts and, if you switch them on, the activity, weekly and monthly summaries. Nothing else: no glucose alarms, and no glucose data is stored on the device (the service worker caches only CSS, JavaScript and icons; every page and number is loaded live).
+
+Turn it on under Settings → Notifications → **Push notifications**: press *Enable on this device*, allow notifications when the browser asks, then *Send test push*. Each browser or phone is enabled on its own; the card lists the subscribed devices and can remove them. Choose what is pushed with the two switches (failure alerts on by default, summaries off) and press *Save settings*. Scripted: `glucava config set push_alerts true` / `push_summaries true`.
+
+Requirements and caveats:
+
+- **HTTPS is required** (plain `http://localhost` also works, for trying it out). Browsers refuse service workers and push on insecure origins. Behind a reverse proxy this is usually already the case.
+- **iPhone and iPad** (iOS/iPadOS 16.4 or newer): push only works for an app added to the Home Screen. Open glucava in Safari, Share → Add to Home Screen, open it from the new icon, and enable push there. The card says so when it detects this.
+- Messages travel through the browser vendor's push service (Google, Mozilla or Apple), end-to-end encrypted (RFC 8291) and signed with a VAPID key that glucava generates on first start. The private key lives in the encrypted secrets vault; subscriptions are stored like any other setting and leave with a backup. Only `https://` endpoints on public addresses are accepted or contacted.
+- Changing the VAPID key (deleting the `vapid_private` secret) makes existing devices stop receiving pushes until each one presses *Enable on this device* again.
+- A phone that was off gets the message when it is back online, within the message's lifetime (alerts 4 h, activity summaries 6 h, weekly/monthly 24 h, test 1 min).
+
+To try it before deploying, run the mock (`make mock`, open <http://127.0.0.1:8306>): it has one made-up device and sends through a stand-in that only logs, so the card, list and buttons work, but no real push is delivered. Real delivery needs a real browser on an HTTPS address.
+
 ## Scripted setup (Ansible, cloud-init, ...)
 
 Everything the web UI can change is scriptable, with the same validation:
@@ -152,7 +168,7 @@ printf '%s\n' "$SMTP_APP_PASSWORD" | glucava secrets set smtp_password --dev=fal
 glucava secrets status --dev=false --dir /data     # set/unset per secret, never the values
 ```
 
-- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name`, `public_url`, `mail_alerts`, `mail_activity`, `mail_weekly`, `mail_health`, `gap_alert_hours`, `chart_image`, `chart_theme`, `chart_size`, `chart_band`, `chart_activity`, `chart_dots`, `chart_line`, `chart_hr`, `chart_panel_order`, `chart_pre_minutes`, `hr_read`, `post_buffer_minutes`, `description_template` (`glucava config list` is authoritative).
+- The keys are `unit`, `range_low`, `range_high`, `pre_minutes`, `post_minutes`, `poll_interval_minutes`, `retention_days`, `dexcom_region`, `dexcom_username`, `ntfy_url`, `webhook_url`, `email_to`, `smtp_host`, `smtp_port`, `smtp_username`, `smtp_tls`, `smtp_sender_address`, `smtp_sender_name`, `public_url`, `mail_alerts`, `mail_activity`, `mail_weekly`, `mail_health`, `push_alerts`, `push_summaries`, `gap_alert_hours`, `chart_image`, `chart_theme`, `chart_size`, `chart_band`, `chart_activity`, `chart_dots`, `chart_line`, `chart_hr`, `chart_panel_order`, `chart_pre_minutes`, `hr_read`, `post_buffer_minutes`, `description_template` (`glucava config list` is authoritative).
 - Settings you pass in one call are validated together, so related keys (`smtp_host` with `smtp_sender_address`) can come in any order. An invalid batch changes nothing and exits non-zero.
 - Secrets: `dexcom_password`, `ntfy_token`, `webhook_secret`, `smtp_password`. Strava cookies: `glucava strava cookies import`. Trigger tokens: `glucava token create <name>`.
 - `GLUCAVA_RETENTION_DAYS`, when set, still overrides `retention_days` at every server start.

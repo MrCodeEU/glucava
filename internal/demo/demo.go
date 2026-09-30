@@ -227,6 +227,9 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 	if err := st.SaveConfig(cfg); err != nil {
 		return err
 	}
+	if err := seedPush(ctx, st); err != nil {
+		return err
+	}
 	rng := stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh}
 	post := time.Duration(cfg.PostMin) * time.Minute
 

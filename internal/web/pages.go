@@ -394,6 +394,7 @@ type SettingsData struct {
 	ImportFormats                                                      []string // importers.Names(); empty hides the import card
 	ImportOK, ImportErr                                                string   // one-shot flash after /actions/glucose/import redirects back
 	DescPreview                                                        string   // rendered preview of Cfg.DescriptionTemplate (or the default), before any edit
+	Push                                                               PushCardData
 }
 
 // AccountEmail shows the signed-in address; it is patched after a change.
@@ -475,6 +476,9 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"settingsTab": "glucose",
 	}
 	for k, v := range overviewSignals(c) {
+		sigMap[k] = v
+	}
+	for k, v := range pushSettingSignals(c) {
 		sigMap[k] = v
 	}
 	sig, _ := json.Marshal(sigMap)
@@ -609,6 +613,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("publicURL", "Public URL of this web UI", "Used for links in emails, for example https://glucava.example.com. Leave empty for no links.", Input(ID("publicURL"), Type("url"), bind("publicURL"))),
 					),
 				),
+				PushCard(d.Push),
 			),
 			tabSection("data",
 				g.If(len(d.ImportFormats) > 0, Card(

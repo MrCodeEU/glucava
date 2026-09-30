@@ -219,6 +219,8 @@ var configKeys = map[string]configKey{
 	"mail_activity":          boolKey(func(c *Config) *bool { return &c.MailActivity }),
 	"mail_weekly":            boolKey(func(c *Config) *bool { return &c.MailWeekly }),
 	"mail_health":            boolKey(func(c *Config) *bool { return &c.MailHealth }),
+	"push_alerts":            boolKey(func(c *Config) *bool { return &c.PushAlerts }),
+	"push_summaries":         boolKey(func(c *Config) *bool { return &c.PushSummaries }),
 	"gap_alert_hours":        intKey(func(c *Config) *int { return &c.GapAlertHours }),
 	"chart_image":            boolKey(func(c *Config) *bool { return &c.ChartImage }),
 	"chart_theme":            strKey(func(c *Config) *string { return &c.ChartTheme }),

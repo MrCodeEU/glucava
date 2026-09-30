@@ -73,6 +73,7 @@ func head(title, build string) g.Node {
 		TitleEl(g.Text(title+" · glucava")),
 		Link(Rel("icon"), Type("image/svg+xml"), Href("/static/favicon.svg")),
 		Link(Rel("stylesheet"), Href("/static/app.css"+v)),
+		pwaHead(v),
 		Script(Src("/static/theme.js")),
 		Script(Type("module"), Src("/static/datastar.js"+v)),
 		// The chart library and its <gv-chart> element are deferred: pages

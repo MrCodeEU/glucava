@@ -121,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
+	s.pwaRoutes(mux)
 
 	page := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	page("GET /{$}", s.dashboard)
@@ -152,6 +153,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/artifact-mark", s.actionArtifactMark)
 	page("POST /actions/account", s.actionAccount)
 	page("POST /actions/notify/test", s.actionNotifyTest)
+	s.pushRoutes(page)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
 	page("POST /actions/strava/test", s.actionStravaTest)
 	page("POST /actions/strava/login", s.actionStravaLogin)
@@ -173,6 +175,7 @@ func (s *Server) Handler() http.Handler {
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events", "/logs",
 	"/ui/charts", "/ui/charts/refresh", "/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/manifest.webmanifest", "/sw.js",
 }
 
 // maxBody caps most request bodies. The largest legitimate one otherwise is a

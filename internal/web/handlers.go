@@ -233,6 +233,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
 		DescPreview: s.previewDescriptionText(r.Context(), cfg.DescriptionTemplate, cfg),
+		Push:        s.pushCardData(r.Context(), cfg),
 	}))
 }
 
@@ -670,6 +671,9 @@ type settingsSignals struct {
 	OverviewOpt   map[string]string `json:"overviewOpt"`
 	OverviewRange string            `json:"overviewRange"`
 	ArtifactMode  string            `json:"artifactMode"`
+
+	PushAlerts    bool `json:"pushAlerts"`
+	PushSummaries bool `json:"pushSummaries"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -688,6 +692,7 @@ func (v settingsSignals) config() store.Config {
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
 		OverviewLayout:      v.overviewLayout(), OverviewDefaultRange: v.OverviewRange, ArtifactMode: v.ArtifactMode,
+		PushAlerts: v.PushAlerts, PushSummaries: v.PushSummaries,
 	}
 }
 
@@ -730,6 +735,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.ChartAvgLine, cfg.ChartRangeLines = v.ChartAvgLine, v.ChartRangeLines
 	cfg.ChartMinMax, cfg.ChartHideStats = v.ChartMinMax, v.ChartHideStats
 	cfg.PostBufferMin = v.PostBuffer
+	cfg.PushAlerts, cfg.PushSummaries = v.PushAlerts, v.PushSummaries
 	cfg.DescriptionTemplate = strings.TrimSpace(v.DescTemplate)
 	if v.OverviewOrder != "" { // a form without the layout signals leaves the stored one alone
 		cfg.OverviewLayout = v.overviewLayout()

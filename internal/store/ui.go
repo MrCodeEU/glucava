@@ -42,6 +42,8 @@ type Config struct {
 	MailActivity   bool   // email a summary after each processed activity
 	MailWeekly     bool   // email a weekly summary
 	MailHealth     bool   // email a monthly health report
+	PushAlerts     bool   // push failure alerts to subscribed devices
+	PushSummaries  bool   // push activity, weekly and health summaries
 	ChartImage     bool   // attach a glucose chart photo to the Strava activity
 	ChartTheme     string // "light" or "dark"
 	ChartSize      string // "standard" or "large"
@@ -125,6 +127,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		OverviewLayout:       r.GetString("overview_layout"),
 		OverviewDefaultRange: r.GetString("overview_default_range"),
 		ArtifactMode:         r.GetString("artifact_mode"),
+		PushAlerts:           r.GetBool("push_alerts"), PushSummaries: r.GetBool("push_summaries"),
 	}, nil
 }
 
@@ -181,6 +184,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("overview_layout", c.OverviewLayout)
 	r.Set("overview_default_range", c.OverviewDefaultRange)
 	r.Set("artifact_mode", c.ArtifactMode)
+	r.Set("push_alerts", c.PushAlerts)
+	r.Set("push_summaries", c.PushSummaries)
 	return s.App.Save(r)
 }
 
