@@ -134,6 +134,26 @@ func (c Config) OverviewCards() []OverviewCard {
 	return cards
 }
 
+// How the Overview treats suspected CGM artifacts.
+const (
+	// ArtifactFlagged marks suspected artifacts but leaves every number alone.
+	ArtifactFlagged = "flagged"
+	// ArtifactExclude also leaves them out of the statistics.
+	ArtifactExclude = "exclude"
+)
+
+// ArtifactsMode returns the configured handling of suspected artifacts.
+func (c Config) ArtifactsMode() string {
+	if c.ArtifactMode == ArtifactExclude {
+		return ArtifactExclude
+	}
+	return ArtifactFlagged
+}
+
+func validArtifactMode(m string) bool {
+	return m == "" || m == ArtifactFlagged || m == ArtifactExclude
+}
+
 // OverviewRanges are the Overview range presets, in display order.
 var OverviewRanges = []string{"7d", "14d", "30d", "90d", "all"}
 
