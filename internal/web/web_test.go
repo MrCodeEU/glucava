@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -199,6 +200,7 @@ func TestLogin(t *testing.T) {
 		}
 	}
 	e.srv.Proxies, _ = clientip.Parse("10.0.0.1")
+	r.Body = io.NopCloser(strings.NewReader(form.Encode())) // the first request consumed it
 	sawCookie := false
 	for _, ck := range e.do(r).Result().Cookies() {
 		if ck.Name == authCookie {

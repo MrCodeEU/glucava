@@ -472,7 +472,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
 		"chartPanelOrder": defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
 		"descTemplate":    c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
-		"settingsTab": "glucose",
+		"settingsTab": "glucose", "language": languageSignal(c.Language),
 	}
 	for k, v := range overviewSignals(c) {
 		sigMap[k] = v
@@ -487,6 +487,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 			tabSection("glucose",
 				Grid("2",
 					Card(H2(g.Text("Glucose and timing")),
+						languageField(pd),
 						Field("unit", "Unit", "", Select(ID("unit"), bind("unit"),
 							Option(Value("mg/dL"), g.Text("mg/dL")), Option(Value("mmol/L"), g.Text("mmol/L")))),
 						Div(append(comp("fieldrow"),
@@ -762,27 +763,28 @@ func TokensPage(pd PageData, list []tokens.Info, baseURL string, loc *time.Locat
 
 // EventsPage lists notifications.
 func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
-	body := g.Node(Div(append(comp("empty"), g.Text("Nothing has gone wrong. Notifications appear here when something fails."))...))
+	tr := pd.translator()
+	body := g.Node(Div(append(comp("empty"), t(pd, "events.empty"))...))
 	if len(evs) > 0 {
 		rows := make([]g.Node, 0, len(evs))
 		for _, e := range evs {
-			delivered := Badge("", "Waiting")
+			delivered := Badge("", tr.T("events.delivery.waiting"))
 			if e.Notified {
-				delivered = Badge("ok", "Sent")
+				delivered = Badge("ok", tr.T("events.delivery.sent"))
 			}
 			rows = append(rows, Tr(
-				Td(g.Text(fmtWhen(e.Created, loc, now))), Td(SeverityBadge(e.Severity)),
-				Td(g.Text(strings.ReplaceAll(e.Type, "_", " "))),
-				Td(g.Text(e.Message), g.If(e.StravaID != "", A(Href("/activity/"+e.StravaID), g.Text(" → activity")))),
+				Td(g.Text(fmtWhenT(tr, e.Created, loc, now))), Td(SeverityBadgeT(tr, e.Severity)),
+				Td(g.Text(eventTypeLabel(tr, e.Type))),
+				Td(g.Text(e.Message), g.If(e.StravaID != "", A(Href("/activity/"+e.StravaID), g.Text(" "+tr.T("events.link.activity"))))),
 				Td(Class("hide-sm"), delivered),
 			))
 		}
 		body = Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("When")), Th(g.Text("Level")), Th(g.Text("Type")), Th(g.Text("Message")), Th(Class("hide-sm"), g.Text("Delivery")))),
+			THead(Tr(Th(t(pd, "events.col.when")), Th(t(pd, "events.col.level")), Th(t(pd, "events.col.type")), Th(t(pd, "events.col.message")), Th(Class("hide-sm"), t(pd, "events.col.delivery")))),
 			TBody(g.Group(rows)))...))...)
 	}
 	return Page(pd,
-		PageHead("Notifications", "Everything glucava told you about, or tried to."),
+		PageHead(tr.T("events.title"), tr.T("events.sub")),
 		Card(body),
 	)
 }

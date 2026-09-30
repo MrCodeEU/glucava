@@ -60,6 +60,35 @@ func TestArtifactMarkValidation(t *testing.T) {
 	}
 }
 
+func TestLanguageConfig(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Language != "auto" {
+		t.Errorf("default language = %q, want auto", cfg.Language)
+	}
+	cfg.Language = "de"
+	if msg := cfg.Validate(); msg != "" {
+		t.Fatalf("valid language rejected: %s", msg)
+	}
+	if err := s.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	back, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Language != "de" {
+		t.Errorf("language after round trip = %q", back.Language)
+	}
+	back.Language = "xx-nope"
+	if back.Validate() == "" {
+		t.Error("unknown language accepted")
+	}
+}
+
 func TestArtifactModeConfig(t *testing.T) {
 	s := &PB{App: newApp(t)}
 	cfg, err := s.LoadConfig()

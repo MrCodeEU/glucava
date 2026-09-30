@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -84,6 +85,8 @@ func (c Config) Validate() string {
 		}
 	case !ValidChartPanelOrder(c.ChartPanelOrder):
 		return "Chart panel order must only list activity, band, dots, hr."
+	case c.Language != "" && c.Language != i18n.Auto && !i18n.Default().Has(c.Language):
+		return "Language must be auto or one of the installed languages."
 	case !validArtifactMode(c.ArtifactMode):
 		return "Suspected artifacts must be handled as flagged or exclude."
 	case !validOverviewRange(c.OverviewDefaultRange):
@@ -241,6 +244,7 @@ var configKeys = map[string]configKey{
 	"overview_layout":        strKey(func(c *Config) *string { return &c.OverviewLayout }),
 	"overview_default_range": strKey(func(c *Config) *string { return &c.OverviewDefaultRange }),
 	"artifact_mode":          strKey(func(c *Config) *string { return &c.ArtifactMode }),
+	"language":               strKey(func(c *Config) *string { return &c.Language }),
 }
 
 // ConfigKeys returns the scriptable setting names, sorted.

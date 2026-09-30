@@ -82,6 +82,10 @@ type Config struct {
 	// ArtifactMode says what the Overview does with suspected CGM artifacts
 	// (ArtifactFlagged or ArtifactExclude); empty means flagged.
 	ArtifactMode string
+
+	// Language is the interface language: a locale tag from internal/i18n
+	// ("de"), or "auto"/empty to follow the browser's Accept-Language.
+	Language string
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -125,6 +129,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		OverviewLayout:       r.GetString("overview_layout"),
 		OverviewDefaultRange: r.GetString("overview_default_range"),
 		ArtifactMode:         r.GetString("artifact_mode"),
+		Language:             r.GetString("language"),
 	}, nil
 }
 
@@ -181,6 +186,7 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("overview_layout", c.OverviewLayout)
 	r.Set("overview_default_range", c.OverviewDefaultRange)
 	r.Set("artifact_mode", c.ArtifactMode)
+	r.Set("language", c.Language)
 	return s.App.Save(r)
 }
 

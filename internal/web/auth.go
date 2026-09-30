@@ -60,7 +60,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	s.html(w, http.StatusOK, LoginPage(s.Build, "", ""))
+	s.html(w, http.StatusOK, LoginPage(s.tr(r), s.Build, "", ""))
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +71,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ip := s.Proxies.IP(r)
 	if s.tooManyLogins(ip) {
 		w.Header().Set("Retry-After", "60")
-		s.html(w, http.StatusTooManyRequests, LoginPage(s.Build, "Too many attempts. Wait a minute and try again.", r.PostFormValue("email")))
+		s.html(w, http.StatusTooManyRequests, LoginPage(s.tr(r), s.Build, s.tr(r).T("login.error.too_many"), r.PostFormValue("email")))
 		return
 	}
 
@@ -79,7 +79,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	rec, err := s.App.FindAuthRecordByEmail("users", email)
 	if err != nil || !rec.ValidatePassword(r.PostFormValue("password")) {
 		s.noteLoginFailure(ip)
-		s.html(w, http.StatusUnauthorized, LoginPage(s.Build, "Wrong email or password.", email))
+		s.html(w, http.StatusUnauthorized, LoginPage(s.tr(r), s.Build, s.tr(r).T("login.error.wrong"), email))
 		return
 	}
 	if err := s.startSession(w, r, rec); err != nil {
