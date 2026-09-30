@@ -253,9 +253,11 @@ type ActivityData struct {
 
 	Thr     analytics.Thresholds
 	Insight *analytics.ActivityInsight // before/during/after numbers; nil without readings
-	Rank    *SportRank                 // nil until there are enough activities of this sport
-	Prev    *ActivityRef               // the activity before and after this one, by start time
-	Next    *ActivityRef
+	// Artifacts are suspected sensor artifacts in the activity's glucose window.
+	Artifacts []analytics.Artifact
+	Rank      *SportRank   // nil until there are enough activities of this sport
+	Prev      *ActivityRef // the activity before and after this one, by start time
+	Next      *ActivityRef
 }
 
 // ActivityPage shows one activity with its glucose chart.

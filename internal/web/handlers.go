@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -147,6 +148,19 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 		hr = *d.HR
 	}
 	d.Insight = activityInsight(ins, d.Act, hr, d.HR != nil, d.Thr, d.Loc)
+	if len(samples) > 0 {
+		marks, err := s.Store.ArtifactMarks(ctx, samples[0].Time, samples[len(samples)-1].Time)
+		if err != nil {
+			return nil, err
+		}
+		found := analytics.DetectArtifacts(ins, d.Thr, analytics.ArtifactOptions{
+			Loc: d.Loc, Windows: []analytics.Window{{Start: d.Act.Start, End: d.Act.End()}}})
+		for _, a := range analytics.ApplyMarks(found, toAnalyticsMarks(marks), ins) {
+			if a.Overlaps(samples[0].Time, samples[len(samples)-1].Time) {
+				d.Artifacts = append(d.Artifacts, a)
+			}
+		}
+	}
 	evs, err := s.Store.ListEvents(ctx, 200)
 	if err != nil {
 		return nil, err
@@ -568,6 +582,36 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 	s.toast(sse, "ok", "Activity deleted"+restored+".")
 }
 
+// actionArtifactMark records a manual verdict on a span of readings: kind
+// "artifact" means the person says it was not real, "real" that it was. The
+// span comes as unix seconds. The client reloads the page afterwards (see
+// postThenGo), so the numbers are recomputed with the new mark.
+func (s *Server) actionArtifactMark(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	q := r.URL.Query()
+	start, err1 := strconv.ParseInt(q.Get("start"), 10, 64)
+	end, err2 := strconv.ParseInt(q.Get("end"), 10, 64)
+	kind := q.Get("kind")
+	switch {
+	case err1 != nil || err2 != nil || end < start || end-start > 24*60*60:
+		s.toast(sse, "error", "That is not a valid span of readings.")
+		return
+	case kind != store.MarkArtifact && kind != store.MarkReal:
+		s.toast(sse, "error", "Unknown verdict.")
+		return
+	}
+	if err := s.Store.AddArtifactMark(r.Context(), time.Unix(start, 0), time.Unix(end, 0), kind); err != nil {
+		s.toast(sse, "error", "Could not save that: "+err.Error())
+		return
+	}
+	s.Bus.Publish()
+	msg := "Marked as not real."
+	if kind == store.MarkReal {
+		msg = "Marked as real."
+	}
+	s.toast(sse, "ok", msg)
+}
+
 type settingsSignals struct {
 	Unit            string  `json:"unit"`
 	RangeLow        float64 `json:"rangeLow"`
@@ -625,6 +669,7 @@ type settingsSignals struct {
 	OverviewOn    map[string]bool   `json:"overviewOn"`
 	OverviewOpt   map[string]string `json:"overviewOpt"`
 	OverviewRange string            `json:"overviewRange"`
+	ArtifactMode  string            `json:"artifactMode"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -642,7 +687,7 @@ func (v settingsSignals) config() store.Config {
 		ChartPreMin: v.ChartPre, HRRead: v.HRRead, PostBufferMin: v.PostBuffer, ChartPanelOrder: v.ChartPanelOrder,
 		ChartAvgLine: v.ChartAvgLine, ChartRangeLines: v.ChartRangeLines, ChartMinMax: v.ChartMinMax, ChartHideStats: v.ChartHideStats,
 		DescriptionTemplate: v.DescTemplate,
-		OverviewLayout:      v.overviewLayout(), OverviewDefaultRange: v.OverviewRange,
+		OverviewLayout:      v.overviewLayout(), OverviewDefaultRange: v.OverviewRange, ArtifactMode: v.ArtifactMode,
 	}
 }
 
@@ -691,6 +736,9 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if v.OverviewRange != "" {
 		cfg.OverviewDefaultRange = v.OverviewRange
+	}
+	if v.ArtifactMode != "" {
+		cfg.ArtifactMode = v.ArtifactMode
 	}
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())

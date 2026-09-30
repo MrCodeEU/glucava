@@ -112,7 +112,7 @@ func kpisCard(d StatsData, _ map[string]string) g.Node {
 			delta(func(x periodKPIs) float64 { return x.GRI.Score }, -1, "pts", 1, 0)),
 		StatTile("Data coverage", pct0(k.Coverage.Pct), fmt.Sprintf("%d days · %s", k.Days, longest),
 			delta(func(x periodKPIs) float64 { return x.Coverage.Pct }, 1, "pts", 1, 1)),
-	))
+	), artifactNote(d))
 }
 
 // prevLabel describes the comparison window.
@@ -408,7 +408,7 @@ func episodesCard(d StatsData, _ map[string]string) g.Node {
 					Th(Class("num"), g.Text("Nadir / peak")), Th(g.Text("Around")))),
 				TBody(g.Group(items)))...))...))
 	}
-	return ovCard("episodes", "Lows and highs", "Runs of at least 15 minutes beyond the target range", summary, list)
+	return ovCard("episodes", "Lows and highs", "Runs of at least 15 minutes beyond the target range", summary, artifactNote(d), list, leftOutList(d))
 }
 
 func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
@@ -435,9 +435,14 @@ func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
 		}
 		around = g.Group([]g.Node{Span(Class("muted"), g.Text(when)), A(Href("/activity/"+a.StravaID), g.Text(name))})
 	}
+	art := artifactFor(m, e)
+	var suspect g.Node = g.Group(nil)
+	if art != nil {
+		suspect = Span(Class("ml-1"), g.Attr("title", art.Detail()), Badge("info", artifactLabel(*art)))
+	}
 	return Tr(
 		Td(g.Text(fmtWhen(e.Start, d.Loc, d.Now)), g.If(e.Nocturnal, Span(Class("muted"), g.Text(" · night")))),
-		Td(badge), Td(Class("num"), g.Text(fmtDuration(e.Duration))),
+		Td(badge, suspect, Div(Class("mt-1 flex flex-wrap gap-1"), episodeActions(e, art, d))), Td(Class("num"), g.Text(fmtDuration(e.Duration))),
 		Td(Class("num"), g.Text(render.Value(e.Extreme, d.Unit))), Td(around))
 }
 

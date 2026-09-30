@@ -173,6 +173,7 @@ func ActivityBody(d ActivityData) g.Node {
 		g.If(a.Status == jobs.StatusPending, Notice("", Strong(g.Text("Waiting in the queue. ")), g.Text("Jobs run one at a time; this page updates by itself."))),
 		g.If(a.Status == jobs.StatusProcessing && a.Error == "", Notice("", Strong(g.Text("Working on it. ")), g.Text(processingText(d.Step)))),
 		g.If(a.Status == jobs.StatusProcessing && a.Error != "", Notice("warning", Strong(g.Text("Not finished yet. ")), g.Text(a.Error))),
+		g.If(len(d.Artifacts) > 0, artifactNotice(d)),
 		activityChartCard(d, thr),
 		g.If(len(gTiles) > 0, Grid("", gTiles...)),
 		g.If(len(aTiles) > 0, Grid("", aTiles...)),
