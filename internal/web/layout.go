@@ -50,7 +50,7 @@ const (
 	navLinkClass = "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-ink-2 no-underline hover:bg-surface-2 hover:text-ink hover:no-underline " +
 		"aria-[current=page]:bg-surface-2 aria-[current=page]:text-ink " +
 		"max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:rounded-none max-md:px-1 max-md:py-2 max-md:text-[0.6875rem] " +
-		"max-md:aria-[current=page]:bg-transparent max-md:aria-[current=page]:text-accent"
+		"max-md:aria-[current=page]:bg-transparent max-md:aria-[current=page]:text-accent max-md:min-w-0"
 	// navInlineClass hides a System link until the bar is wide enough for it.
 	navInlineClass = "max-[1180px]:hidden"
 	menuPanelClass = "absolute right-0 top-full z-40 mt-2 w-60 rounded-xl border border-line bg-surface p-1.5 text-left shadow-xl " +
@@ -106,7 +106,7 @@ func navLink(tr *i18n.Translator, it navItem, active string, extra ...g.Node) g.
 
 func navLinkWith(tr *i18n.Translator, it navItem, active, class string, extra ...g.Node) g.Node {
 	return A(Href(it.href), Class(class),
-		icon(it.icon, "size-4 max-md:size-5"), Span(g.Text(tr.T(it.label))), g.Group(extra), // i18n:dynamic (nav tables use i18n.Key)
+		icon(it.icon, "size-4 max-md:size-5"), Span(Class("max-md:max-w-full max-md:truncate"), g.Text(tr.T(it.label))), g.Group(extra), // i18n:dynamic (nav tables use i18n.Key)
 		g.If(it.key == active, g.Attr("aria-current", "page")))
 }
 

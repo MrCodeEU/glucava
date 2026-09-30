@@ -109,5 +109,7 @@
   "events.type.glucose_unavailable": "Glucose unavailable",
   "events.type.canary_failed": "Canary failed",
   "events.type.glucose_gap": "Glucose gap",
-  "events.type.activity_not_found": "Activity not found"
+  "events.type.activity_not_found": "Activity not found",
+  "events.type.selector_repaired": "Selector repaired",
+  "events.type.trigger_rejected": "Trigger rejected"
 }

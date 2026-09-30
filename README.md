@@ -187,6 +187,10 @@ All state is in the data dir (`/data` in Docker): the SQLite database (settings,
 - **Lost key:** stored secrets are unrecoverable. Start with a new key, then enter them again (`glucava secrets set ...`, `glucava strava cookies import`). Settings and history are not affected.
 - **Rehearse it** once: restore a copy into a temp dir and run `glucava config list --dev=false --dir <copy>` and `glucava secrets status --dev=false --dir <copy>` with the key.
 
+## Languages
+
+The interface language is set under Settings > Language: "Automatic" follows the browser, or pick one (English and German so far; the conversion of every screen is in progress). Translations are plain JSON files in `internal/i18n/locales/`, so adding a language needs no code. See [docs/TRANSLATING.md](docs/TRANSLATING.md).
+
 ## Development
 
 Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre-push: tests, govulncheck). `make check` runs everything CI runs. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.

@@ -15,6 +15,8 @@ var eventTypeKeys = map[string]string{
 	"canary_failed":       i18n.Key("events.type.canary_failed"),
 	"glucose_gap":         i18n.Key("events.type.glucose_gap"),
 	"activity_not_found":  i18n.Key("events.type.activity_not_found"),
+	"selector_repaired":   i18n.Key("events.type.selector_repaired"),
+	"trigger_rejected":    i18n.Key("events.type.trigger_rejected"),
 }
 
 // eventTypeLabel is the human name of an event type. A type without a key (a

@@ -61,7 +61,7 @@
 
   "nav.activities": "Aktivitäten",
   "nav.overview": "Übersicht",
-  "nav.notifications": "Benachrichtigungen",
+  "nav.notifications": "Mitteilungen",
   "nav.settings": "Einstellungen",
   "nav.strava": "Strava-Sitzung",
   "nav.triggers": "Auslöser",
@@ -109,5 +109,7 @@
   "events.type.glucose_unavailable": "Glukosewerte nicht verfügbar",
   "events.type.canary_failed": "Canary fehlgeschlagen",
   "events.type.glucose_gap": "Lücke bei den Glukosewerten",
-  "events.type.activity_not_found": "Aktivität nicht gefunden"
+  "events.type.activity_not_found": "Aktivität nicht gefunden",
+  "events.type.selector_repaired": "Selektor repariert",
+  "events.type.trigger_rejected": "Auslöser abgelehnt"
 }
