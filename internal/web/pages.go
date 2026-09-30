@@ -555,7 +555,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						),
 					),
 				),
-				overviewSettingsCard(c),
+				overviewSettingsCard(pd.translator(), c),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
 						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.TIRBar}}, {{.TIRWindowBar}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+

@@ -15,12 +15,24 @@ import (
 // functions are checked (files still being converted). Add a file here in the
 // same change that converts it.
 var convertedFiles = map[string][]string{
-	"layout.go":      nil,
-	"events_i18n.go": nil,
-	"i18n.go":        nil,
-	"auth.go":        nil,
-	"pages.go":       {"EventsPage"},
-	"components.go":  {"StatusBadgeT", "SeverityBadgeT", "ConfirmDialogT", "fmtWhenT"},
+	"layout.go":            nil,
+	"events_i18n.go":       nil,
+	"i18n.go":              nil,
+	"auth.go":              nil,
+	"pages.go":             {"EventsPage"},
+	"components.go":        {"StatusBadgeT", "SeverityBadgeT", "ConfirmDialogT", "fmtWhenT"},
+	"activityview.go":      nil,
+	"chart.go":             nil,
+	"charts.go":            nil,
+	"charts_activity.go":   nil,
+	"charts_overview.go":   nil,
+	"dashnow.go":           nil,
+	"overviewartifacts.go": nil,
+	"overviewcards.go":     nil,
+	"overviewkpi.go":       nil,
+	"overviewrange.go":     nil,
+	"overviewsettings.go":  nil,
+	"i18n_c.go":            nil,
 }
 
 // english is what a hard-coded UI sentence or label looks like: a capitalised

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 	"time"
@@ -10,6 +9,7 @@ import (
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/store"
 )
@@ -18,19 +18,6 @@ import (
 // the episodes they explain, the note that says what the numbers would be
 // without them, the list of what was left out, and the buttons that record a
 // manual verdict.
-
-// artifactLabel is the short name of a suspected artifact.
-func artifactLabel(a analytics.Artifact) string {
-	switch {
-	case a.Marked:
-		return "marked not real"
-	case a.Kind == analytics.ArtifactCompression:
-		return "possible compression low"
-	case a.Kind == analytics.ArtifactDip:
-		return "possible sensor dip"
-	}
-	return "suspected artifact"
-}
 
 // markHref is the action URL that records a verdict on [start, end].
 func markHref(start, end time.Time, kind string) string {
@@ -57,27 +44,24 @@ func (d StatsData) markButton(start, end time.Time, kind, label string) g.Node {
 // artifactNote says what time below range is with and without the suspected
 // artifacts; empty when none were found.
 func artifactNote(d StatsData) g.Node {
+	tr := d.tr()
 	m := d.Model
 	if len(m.Artifacts) == 0 {
 		return g.Group(nil)
 	}
 	n := len(m.Artifacts)
-	noun := "suspected sensor artifacts"
-	if n == 1 {
-		noun = "suspected sensor artifact"
-	}
 	if m.Excluded {
-		return P(Class("muted text-sm"), g.Textf("Time below range is %.1f%% with %d %s left out (%.1f%% as recorded). ",
-			m.BelowClean, n, noun, m.BelowAll), A(Href("/settings"), g.Text("Change this in Settings")), g.Text("."))
+		return P(Class("muted text-sm"), g.Text(tr.Tn("artifact.note.excluded", n, "clean", tr.Num(m.BelowClean, 1), "all", tr.Num(m.BelowAll, 1))),
+			A(Href("/settings"), g.Text(tr.T("artifact.note.change"))), g.Text("."))
 	}
-	return P(Class("muted text-sm"), g.Textf("Time below range is %.1f%% as recorded and %.1f%% without the %d %s. ",
-		m.BelowAll, m.BelowClean, n, noun),
-		g.Text("Nothing is left out; choose “exclude” under Settings → Overview page to leave them out."))
+	return P(Class("muted text-sm"), g.Text(tr.Tn("artifact.note.flagged", n, "clean", tr.Num(m.BelowClean, 1), "all", tr.Num(m.BelowAll, 1))),
+		g.Text(tr.T("artifact.note.hint")))
 }
 
 // leftOutList lists the suspected artifacts that were excluded from the
 // numbers, each with a button to say it was real after all.
 func leftOutList(d StatsData) g.Node {
+	tr := d.tr()
 	m := d.Model
 	if !m.Excluded {
 		return g.Group(nil)
@@ -90,16 +74,16 @@ func leftOutList(d StatsData) g.Node {
 	for i := len(m.Artifacts) - 1; i >= 0 && len(rows) < n; i-- { // newest first
 		a := m.Artifacts[i]
 		rows = append(rows, Tr(
-			Td(g.Text(fmtWhen(a.Start, d.Loc, d.Now))),
-			Td(Badge("info", artifactLabel(a))),
-			Td(Class("num"), g.Text(render.Value(a.Nadir, d.Unit))),
-			Td(Span(Class("muted"), g.Text(a.Reason))),
-			Td(d.markButton(a.Start, a.End, store.MarkReal, "It was real")),
+			Td(g.Text(fmtWhenT(tr, a.Start, d.Loc, d.Now))),
+			Td(Badge("info", artifactLabelT(tr, a))),
+			Td(Class("num"), g.Text(valueT(tr, a.Nadir, d.Unit))),
+			Td(Span(Class("muted"), g.Text(artifactReasonT(tr, a, d.Unit)))),
+			Td(d.markButton(a.Start, a.End, store.MarkReal, tr.T("artifact.btn.real"))),
 		))
 	}
-	return Div(H3(Class("mt-4"), g.Text("Left out as suspected sensor artifacts")),
+	return Div(H3(Class("mt-4"), g.Text(tr.T("artifact.left_out.title"))),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("When")), Th(g.Text("Kind")), Th(Class("num"), g.Text("Nadir")), Th(g.Text("Why")), Th(g.Text("")))),
+			THead(Tr(Th(g.Text(tr.T("overview.episodes.when"))), Th(g.Text(tr.T("overview.episodes.kind"))), Th(Class("num"), g.Text(tr.T("artifact.left_out.nadir"))), Th(g.Text(tr.T("artifact.left_out.why"))), Th(g.Text("")))),
 			TBody(g.Group(rows)))...))...))
 }
 
@@ -108,15 +92,16 @@ func episodeActions(e analytics.Episode, art *analytics.Artifact, d StatsData) g
 	if e.Kind != analytics.KindLow {
 		return g.Group(nil)
 	}
+	tr := d.tr()
 	switch {
 	case art == nil:
-		return d.markButton(e.Start, e.End, store.MarkArtifact, "Not real")
+		return d.markButton(e.Start, e.End, store.MarkArtifact, tr.T("artifact.btn.not_real"))
 	case art.Marked:
-		return d.markButton(e.Start, e.End, store.MarkReal, "It was real")
+		return d.markButton(e.Start, e.End, store.MarkReal, tr.T("artifact.btn.real"))
 	}
 	return g.Group([]g.Node{
-		d.markButton(e.Start, e.End, store.MarkArtifact, "Not real"),
-		d.markButton(e.Start, e.End, store.MarkReal, "It was real"),
+		d.markButton(e.Start, e.End, store.MarkArtifact, tr.T("artifact.btn.not_real")),
+		d.markButton(e.Start, e.End, store.MarkReal, tr.T("artifact.btn.real")),
 	})
 }
 
@@ -133,12 +118,11 @@ func artifactFor(m *overviewModel, e analytics.Episode) *analytics.Artifact {
 
 // artifactModeField is the settings control that chooses between flagging
 // and excluding suspected artifacts.
-func artifactModeField() g.Node {
-	return Field("artifactMode", "Suspected sensor artifacts",
-		"Compression lows and sudden sensor dips are flagged on the Lows and highs card. “Flag only” keeps every number as recorded; “Exclude” also leaves them out of the statistics. You can always mark a low as real or not real by hand.",
+func artifactModeField(tr *i18n.Translator) g.Node {
+	return Field("artifactMode", tr.T("artifact.mode.label"), tr.T("artifact.mode.help"),
 		g.El("select", ID("artifactMode"), g.Attr("data-bind", "artifactMode"),
-			Option(Value(store.ArtifactFlagged), g.Text("Flag only")),
-			Option(Value(store.ArtifactExclude), g.Text("Exclude from statistics"))))
+			Option(Value(store.ArtifactFlagged), g.Text(tr.T("artifact.mode.flag"))),
+			Option(Value(store.ArtifactExclude), g.Text(tr.T("artifact.mode.exclude")))))
 }
 
 // toAnalyticsMarks converts stored verdicts to the analytics package's type.
@@ -160,13 +144,14 @@ func artifactNotice(d ActivityData) g.Node {
 	if len(d.Artifacts) == 0 {
 		return g.Group(nil)
 	}
+	tr := d.tr()
 	a := d.Artifacts[0]
-	at := fmtWhen(a.Start, d.Loc, d.Now)
+	at := fmtWhenT(tr, a.Start, d.Loc, d.Now)
 	more := ""
 	if n := len(d.Artifacts); n > 1 {
-		more = fmt.Sprintf(" (and %d more)", n-1)
+		more = " " + tr.T("artifact.notice.more", "n", n-1)
 	}
-	return Notice("warning", Strong(g.Text("Possible sensor artifact. ")),
-		g.Textf("%s at %s%s: %s. The readings are shown as recorded. ", artifactLabel(a), at, more, a.Detail()),
-		A(Href("/stats#ov-episodes"), g.Text("Mark it real or not real on the Overview")), g.Text("."))
+	return Notice("warning", Strong(g.Text(tr.T("artifact.notice.title"))),
+		g.Text(tr.T("artifact.notice.body", "label", artifactLabelT(tr, a), "at", at, "more", more, "detail", artifactDetailT(tr, a, render.Unit(d.Cfg.Unit)))),
+		A(Href("/stats#ov-episodes"), g.Text(tr.T("artifact.notice.link"))), g.Text("."))
 }

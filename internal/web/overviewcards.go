@@ -9,6 +9,7 @@ import (
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -29,6 +30,7 @@ type StatsData struct {
 	Thr     analytics.Thresholds // mg/dL
 	Loc     *time.Location
 	Now     time.Time
+	T       *i18n.Translator // set by StatsPage from the page's translator; nil means English
 }
 
 // cardRenderer draws one card; opts are the card's configured options.
@@ -61,8 +63,6 @@ var needsReadings = map[string]bool{
 // Cards with wide tables (time of day, lows and highs) need the full row.
 var halfWidth = map[string]bool{"heatmap": true, "calendar": true}
 
-var weekdayLabels = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
-
 // mondayRow maps Go's weekday (Sunday = 0) to a Monday-first row.
 func mondayRow(w time.Weekday) int { return (int(w) + 6) % 7 }
 
@@ -71,17 +71,17 @@ func ovCard(id, title, sub string, body ...g.Node) g.Node {
 		g.If(sub != "", P(Class("muted"), g.Text(sub)))}, body...)...)
 }
 
-func pct0(v float64) string { return fmt.Sprintf("%.0f%%", v) }
-
 // ---- key numbers
 
 func kpisCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	m, k := d.Model, d.Model.Cur
-	sub := d.Range.Label(d.Loc)
+	sub := d.Range.Label(tr, d.Loc)
 	if m.Prev != nil {
-		sub += " · changes compare with " + d.Range.prevLabel(d.Loc)
-		if !m.Prev.HasData {
-			sub += " (no readings then)"
+		if m.Prev.HasData {
+			sub = tr.T("overview.kpis.sub", "range", sub, "prev", d.Range.prevLabel(tr, d.Loc))
+		} else {
+			sub = tr.T("overview.kpis.sub_nodata", "range", sub, "prev", d.Range.prevLabel(tr, d.Loc))
 		}
 	}
 	p := m.Prev
@@ -89,36 +89,39 @@ func kpisCard(d StatsData, _ map[string]string) g.Node {
 		if p == nil || !p.HasData {
 			return nil
 		}
-		return kpiDelta(f(k), f(*p), better, unit, scale, dec)
+		return kpiDelta(tr, f(k), f(*p), better, unit, scale, dec)
 	}
 	avgUnit, avgScale, avgDec := "mg/dL", 1.0, 0
 	if d.Unit == render.MmolL {
 		avgUnit, avgScale, avgDec = "mmol/L", 1/18.016, 1
 	}
-	zone := map[string]string{"A": "lowest risk", "B": "low risk", "C": "moderate risk", "D": "high risk", "E": "highest risk"}
-	longest := "no gaps"
-	if k.Coverage.Longest > 0 {
-		longest = "longest gap " + fmtDuration(k.Coverage.Longest)
+	risk := k.GRI.Zone
+	if key, ok := zoneKeys[k.GRI.Zone]; ok {
+		risk = tr.T(key) // i18n:dynamic
 	}
-	return ovCard("kpis", "Key numbers", sub, Grid("",
-		StatTile("Time in range", pct0(k.TIR.InRange), fmt.Sprintf("%.0f%% below · %.0f%% above", k.TIR.Below(), k.TIR.Above()),
+	longest := tr.T("kpi.gaps.none")
+	if k.Coverage.Longest > 0 {
+		longest = tr.T("kpi.gaps.longest", "duration", fmtDurationT(tr, k.Coverage.Longest))
+	}
+	return ovCard("kpis", tr.T("overview.kpis.title"), sub, Grid("",
+		StatTile(tr.T("kpi.tir"), pctT(tr, k.TIR.InRange, 0), tr.T("kpi.tir.sub", "below", tr.Num(k.TIR.Below(), 0), "above", tr.Num(k.TIR.Above(), 0)),
 			delta(func(x periodKPIs) float64 { return x.TIR.InRange }, 1, "pts", 1, 1)),
-		StatTile("Average", render.Value(k.Avg, d.Unit), string(d.Unit),
+		StatTile(tr.T("kpi.avg"), valueT(tr, k.Avg, d.Unit), string(d.Unit),
 			delta(func(x periodKPIs) float64 { return x.Avg }, 0, avgUnit, avgScale, avgDec)),
-		StatTile("GMI", fmt.Sprintf("%.1f%%", k.GMI), "estimated A1C",
+		StatTile(tr.T("kpi.gmi"), pctT(tr, k.GMI, 1), tr.T("kpi.gmi.sub"),
 			delta(func(x periodKPIs) float64 { return x.GMI }, -1, "pts", 1, 1)),
-		StatTile("Variability (CV)", pct0(k.CV), fmt.Sprintf("target ≤ %.0f%%", cvTarget),
+		StatTile(tr.T("kpi.cv"), pctT(tr, k.CV, 0), tr.T("kpi.cv.sub", "n", tr.Num(cvTarget, 0)),
 			delta(func(x periodKPIs) float64 { return x.CV }, -1, "pts", 1, 1)),
-		StatTile("Risk index (GRI)", fmt.Sprintf("%.0f", k.GRI.Score), "zone "+k.GRI.Zone+" · "+zone[k.GRI.Zone],
+		StatTile(tr.T("kpi.gri"), tr.Num(k.GRI.Score, 0), tr.T("kpi.gri.sub", "zone", k.GRI.Zone, "risk", risk),
 			delta(func(x periodKPIs) float64 { return x.GRI.Score }, -1, "pts", 1, 0)),
-		StatTile("Data coverage", pct0(k.Coverage.Pct), fmt.Sprintf("%d days · %s", k.Days, longest),
+		StatTile(tr.T("kpi.coverage"), pctT(tr, k.Coverage.Pct, 0), tr.T("kpi.coverage.sub", "days", tr.Tn("fmt.days", k.Days), "longest", longest),
 			delta(func(x periodKPIs) float64 { return x.Coverage.Pct }, 1, "pts", 1, 1)),
 	), artifactNote(d))
 }
 
 // prevLabel describes the comparison window.
-func (r statsRange) prevLabel(loc *time.Location) string {
-	return r.PrevFrom.In(loc).Format("2 Jan") + " – " + r.PrevTo.In(loc).Format("2 Jan")
+func (r statsRange) prevLabel(tr *i18n.Translator, loc *time.Location) string {
+	return rangeTextT(tr, r.PrevFrom, r.PrevTo, loc)
 }
 
 // ---- time in range
@@ -128,22 +131,24 @@ type bandRow struct {
 	pct                 float64
 }
 
-func bandRows(t analytics.TIR5, thr analytics.Thresholds, u render.Unit) []bandRow {
-	v := func(x float64) string { return render.Value(x, u) }
+func bandRows(tr *i18n.Translator, t analytics.TIR5, thr analytics.Thresholds, u render.Unit) []bandRow {
+	v := func(x float64) string { return valueT(tr, x, u) }
+	vlow, low, inr, high, vhigh := bandNames(tr)
 	return []bandRow{
-		{"Very low", "below " + v(thr.VeryLow), ColVeryLow, t.VeryLow},
-		{"Low", v(thr.VeryLow) + "–" + v(thr.Low), ColLow, t.Low},
-		{"In range", v(thr.Low) + "–" + v(thr.High), ColInRange, t.InRange},
-		{"High", v(thr.High) + "–" + v(thr.VeryHigh), ColHigh, t.High},
-		{"Very high", "above " + v(thr.VeryHigh), ColVeryHigh, t.VeryHigh},
+		{vlow, tr.T("band.bound.below", "v", v(thr.VeryLow)), ColVeryLow, t.VeryLow},
+		{low, v(thr.VeryLow) + "–" + v(thr.Low), ColLow, t.Low},
+		{inr, v(thr.Low) + "–" + v(thr.High), ColInRange, t.InRange},
+		{high, v(thr.High) + "–" + v(thr.VeryHigh), ColHigh, t.High},
+		{vhigh, tr.T("band.bound.above", "v", v(thr.VeryHigh)), ColVeryHigh, t.VeryHigh},
 	}
 }
 
 func tirDonut(id, title string, t analytics.TIR5, d StatsData) g.Node {
+	tr := d.tr()
 	if t.Count == 0 {
-		return Div(H3(g.Text(title)), EmptyState("inbox", "No readings", "Nothing was recorded in this part of the range."))
+		return Div(H3(g.Text(title)), EmptyState("inbox", tr.T("overview.tir.empty"), tr.T("overview.tir.empty_hint")))
 	}
-	rows := bandRows(t, d.Thr, d.Unit)
+	rows := bandRows(tr, t, d.Thr, d.Unit)
 	slices := make([]DonutSlice, 0, len(rows))
 	items := make([]g.Node, 0, len(rows))
 	for _, r := range rows {
@@ -151,37 +156,39 @@ func tirDonut(id, title string, t analytics.TIR5, d StatsData) g.Node {
 		items = append(items, Div(Class("flex items-center gap-2 py-0.5 text-sm"),
 			Span(Class("size-2.5 shrink-0 rounded-full"), g.Attr("style", "background:"+r.color)),
 			Span(Class("flex-1"), g.Text(r.label), Span(Class("ml-1.5 text-xs text-ink-2"), g.Text(r.bound+" "+string(d.Unit)))),
-			Span(Class("font-semibold tabular-nums"), g.Textf("%.1f%%", r.pct)),
+			Span(Class("font-semibold tabular-nums"), g.Text(pctT(tr, r.pct, 1))),
 		))
 	}
 	return Div(H3(g.Text(title)),
-		Chart(id, DonutOption(DonutInput{Slices: slices, Centre: pct0(t.InRange), Sub: "in range"}), 200),
+		Chart(id, DonutOption(DonutInput{Slices: slices, Centre: pctT(tr, t.InRange, 0), Sub: tr.T("chart.in_range")}), 200),
 		Div(Class("mt-1"), g.Group(items)),
-		P(Class("muted mt-2 mb-0 text-xs"), g.Textf("%d readings", t.Count)),
+		P(Class("muted mt-2 mb-0 text-xs"), g.Text(tr.Tn("fmt.readings", t.Count))),
 	)
 }
 
 func tirCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	m := d.Model
-	return ovCard("tir", "Time in range", d.Range.Label(d.Loc)+" · five bands, every reading counts the same",
+	return ovCard("tir", tr.T("overview.tir.title"), tr.T("overview.tir.sub", "range", d.Range.Label(tr, d.Loc)),
 		Grid("2",
-			tirDonut("ov-tir-all", "All readings, day and night", analytics.TIR5{
+			tirDonut("ov-tir-all", tr.T("overview.tir.all"), analytics.TIR5{
 				VeryLow: m.Cur.TIR.VeryLow, Low: m.Cur.TIR.Low, InRange: m.Cur.TIR.InRange, High: m.Cur.TIR.High,
 				VeryHigh: m.Cur.TIR.VeryHigh, Count: m.Cur.Count,
 			}, d),
-			tirDonut("ov-tir-act", "During activities", m.TIRDuring, d),
+			tirDonut("ov-tir-act", tr.T("overview.tir.during"), m.TIRDuring, d),
 		),
-		P(Class("muted mb-0 text-xs"), g.Text("Consensus targets: in range above 70%, below range under 4%, very low under 1%.")),
+		P(Class("muted mb-0 text-xs"), g.Text(tr.T("overview.tir.consensus"))),
 	)
 }
 
 // ---- AGP
 
 func agpCard(d StatsData, opts map[string]string) g.Node {
+	tr := d.tr()
 	m := d.Model
-	agp, sub := m.AGPAll, "Median with the 25–75% and 5–95% bands, by time of day"
+	agp, sub := m.AGPAll, tr.T("overview.agp.sub")
 	if opts["hours"] == "rest" {
-		agp, sub = m.AGPRest, sub+", outside activities"
+		agp, sub = m.AGPRest, tr.T("overview.agp.sub_rest")
 	}
 	pts := make([]AGPPoint, 0, len(agp.Bins))
 	for _, b := range agp.Bins {
@@ -191,19 +198,20 @@ func agpCard(d StatsData, opts map[string]string) g.Node {
 		pts = append(pts, AGPPoint{Minute: b.Minute, P5: b.P5, P25: b.P25, P50: b.P50, P75: b.P75, P95: b.P95})
 	}
 	if len(pts) < 8 {
-		return ovCard("agp", "Daily profile (AGP)", sub, EmptyState("chart", "Not enough readings yet",
-			"The profile needs a few days of readings to draw."))
+		return ovCard("agp", tr.T("overview.agp.title"), sub, EmptyState("chart", tr.T("overview.agp.empty"),
+			tr.T("overview.agp.empty_hint")))
 	}
-	return ovCard("agp", "Daily profile (AGP)", fmt.Sprintf("%s · %d days", sub, agp.Days),
-		Chart("ov-agp", AGPOption(AGPInput{Points: pts, Low: d.Thr.Low, High: d.Thr.High, Unit: d.Unit}), 320))
+	return ovCard("agp", tr.T("overview.agp.title"), tr.T("overview.agp.sub_days", "sub", sub, "days", tr.Tn("fmt.days", agp.Days)),
+		Chart("ov-agp", AGPOption(AGPInput{Points: pts, Low: d.Thr.Low, High: d.Thr.High, Unit: d.Unit, T: tr}), 320))
 }
 
 // ---- daily trends
 
 func trendCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	days := d.Model.Daily
 	if len(days) == 0 {
-		return ovCard("trend", "Daily trends", "", EmptyState("chart", "No days with readings", ""))
+		return ovCard("trend", tr.T("overview.trend.title"), "", EmptyState("chart", tr.T("overview.trend.empty"), ""))
 	}
 	avg, mn, mx := make([]TrendPoint, len(days)), make([]TrendPoint, len(days)), make([]TrendPoint, len(days))
 	tir, cv := make([]TrendPoint, len(days)), make([]TrendPoint, len(days))
@@ -212,21 +220,21 @@ func trendCard(d StatsData, _ map[string]string) g.Node {
 		avg[i], mn[i], mx[i] = TrendPoint{t, day.Avg}, TrendPoint{t, day.Min}, TrendPoint{t, day.Max}
 		tir[i], cv[i] = TrendPoint{t, day.TIR.InRange}, TrendPoint{t, day.CV}
 	}
-	span := trendSpan(days[0].Date, days[len(days)-1].Date)
-	return ovCard("trend", "Daily trends", span+" · one point per day, drag the slider to zoom",
+	span := trendSpan(tr, days[0].Date, days[len(days)-1].Date)
+	return ovCard("trend", tr.T("overview.trend.title"), tr.T("overview.trend.sub", "span", span),
 		Grid("2",
-			Div(H3(g.Text("Glucose")), Chart("ov-trend-glucose", TrendOption(TrendInput{
+			Div(H3(g.Text(tr.T("overview.trend.glucose"))), Chart("ov-trend-glucose", TrendOption(TrendInput{
 				Series: []TrendSeries{
-					{Name: "Average", Color: colLine, Points: avg},
-					{Name: "Daily max", Color: ColHigh, Points: mx, Thin: true},
-					{Name: "Daily min", Color: ColLow, Points: mn, Thin: true},
+					{Name: tr.T("chart.average"), Color: colLine, Points: avg},
+					{Name: tr.T("chart.daily_max"), Color: ColHigh, Points: mx, Thin: true},
+					{Name: tr.T("chart.daily_min"), Color: ColLow, Points: mn, Thin: true},
 				},
 				Low: d.Thr.Low, High: d.Thr.High, Unit: d.Unit, Zoom: true,
 			}), 300)),
-			Div(H3(g.Text("Time in range and variability")), Chart("ov-trend-tir", TrendOption(TrendInput{
+			Div(H3(g.Text(tr.T("overview.trend.tir_cv"))), Chart("ov-trend-tir", TrendOption(TrendInput{
 				Series: []TrendSeries{
-					{Name: "Time in range", Color: ColInRange, Points: tir},
-					{Name: "Variability (CV)", Color: colLine, Points: cv, Thin: true},
+					{Name: tr.T("kpi.tir"), Color: ColInRange, Points: tir},
+					{Name: tr.T("kpi.cv"), Color: colLine, Points: cv, Thin: true},
 				},
 				Plain: true, Format: fmtPct, Zoom: true,
 			}), 300)),
@@ -238,25 +246,28 @@ func trendCard(d StatsData, _ map[string]string) g.Node {
 
 // tirScaleLegend explains the colours of the time-in-range matrices; the
 // gradient mirrors the visual map of PctMatrixOption.
-func tirScaleLegend() g.Node {
+func tirScaleLegend(tr *i18n.Translator) g.Node {
 	return Div(append(comp("legend"),
-		Span(g.Text("50% or less")),
+		Span(g.Text(tr.T("overview.legend.tir_low"))),
 		Span(Class("h-2.5 w-40 rounded-full"), g.Attr("style", "background:linear-gradient(90deg,"+ColLow+","+ColHigh+","+ColInRange+")")),
-		Span(g.Text("100% in range")))...)
+		Span(g.Text(tr.T("overview.legend.tir_high"))))...)
 }
 
 func rangeLegend(d StatsData) g.Node {
+	tr := d.tr()
 	item := func(color, label string) g.Node {
 		return Span(Class("inline-flex items-center gap-1.5"),
 			Span(Class("size-2.5 rounded-sm"), g.Attr("style", "background:"+color)), g.Text(label))
 	}
 	return Div(append(comp("legend"),
-		item(ColLow, "average below "+render.Value(d.Thr.Low, d.Unit)),
-		item(ColInRange, "in range"),
-		item(ColHigh, "above "+render.Value(d.Thr.High, d.Unit)))...)
+		item(ColLow, tr.T("overview.legend.below", "v", valueT(tr, d.Thr.Low, d.Unit))),
+		item(ColInRange, tr.T("chart.in_range")),
+		item(ColHigh, tr.T("overview.legend.above", "v", valueT(tr, d.Thr.High, d.Unit))))...)
 }
 
 func heatmapCard(d StatsData, opts map[string]string) g.Node {
+	tr := d.tr()
+	weekdays := weekdaysMondayFirst(tr)
 	m := d.Model
 	hours := make([]string, 24)
 	for h := range hours {
@@ -270,12 +281,12 @@ func heatmapCard(d StatsData, opts map[string]string) g.Node {
 				if c.Count == 0 {
 					continue
 				}
-				cells = append(cells, PctCell{X: h, Y: mondayRow(w), Pct: c.InRange, Label: fmt.Sprintf("%s %02d:00", weekdayLabels[mondayRow(w)], h)})
+				cells = append(cells, PctCell{X: h, Y: mondayRow(w), Pct: c.InRange, Label: fmt.Sprintf("%s %02d:00", weekdays[mondayRow(w)], h)})
 			}
 		}
-		return ovCard("heatmap", "Weekday and hour", "Time in range for each hour of the week, by local time",
-			Chart("ov-heatmap", PctMatrixOption(PctMatrixInput{XLabels: hours, YLabels: weekdayLabels, Cells: cells}), 280),
-			tirScaleLegend())
+		return ovCard("heatmap", tr.T("overview.heatmap.title"), tr.T("overview.heatmap.sub_tir"),
+			Chart("ov-heatmap", PctMatrixOption(PctMatrixInput{XLabels: hours, YLabels: weekdays, Cells: cells}), 280),
+			tirScaleLegend(tr))
 	}
 	var cells []HeatCell
 	for w := time.Sunday; w <= time.Saturday; w++ {
@@ -285,8 +296,8 @@ func heatmapCard(d StatsData, opts map[string]string) g.Node {
 			}
 		}
 	}
-	return ovCard("heatmap", "Weekday and hour", "Average glucose for each hour of the week, by local time",
-		Chart("ov-heatmap", HeatmapOption(HeatmapInput{Days: weekdayLabels, Cells: cells, Low: d.Thr.Low, High: d.Thr.High, Unit: d.Unit}), 280),
+	return ovCard("heatmap", tr.T("overview.heatmap.title"), tr.T("overview.heatmap.sub_mean"),
+		Chart("ov-heatmap", HeatmapOption(HeatmapInput{Days: weekdays, Cells: cells, Low: d.Thr.Low, High: d.Thr.High, Unit: d.Unit}), 280),
 		rangeLegend(d))
 }
 
@@ -299,9 +310,11 @@ func mondayOf(t time.Time) time.Time {
 }
 
 func calendarCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
+	weekdays := weekdaysMondayFirst(tr)
 	days := d.Model.Daily
 	if len(days) == 0 {
-		return ovCard("calendar", "Calendar", "", EmptyState("chart", "No days with readings", ""))
+		return ovCard("calendar", tr.T("overview.calendar.title"), "", EmptyState("chart", tr.T("overview.trend.empty"), ""))
 	}
 	last := mondayOf(days[len(days)-1].Date)
 	first := mondayOf(days[0].Date)
@@ -314,7 +327,7 @@ func calendarCard(d StatsData, _ map[string]string) g.Node {
 	weekIdx := map[time.Time]int{}
 	for w := first; !w.After(last); w = w.AddDate(0, 0, 7) {
 		weekIdx[w] = len(xLabels)
-		xLabels = append(xLabels, w.Format("2 Jan"))
+		xLabels = append(xLabels, tr.Date(w, false))
 	}
 	var cells []PctCell
 	for _, day := range days {
@@ -322,60 +335,65 @@ func calendarCard(d StatsData, _ map[string]string) g.Node {
 		if !ok {
 			continue
 		}
-		cells = append(cells, PctCell{X: x, Y: mondayRow(day.Date.Weekday()), Pct: day.TIR.InRange, Label: day.Date.Format("Mon 2 Jan")})
+		cells = append(cells, PctCell{X: x, Y: mondayRow(day.Date.Weekday()), Pct: day.TIR.InRange, Label: weekdays[mondayRow(day.Date.Weekday())] + " " + tr.Date(day.Date, false)})
 	}
 	every := 1
 	if len(xLabels) > 12 {
 		every = 4
 	}
-	return ovCard("calendar", "Calendar", "Time in range for every day; each column is a week starting on Monday",
-		Chart("ov-calendar", PctMatrixOption(PctMatrixInput{XLabels: xLabels, YLabels: weekdayLabels, Cells: cells, XEvery: every}), 230),
-		tirScaleLegend())
+	return ovCard("calendar", tr.T("overview.calendar.title"), tr.T("overview.calendar.sub"),
+		Chart("ov-calendar", PctMatrixOption(PctMatrixInput{XLabels: xLabels, YLabels: weekdays, Cells: cells, XEvery: every}), 230),
+		tirScaleLegend(tr))
 }
 
 // ---- time of day
 
 func dayPartsCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	parts := d.Model.Parts
 	cats := make([]string, 0, 4)
+	vlow, low, inr, high, vhigh := bandNames(tr)
 	series := []BarSeries{
-		{Name: "Very low", Color: ColVeryLow, Stack: "tir"}, {Name: "Low", Color: ColLow, Stack: "tir"},
-		{Name: "In range", Color: ColInRange, Stack: "tir"}, {Name: "High", Color: ColHigh, Stack: "tir"},
-		{Name: "Very high", Color: ColVeryHigh, Stack: "tir"},
+		{Name: vlow, Color: ColVeryLow, Stack: "tir"}, {Name: low, Color: ColLow, Stack: "tir"},
+		{Name: inr, Color: ColInRange, Stack: "tir"}, {Name: high, Color: ColHigh, Stack: "tir"},
+		{Name: vhigh, Color: ColVeryHigh, Stack: "tir"},
 	}
 	rows := make([]g.Node, 0, 4)
 	for _, p := range parts {
-		cats = append(cats, fmt.Sprintf("%s %02d–%02d", p.Name, p.FromHour, p.ToHour))
+		name := partNameT(tr, p.Name)
+		cats = append(cats, fmt.Sprintf("%s %02d–%02d", name, p.FromHour, p.ToHour))
 		t := p.TIR
 		for i, v := range []float64{t.VeryLow, t.Low, t.InRange, t.High, t.VeryHigh} {
 			series[i].Values = append(series[i].Values, round2(v))
 		}
 		if p.Count == 0 {
-			rows = append(rows, Tr(Td(g.Text(p.Name)), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("0"))))
+			rows = append(rows, Tr(Td(g.Text(name)), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("0"))))
 			continue
 		}
-		rows = append(rows, Tr(Td(g.Text(p.Name)),
-			Td(Class("num"), g.Text(pct0(t.InRange))), Td(Class("num"), g.Text(render.Value(p.Avg, d.Unit))),
-			Td(Class("num"), g.Text(pct0(p.CV))), Td(Class("num"), g.Textf("%d", p.Count))))
+		rows = append(rows, Tr(Td(g.Text(name)),
+			Td(Class("num"), g.Text(pctT(tr, t.InRange, 0))), Td(Class("num"), g.Text(valueT(tr, p.Avg, d.Unit))),
+			Td(Class("num"), g.Text(pctT(tr, p.CV, 0))), Td(Class("num"), g.Text(tr.Int(p.Count)))))
 	}
-	return ovCard("dayparts", "Time of day", "Share of readings in each band, by local time of day",
+	return ovCard("dayparts", tr.T("overview.dayparts.title"), tr.T("overview.dayparts.sub"),
 		Chart("ov-dayparts", BarOption(BarInput{Categories: cats, Series: series, Format: fmtPct, Max: 100, Legend: true}), 280),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("Part of day")), Th(Class("num"), g.Text("In range")), Th(Class("num"), g.Text("Average")),
-				Th(Class("num"), g.Text("CV")), Th(Class("num"), g.Text("Readings")))),
+			THead(Tr(Th(g.Text(tr.T("overview.dayparts.part"))), Th(Class("num"), g.Text(inr)), Th(Class("num"), g.Text(tr.T("kpi.avg"))),
+				Th(Class("num"), g.Text(tr.T("overview.dayparts.cv"))), Th(Class("num"), g.Text(tr.T("overview.dayparts.readings"))))),
 			TBody(g.Group(rows)))...))...))
 }
 
 // ---- episodes
 
 func episodesCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	m := d.Model
+	vlow, _, _, _, vhigh := bandNames(tr)
 	kinds := []struct {
 		kind  analytics.EpisodeKind
 		label string
 	}{
-		{analytics.KindVeryLow, "Very low"}, {analytics.KindLow, "Low (incl. very low)"},
-		{analytics.KindHigh, "High (incl. very high)"}, {analytics.KindVeryHigh, "Very high"},
+		{analytics.KindVeryLow, vlow}, {analytics.KindLow, tr.T("overview.episodes.low_incl")},
+		{analytics.KindHigh, tr.T("overview.episodes.high_incl")}, {analytics.KindVeryHigh, vhigh},
 	}
 	rows := make([]g.Node, 0, len(kinds))
 	for _, k := range kinds {
@@ -385,76 +403,78 @@ func episodesCard(d StatsData, _ map[string]string) g.Node {
 				Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-"))))
 			continue
 		}
-		rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Textf("%d", st.Count)),
-			Td(Class("num"), g.Textf("%d", st.Nocturnal)),
-			Td(Class("num"), g.Textf("%s / %s", fmtDuration(st.Longest), fmtDuration(st.Total))),
-			Td(Class("num"), g.Text(render.Value(st.Extreme, d.Unit)))))
+		rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Text(tr.Int(st.Count))),
+			Td(Class("num"), g.Text(tr.Int(st.Nocturnal))),
+			Td(Class("num"), g.Textf("%s / %s", fmtDurationT(tr, st.Longest), fmtDurationT(tr, st.Total))),
+			Td(Class("num"), g.Text(valueT(tr, st.Extreme, d.Unit)))))
 	}
 	summary := Div(append(comp("tablewrap"), Table(append(comp("table"),
-		THead(Tr(Th(g.Text("Kind")), Th(Class("num"), g.Text("Episodes")), Th(Class("num"), g.Text("At night")),
-			Th(Class("num"), g.Text("Longest / total")), Th(Class("num"), g.Text("Nadir / peak")))),
+		THead(Tr(Th(g.Text(tr.T("overview.episodes.kind"))), Th(Class("num"), g.Text(tr.T("overview.episodes.count"))), Th(Class("num"), g.Text(tr.T("overview.episodes.night_count"))),
+			Th(Class("num"), g.Text(tr.T("overview.episodes.longest_total"))), Th(Class("num"), g.Text(tr.T("overview.episodes.extreme"))))),
 		TBody(g.Group(rows)))...))...)
 
 	recent := recentEpisodes(m.Episodes, 8)
 	var list g.Node
 	if len(recent) == 0 {
-		list = P(Class("muted mt-3 mb-0"), g.Text("No lows or highs of 15 minutes or more in this range."))
+		list = P(Class("muted mt-3 mb-0"), g.Text(tr.T("overview.episodes.none")))
 	} else {
 		items := make([]g.Node, 0, len(recent))
 		for _, e := range recent {
 			items = append(items, episodeRow(e, m, d))
 		}
-		list = Div(H3(Class("mt-4"), g.Text("Most recent")),
+		list = Div(H3(Class("mt-4"), g.Text(tr.T("overview.episodes.recent"))),
 			Div(append(comp("tablewrap"), Table(append(comp("table"),
-				THead(Tr(Th(g.Text("When")), Th(g.Text("Kind")), Th(Class("num"), g.Text("Duration")),
-					Th(Class("num"), g.Text("Nadir / peak")), Th(g.Text("Around")))),
+				THead(Tr(Th(g.Text(tr.T("overview.episodes.when"))), Th(g.Text(tr.T("overview.episodes.kind"))), Th(Class("num"), g.Text(tr.T("overview.episodes.duration"))),
+					Th(Class("num"), g.Text(tr.T("overview.episodes.extreme"))), Th(g.Text(tr.T("overview.episodes.around"))))),
 				TBody(g.Group(items)))...))...))
 	}
-	return ovCard("episodes", "Lows and highs", "Runs of at least 15 minutes beyond the target range", summary, artifactNote(d), list, leftOutList(d))
+	return ovCard("episodes", tr.T("overview.episodes.title"), tr.T("overview.episodes.sub"), summary, artifactNote(d), list, leftOutList(d))
 }
 
 func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
+	tr := d.tr()
 	var badge g.Node
 	switch {
 	case e.Kind == analytics.KindLow && e.Extreme < d.Thr.VeryLow:
-		badge = Badge("error", "Very low")
+		badge = Badge("error", tr.T("band.very_low"))
 	case e.Kind == analytics.KindLow:
-		badge = Badge("warning", "Low")
+		badge = Badge("warning", tr.T("band.low"))
 	case e.Extreme > d.Thr.VeryHigh:
-		badge = Badge("error", "Very high")
+		badge = Badge("error", tr.T("band.very_high"))
 	default:
-		badge = Badge("warning", "High")
+		badge = Badge("warning", tr.T("band.high"))
 	}
 	around := g.Node(Span(Class("muted"), g.Text("-")))
 	if a, ok := nearbyActivity(m.Acts, e); ok {
 		name := a.Name
 		if name == "" {
-			name = "Activity " + a.StravaID
+			name = tr.T("activity.untitled", "id", a.StravaID)
 		}
-		when := "during "
+		when := tr.T("overview.episodes.during") + " "
 		if e.Start.After(a.End()) {
-			when = "after "
+			when = tr.T("overview.episodes.after") + " "
 		}
 		around = g.Group([]g.Node{Span(Class("muted"), g.Text(when)), A(Href("/activity/"+a.StravaID), g.Text(name))})
 	}
 	art := artifactFor(m, e)
 	var suspect g.Node = g.Group(nil)
 	if art != nil {
-		suspect = Span(Class("ml-1"), g.Attr("title", art.Detail()), Badge("info", artifactLabel(*art)))
+		suspect = Span(Class("ml-1"), g.Attr("title", artifactDetailT(tr, *art, d.Unit)), Badge("info", artifactLabelT(tr, *art)))
 	}
 	return Tr(
-		Td(g.Text(fmtWhen(e.Start, d.Loc, d.Now)), g.If(e.Nocturnal, Span(Class("muted"), g.Text(" · night")))),
-		Td(badge, suspect, Div(Class("mt-1 flex flex-wrap gap-1"), episodeActions(e, art, d))), Td(Class("num"), g.Text(fmtDuration(e.Duration))),
-		Td(Class("num"), g.Text(render.Value(e.Extreme, d.Unit))), Td(around))
+		Td(g.Text(fmtWhenT(tr, e.Start, d.Loc, d.Now)), g.If(e.Nocturnal, Span(Class("muted"), g.Text(" · "+tr.T("overview.episodes.night"))))),
+		Td(badge, suspect, Div(Class("mt-1 flex flex-wrap gap-1"), episodeActions(e, art, d))), Td(Class("num"), g.Text(fmtDurationT(tr, e.Duration))),
+		Td(Class("num"), g.Text(valueT(tr, e.Extreme, d.Unit))), Td(around))
 }
 
 // ---- by activity type
 
 func bySportCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	sports := d.Model.Sports
 	if len(sports) == 0 {
-		return ovCard("by_sport", "By activity type", "", EmptyState("activity", "No completed activities in this range",
-			"Activities show up here once glucava has processed them."))
+		return ovCard("by_sport", tr.T("overview.bysport.title"), "", EmptyState("activity", tr.T("overview.bysport.empty"),
+			tr.T("overview.bysport.empty_hint")))
 	}
 	cats := make([]string, len(sports))
 	band := func(pick func(analytics.TIR5) float64) []float64 {
@@ -473,39 +493,40 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 		}
 		hr := "–"
 		if s.AvgHR > 0 {
-			hr = fmt.Sprintf("%.0f bpm", s.AvgHR)
+			hr = tr.Num(s.AvgHR, 0) + " bpm"
 		}
 		dist := "–"
 		if s.TotalDistance > 0 {
-			dist = fmt.Sprintf("%.1f km", s.TotalDistance/1000)
+			dist = tr.Num(s.TotalDistance/1000, 1) + " km"
 		}
-		rows[i] = Tr(Td(g.Text(s.Sport)), Td(Class("num"), g.Textf("%d", s.Count)),
-			Td(Class("num"), g.Text(pct0(s.TIR))), Td(Class("num"), g.Text(pct0(s.CV))),
-			Td(Class("num"), g.Text(signedGlucose(s.Delta, d.Unit))),
-			Td(Class("num"), g.Text(fmt.Sprintf("%.1f", s.DropRate*unitScale(d.Unit)))),
-			Td(Class("num"), g.Text(pct0(s.PostLowShare))),
+		rows[i] = Tr(Td(g.Text(s.Sport)), Td(Class("num"), g.Text(tr.Int(s.Count))),
+			Td(Class("num"), g.Text(pctT(tr, s.TIR, 0))), Td(Class("num"), g.Text(pctT(tr, s.CV, 0))),
+			Td(Class("num"), g.Text(signedGlucoseT(tr, s.Delta, d.Unit))),
+			Td(Class("num"), g.Text(tr.Num(s.DropRate*unitScale(d.Unit), 1))),
+			Td(Class("num"), g.Text(pctT(tr, s.PostLowShare, 0))),
 			Td(Class("num"), g.Text(hr)),
-			Td(Class("num"), g.Text(dist)), Td(Class("num"), g.Textf("%.0f m", s.TotalElevation)),
+			Td(Class("num"), g.Text(dist)), Td(Class("num"), g.Text(tr.Num(s.TotalElevation, 0)+" m")),
 			Td(Class("num"), g.Text(pace)))
 	}
-	return ovCard("by_sport", "By activity type", "Time in range bands and averages per activity of each type, over activities with glucose data",
+	vlow, low, inr, high, vhigh := bandNames(tr)
+	return ovCard("by_sport", tr.T("overview.bysport.title"), tr.T("overview.bysport.sub"),
 		Chart("ov-bysport", BarOption(BarInput{
 			Categories: cats, Horizontal: true, Format: fmtPct, Max: 100, Legend: true,
 			Series: []BarSeries{
-				{Name: "Very low", Color: ColVeryLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryLow })},
-				{Name: "Low", Color: ColLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.Low })},
-				{Name: "In range", Color: ColInRange, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.InRange })},
-				{Name: "High", Color: ColHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.High })},
-				{Name: "Very high", Color: ColVeryHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryHigh })},
+				{Name: vlow, Color: ColVeryLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryLow })},
+				{Name: low, Color: ColLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.Low })},
+				{Name: inr, Color: ColInRange, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.InRange })},
+				{Name: high, Color: ColHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.High })},
+				{Name: vhigh, Color: ColVeryHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryHigh })},
 			},
 		}), 90+40*len(sports)),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("Type")), Th(Class("num"), g.Text("Activities")), Th(Class("num"), g.Text("Time in range")),
-				Th(Class("num"), g.Text("CV")), Th(Class("num"), g.Textf("Start→end (%s)", d.Unit)),
-				Th(Class("num"), g.Textf("Drop (%s/10 min)", d.Unit)), Th(Class("num"), g.Text("Low after")),
-				Th(Class("num"), g.Text("Avg HR")), Th(Class("num"), g.Text("Distance")), Th(Class("num"), g.Text("Climb")), Th(Class("num"), g.Text("Pace")))),
+			THead(Tr(Th(g.Text(tr.T("overview.bysport.type"))), Th(Class("num"), g.Text(tr.T("overview.bysport.activities"))), Th(Class("num"), g.Text(tr.T("kpi.tir"))),
+				Th(Class("num"), g.Text(tr.T("overview.dayparts.cv"))), Th(Class("num"), g.Text(tr.T("overview.bysport.start_end", "unit", string(d.Unit)))),
+				Th(Class("num"), g.Text(tr.T("overview.bysport.drop", "unit", string(d.Unit)))), Th(Class("num"), g.Text(tr.T("overview.bysport.low_after"))),
+				Th(Class("num"), g.Text(tr.T("overview.bysport.avg_hr"))), Th(Class("num"), g.Text(tr.T("overview.bysport.distance"))), Th(Class("num"), g.Text(tr.T("overview.bysport.climb"))), Th(Class("num"), g.Text(tr.T("overview.bysport.pace"))))),
 			TBody(g.Group(rows)))...))...),
-		P(Class("muted text-sm"), g.Text("“Low after” is the share of activities followed by a low within three hours. Drop is positive when glucose falls during the activity.")),
+		P(Class("muted text-sm"), g.Text(tr.T("overview.bysport.note"))),
 	)
 }
 
@@ -517,23 +538,11 @@ func unitScale(u render.Unit) float64 {
 	return 1
 }
 
-// signedGlucose formats a mg/dL difference with an explicit sign.
-func signedGlucose(v float64, u render.Unit) string {
-	x := v * unitScale(u)
-	dec := 0
-	if u == render.MmolL {
-		dec = 1
-	}
-	if x >= 0 {
-		return fmt.Sprintf("+%.*f", dec, x)
-	}
-	return fmt.Sprintf("−%.*f", dec, -x)
-}
-
 // insightsCard shows how glucose behaves around activities: start glucose
 // against the change during the activity, the best and worst activities by
 // time in range, and lows in the hours after.
 func insightsCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	ins := d.Model.Insights
 	withData := 0
 	for _, i := range ins {
@@ -542,13 +551,13 @@ func insightsCard(d StatsData, _ map[string]string) g.Node {
 		}
 	}
 	if withData < 2 {
-		return ovCard("insights", "Activity insights", "", EmptyState("chart", "Not enough activities yet",
-			"Insights need at least two completed activities with glucose data in this range."))
+		return ovCard("insights", tr.T("overview.insights.title"), "", EmptyState("chart", tr.T("overview.insights.empty"),
+			tr.T("overview.insights.empty_hint")))
 	}
 	sc := analytics.Scatter(ins)
 	pts := make([]ScatterPoint, len(sc))
 	for i, p := range sc {
-		pts[i] = ScatterPoint{X: p.X, Y: p.Y, Label: p.Sport + " · " + p.Start.In(d.Loc).Format("2 Jan")}
+		pts[i] = ScatterPoint{X: p.X, Y: p.Y, Label: p.Sport + " · " + dayMonthT(tr, p.Start, d.Loc)}
 	}
 	lows, postLows := 0, 0
 	for _, i := range ins {
@@ -568,31 +577,32 @@ func insightsCard(d StatsData, _ map[string]string) g.Node {
 		items := make([]g.Node, len(xs))
 		for i, x := range xs {
 			items[i] = Li(Class("flex justify-between gap-3 py-1"),
-				A(Href("/activity/"+x.ID), g.Textf("%s · %s", x.Sport, x.Start.In(d.Loc).Format("2 Jan"))),
-				Span(Class("num"), g.Textf("%s · %s→%s %s", pct0(x.TIR.InRange),
-					render.Value(x.StartGlucose, d.Unit), render.Value(x.EndGlucose, d.Unit), d.Unit)))
+				A(Href("/activity/"+x.ID), g.Textf("%s · %s", x.Sport, dayMonthT(tr, x.Start, d.Loc))),
+				Span(Class("num"), g.Textf("%s · %s→%s %s", pctT(tr, x.TIR.InRange, 0),
+					valueT(tr, x.StartGlucose, d.Unit), valueT(tr, x.EndGlucose, d.Unit), d.Unit)))
 		}
 		return Div(H3(g.Text(title)), Ul(g.Group(items)))
 	}
-	return ovCard("insights", "Activity insights", fmt.Sprintf("%d activities with glucose data", withData),
+	return ovCard("insights", tr.T("overview.insights.title"), tr.Tn("overview.insights.sub", withData),
 		Grid("",
-			StatTile("Low within 3 h after", fmt.Sprintf("%d of %d", postLows, lows), "activities followed by a low", nil),
+			StatTile(tr.T("overview.insights.low_after"), tr.T("overview.insights.low_after_value", "a", postLows, "b", lows), tr.T("overview.insights.low_after_sub"), nil),
 		),
 		Chart("ov-insight-scatter", ScatterOption(ScatterInput{
-			Points: pts, XName: "Start glucose", YName: "Change during activity",
+			Points: pts, XName: tr.T("overview.insights.x"), YName: tr.T("overview.insights.y"),
 			XFormat: glucoseFmt(d.Unit), YFormat: glucoseFmt(d.Unit), Color: colLine,
 		}), 300),
-		P(Class("muted text-sm"), g.Text("Each dot is one activity. Starting higher usually means a bigger drop; the dots low on the chart are the ones to watch.")),
-		Grid("2", list("Best time in range", best), list("Lowest time in range", worst)),
+		P(Class("muted text-sm"), g.Text(tr.T("overview.insights.note"))),
+		Grid("2", list(tr.T("overview.insights.best"), best), list(tr.T("overview.insights.worst"), worst)),
 	)
 }
 
 // ---- table
 
 func statsTableCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	acts := d.Model.Acts
-	return ovCard("table", "Activities", fmt.Sprintf("%d in this range", len(acts)),
-		activityTable(DashData{Acts: acts, Unit: d.Unit, Loc: d.Loc, Now: d.Now}))
+	return ovCard("table", tr.T("overview.table.title"), tr.T("overview.table.sub", "n", len(acts)),
+		activityTable(DashData{Acts: acts, Unit: d.Unit, Loc: d.Loc, Now: d.Now, T: tr}))
 }
 
 // ---- sources and coverage
@@ -600,31 +610,32 @@ func statsTableCard(d StatsData, _ map[string]string) g.Node {
 const chipClass = "flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-sm"
 
 func sourcesCard(d StatsData, _ map[string]string) g.Node {
+	tr := d.tr()
 	if len(d.Sources) == 0 {
-		return ovCard("sources", "Glucose sources", "", EmptyState("inbox", "No glucose readings stored yet",
-			"Connect Dexcom under Settings or import a history."))
+		return ovCard("sources", tr.T("overview.sources.title"), "", EmptyState("inbox", tr.T("overview.sources.empty"),
+			tr.T("overview.sources.empty_hint")))
 	}
 	chips := make([]g.Node, 0, len(d.Sources))
 	for _, si := range d.Sources {
 		chips = append(chips, Div(Class(chipClass), Code(g.Text(si.Source)),
-			Span(Class("text-ink-2"), g.Textf("%d readings", si.Count)),
-			Span(Class("text-ink-2"), g.Text("newest "+fmtWhen(si.Latest, d.Loc, d.Now)))))
+			Span(Class("text-ink-2"), g.Text(tr.Tn("fmt.readings", int(si.Count)))),
+			Span(Class("text-ink-2"), g.Text(tr.T("overview.sources.newest", "when", fmtWhenT(tr, si.Latest, d.Loc, d.Now))))))
 	}
-	sub := "When the newest reading from each source arrived, so a stopped connection or a failed import shows up here."
+	sub := tr.T("overview.sources.sub")
 	body := []g.Node{Div(Class("flex flex-wrap gap-2"), g.Group(chips))}
 	if c := d.Model.Cur.Coverage; d.Model.HasData {
-		line := fmt.Sprintf("Coverage in this range: %.0f%%.", c.Pct)
+		line := tr.T("overview.sources.coverage", "pct", tr.Num(c.Pct, 0))
 		if len(c.Gaps) > 0 {
 			gaps := append([]analytics.Gap(nil), c.Gaps...)
 			sort.Slice(gaps, func(i, j int) bool { return gaps[i].Duration > gaps[j].Duration })
 			l := gaps[0]
-			line += fmt.Sprintf(" %d gaps over 30 minutes, the longest %s starting %s.", len(gaps), fmtDuration(l.Duration), fmtWhen(l.Start, d.Loc, d.Now))
+			line += " " + tr.Tn("overview.sources.gaps", len(gaps), "duration", fmtDurationT(tr, l.Duration), "when", fmtWhenT(tr, l.Start, d.Loc, d.Now))
 		} else {
-			line += " No gaps over 30 minutes."
+			line += " " + tr.T("overview.sources.no_gaps")
 		}
 		body = append(body, P(Class("muted mt-3 mb-0"), g.Text(line)))
 	}
-	return ovCard("sources", "Glucose sources", sub, body...)
+	return ovCard("sources", tr.T("overview.sources.title"), sub, body...)
 }
 
 // ---- toolbar
@@ -633,31 +644,32 @@ func sourcesCard(d StatsData, _ map[string]string) g.Node {
 // switch. All of it is plain links and a GET form, so it works without
 // JavaScript and the address bar always holds the current view.
 func rangeToolbar(d StatsData) g.Node {
+	tr := d.tr()
 	r := d.Range
 	items := make([]NavItem, 0, len(store.OverviewRanges))
 	for _, k := range store.OverviewRanges {
-		items = append(items, NavItem{Key: k, Label: statsRangeLabels[k], Href: r.presetHref(k)})
+		items = append(items, NavItem{Key: k, Label: rangeLabelT(tr, k), Href: r.presetHref(k)})
 	}
 	custom := g.El("details", Class("relative"), g.If(r.Key == "custom", g.Attr("open", "")),
-		g.El("summary", Class(customSummaryClass), g.Attr("data-active", boolAttr(r.Key == "custom")), g.Text("Custom range")),
+		g.El("summary", Class(customSummaryClass), g.Attr("data-active", boolAttr(r.Key == "custom")), g.Text(tr.T("overview.toolbar.custom"))),
 		Form(Method("get"), Action("/stats"), Class(customFormClass),
-			Div(Label(g.Text("From"), Input(Type("date"), Name("from"), Required(), g.If(r.Key == "custom", Value(r.FromStr)))),
-				Label(g.Text("To"), Input(Type("date"), Name("to"), Required(), g.If(r.Key == "custom", Value(r.ToStr))))),
+			Div(Label(g.Text(tr.T("overview.toolbar.from")), Input(Type("date"), Name("from"), Required(), g.If(r.Key == "custom", Value(r.FromStr)))),
+				Label(g.Text(tr.T("overview.toolbar.to")), Input(Type("date"), Name("to"), Required(), g.If(r.Key == "custom", Value(r.ToStr))))),
 			g.If(r.Compare, Input(Type("hidden"), Name("compare"), Value("prev"))),
-			SubmitBtn("primary", "sm", "Show"),
+			SubmitBtn("primary", "sm", tr.T("overview.toolbar.show")),
 		),
 	)
-	cmp := []NavItem{{Key: "off", Label: "No comparison", Href: r.href(false)}, {Key: "prev", Label: "vs previous period", Href: r.href(true)}}
+	cmp := []NavItem{{Key: "off", Label: tr.T("overview.toolbar.cmp_off"), Href: r.href(false)}, {Key: "prev", Label: tr.T("overview.toolbar.cmp_prev"), Href: r.href(true)}}
 	active := "off"
 	if r.Compare {
 		active = "prev"
 	}
 	return Div(Class("mb-4 flex flex-wrap items-center gap-2"),
-		Segmented("Date range", items, presetActive(r)), custom,
-		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented("Comparison", cmp, active))),
+		Segmented(tr.T("overview.toolbar.range"), items, presetActive(r)), custom,
+		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented(tr.T("overview.toolbar.comparison"), cmp, active))),
 		A(append(comp("button"), Href(r.reportHref()), g.Attr("download", ""),
-			g.Attr("data-variant", "ghost"), g.Attr("title", "A printable PDF of this range, made with Typst"),
-			icon("scroll", "size-4"), g.Text("Download report"))...))
+			g.Attr("data-variant", "ghost"), g.Attr("title", tr.T("overview.toolbar.report_hint")),
+			icon("scroll", "size-4"), g.Text(tr.T("overview.toolbar.report")))...))
 }
 
 func presetActive(r statsRange) string {
@@ -681,12 +693,14 @@ const (
 
 // trendSpan formats the date range a per-day trend chart covers, so a chart
 // is never shown without saying what time frame it's over.
-func trendSpan(first, last time.Time) string {
-	return fmt.Sprintf("%s – %s", first.Format("2 Jan"), last.Format("2 Jan"))
+func trendSpan(tr *i18n.Translator, first, last time.Time) string {
+	return tr.T("fmt.range", "from", tr.Date(first, false), "to", tr.Date(last, false))
 }
 
 // StatsPage is the Overview: the configured cards over a selectable range.
 func StatsPage(pd PageData, d StatsData) g.Node {
+	tr := pd.translator()
+	d.T = tr
 	var cards []g.Node
 	enabled := 0
 	for _, c := range d.Cards {
@@ -708,14 +722,14 @@ func StatsPage(pd PageData, d StatsData) g.Node {
 	var lead g.Node
 	switch {
 	case enabled == 0:
-		lead = Card(P(Class("muted"), g.Text("Every card on this page is turned off. Turn one back on under Settings → Overview page.")))
+		lead = Card(P(Class("muted"), g.Text(tr.T("overview.all_off"))))
 	case !d.Model.HasData:
-		lead = Card(EmptyState("inbox", "No glucose readings in this range",
-			"Pick a longer range, or check that a source is connected under Settings."))
+		lead = Card(EmptyState("inbox", tr.T("overview.empty.title"),
+			tr.T("overview.empty.hint")))
 	}
 	return Page(pd,
-		PageHead("Overview", "Everything glucava has recorded, not just the activities."),
-		g.If(d.Range.Note != "", Notice("warning", g.Text(d.Range.Note+" Showing the default range instead."))),
+		PageHead(tr.T("overview.title"), tr.T("overview.sub")),
+		g.If(d.Range.Note != "", Notice("warning", g.Text(rangeNoteT(tr, d.Range.Note)))),
 		rangeToolbar(d),
 		Div(Class("grid grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-flow-row-dense"),
 			g.If(lead != nil, Div(Class("xl:col-span-2"), lead)), g.Group(cards)),

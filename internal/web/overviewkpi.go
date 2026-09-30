@@ -1,11 +1,11 @@
 package web
 
 import (
-	"fmt"
 	"math"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
@@ -51,18 +51,21 @@ func computeKPIs(samples []stats.Sample, from, to time.Time, th analytics.Thresh
 // risk index) and 0 for neutral numbers such as the average. unit is the
 // suffix on the difference ("pts", "%"); scale converts a raw difference to
 // the displayed one (mg/dL to mmol/L for glucose; 1 otherwise).
-func kpiDelta(cur, prev float64, better int, unit string, scale float64, decimals int) *Delta {
+func kpiDelta(tr *i18n.Translator, cur, prev float64, better int, unit string, scale float64, decimals int) *Delta {
 	diff := (cur - prev) * scale
 	eps := math.Pow(10, -float64(decimals)) / 2
 	if math.Abs(diff) < eps {
-		return &Delta{Text: "no change vs previous", Dir: "flat"}
+		return &Delta{Text: tr.T("kpi.delta.none"), Dir: "flat"}
 	}
 	d := &Delta{Dir: "up"}
 	sign := "+"
 	if diff < 0 {
 		d.Dir, sign = "down", "−"
 	}
-	d.Text = fmt.Sprintf("%s%.*f %s vs previous", sign, decimals, math.Abs(diff), unit)
+	if unit == "pts" {
+		unit = tr.T("kpi.unit.pts")
+	}
+	d.Text = tr.T("kpi.delta.text", "diff", sign+tr.Num(math.Abs(diff), decimals), "unit", unit)
 	if better != 0 {
 		if (diff > 0) == (better > 0) {
 			d.Tone = "good"

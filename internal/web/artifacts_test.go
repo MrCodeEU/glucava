@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/store"
 )
@@ -138,13 +139,13 @@ func TestArtifactLabelAndFor(t *testing.T) {
 	m := &overviewModel{Artifacts: []analytics.Artifact{{Kind: analytics.ArtifactDip, Start: at, End: at.Add(10 * time.Minute)}}}
 	e := analytics.Episode{Kind: analytics.KindLow, Start: at.Add(5 * time.Minute), End: at.Add(20 * time.Minute)}
 	a := artifactFor(m, e)
-	if a == nil || artifactLabel(*a) != "possible sensor dip" {
+	if a == nil || artifactLabelT(i18n.English(), *a) != "possible sensor dip" {
 		t.Fatalf("artifactFor = %+v", a)
 	}
 	if artifactFor(m, analytics.Episode{Kind: analytics.KindHigh, Start: at, End: at.Add(time.Hour)}) != nil {
 		t.Error("highs are never artifacts")
 	}
-	if artifactLabel(analytics.Artifact{Marked: true}) != "marked not real" {
+	if artifactLabelT(i18n.English(), analytics.Artifact{Marked: true}) != "marked not real" {
 		t.Error("marked label")
 	}
 }

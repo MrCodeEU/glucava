@@ -4,11 +4,13 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/store"
 )
 
 // statsRangeLabels names the range presets (store.OverviewRanges), which are
-// also the ?range= values statsPage accepts.
+// also the ?range= values statsPage accepts. The English names are the
+// fallback; the page shows rangeLabelT.
 var statsRangeLabels = map[string]string{
 	"7d": "7 days", "14d": "14 days", "30d": "30 days", "90d": "90 days", "all": "All time",
 }
@@ -33,7 +35,7 @@ type statsRange struct {
 	Compare        bool      // compare with the previous period
 	PrevFrom       time.Time // the previous window, [PrevFrom, PrevTo]; set when Compare
 	PrevTo         time.Time
-	Note           string // why the request fell back to the default, "" when it did not
+	Note           string // why the request fell back to the default (a code: missing, format, order, future, span), "" when it did not
 }
 
 // parseStatsRange reads the Overview's query: ?range=<preset>, or a custom
@@ -78,21 +80,21 @@ func parseStatsRange(q url.Values, def string, now time.Time, loc *time.Location
 // window runs to the end of that day, or to now when that day is not over.
 func parseCustomRange(fromStr, toStr string, now time.Time, loc *time.Location) (from, to time.Time, note string) {
 	if fromStr == "" || toStr == "" {
-		return from, to, "Pick both a start and an end date."
+		return from, to, "missing"
 	}
 	f, err1 := time.ParseInLocation(dateLayout, fromStr, loc)
 	t, err2 := time.ParseInLocation(dateLayout, toStr, loc)
 	if err1 != nil || err2 != nil {
-		return from, to, "Dates must look like 2026-09-30."
+		return from, to, "format"
 	}
 	end := t.AddDate(0, 0, 1)
 	switch {
 	case t.Before(f):
-		return from, to, "The end date is before the start date."
+		return from, to, "order"
 	case !f.Before(now):
-		return from, to, "The start date is in the future."
+		return from, to, "future"
 	case end.Sub(f) > maxCustomSpanDays*24*time.Hour:
-		return from, to, "A custom range can span at most ten years."
+		return from, to, "span"
 	}
 	if end.After(now) {
 		end = now
@@ -126,9 +128,9 @@ func (r statsRange) presetHref(key string) string {
 }
 
 // Label describes the window, e.g. "16 Sep – 30 Sep", for card subtitles.
-func (r statsRange) Label(loc *time.Location) string {
+func (r statsRange) Label(tr *i18n.Translator, loc *time.Location) string {
 	if r.Key == "all" {
-		return "All time"
+		return rangeLabelT(tr, "all")
 	}
-	return r.From.In(loc).Format("2 Jan") + " – " + r.To.In(loc).Format("2 Jan")
+	return rangeTextT(tr, r.From, r.To, loc)
 }
