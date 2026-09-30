@@ -33,6 +33,8 @@ type overviewModel struct {
 	Heat               analytics.WeekdayHour
 	Parts              [4]analytics.DayPart
 	Episodes           []analytics.Episode
+	Insights           []analytics.ActivityInsight
+	Sports             []analytics.SportStats
 }
 
 // overviewInput is what buildOverviewModel needs; loading it is the
@@ -76,7 +78,26 @@ func buildOverviewModel(in overviewInput) *overviewModel {
 	m.Heat = analytics.ComputeWeekdayHour(in.Samples, in.Thr, in.Loc)
 	m.Parts = analytics.ComputeDayParts(in.Samples, in.Thr, in.Loc)
 	m.Episodes = analytics.DetectEpisodes(in.Samples, in.Thr, analytics.EpisodeOptions{Loc: in.Loc})
+	m.Insights = analytics.InsightsFor(in.Samples, activityInputs(in.Acts), in.Thr, in.Loc)
+	m.Sports = analytics.BySport(m.Insights)
 	return m
+}
+
+// activityInputs maps stored activities onto the analytics input type.
+// Averages of heart rate are left out: the light activity loader skips the
+// heart-rate series on purpose.
+func activityInputs(acts []jobs.Activity) []analytics.ActivityInput {
+	out := make([]analytics.ActivityInput, 0, len(acts))
+	for _, a := range acts {
+		if a.Duration <= 0 || a.Status != jobs.StatusDone {
+			continue
+		}
+		out = append(out, analytics.ActivityInput{
+			ID: a.StravaID, Sport: a.Sport, Start: a.Start, End: a.End(),
+			DistanceM: a.Distance, ElevationGain: a.ElevationGain,
+		})
+	}
+	return out
 }
 
 // overviewKey identifies a computed model. Rolling ranges move their end

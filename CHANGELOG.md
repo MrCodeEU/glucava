@@ -5,9 +5,13 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [Unreleased]
 
 ### Added
+- Overview rewrite: key numbers (TIR, GMI, average, CV, glucose risk index, coverage), five-band TIR donuts for all readings and for activities only, AGP (median and percentile bands by time of day), daily trends with zoom, weekday-by-hour and calendar heatmaps, time-of-day breakdown, lows and highs episodes with the activity they happened around, by-activity-type table (CV, start-to-end change, drop rate, lows afterwards, distance, climb, pace), activity insights (start glucose against change, best and worst activities), and a sources and coverage strip. Charts use Apache ECharts.
+- Range presets 7/14/30/90 days and all time, a custom from–to range, and comparison with the previous period. Default range is a setting.
 - `{{.TIRBar}}` and `{{.TIRWindowBar}}` description-template fields: the below/in-range/above split drawn as ten emoji blocks (🟥 low, 🟩 in range, 🟨 high). New "Bar + window" preset shows the bar and, when it differs, a second one for the wider before/after window. The Default preset is unchanged, so existing descriptions do not change.
 
 ### Changed
+- Overview cards are configured with one layout setting (show, hide, reorder, per-card options) instead of five toggles; existing choices carry over. The `overview_show_*` CLI settings are replaced by `overview_layout` and `overview_default_range`.
+- Overview data is cached per range and data version.
 - The System pages (Strava session, Triggers, Logs) are links in the top bar on wide screens; the System dropdown only appears where the bar is too narrow.
 
 ## [0.7.0] - 2026-09-30

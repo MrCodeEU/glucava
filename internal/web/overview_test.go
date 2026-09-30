@@ -99,7 +99,7 @@ func TestOverviewPageRendersEveryCard(t *testing.T) {
 			t.Errorf("chart %s missing", chart)
 		}
 	}
-	for _, want := range []string{"Key numbers", "Morning Run", "Lows and highs", "Coming with the insights analytics", "Very low"} {
+	for _, want := range []string{"Key numbers", "Morning Run", "Lows and highs", "Activity insights", "Very low"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page is missing %q", want)
 		}

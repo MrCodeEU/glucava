@@ -10,6 +10,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
 	"github.com/MrCodeEU/glucava/internal/render"
+	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 )
 
@@ -442,7 +443,7 @@ func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
 // ---- by activity type
 
 func bySportCard(d StatsData, _ map[string]string) g.Node {
-	sports := d.Model.Overview.BySport
+	sports := d.Model.Sports
 	if len(sports) == 0 {
 		return ovCard("by_sport", "By activity type", "", EmptyState("activity", "No completed activities in this range",
 			"Activities show up here once glucava has processed them."))
@@ -450,29 +451,110 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 	cats, vals := make([]string, len(sports)), make([]float64, len(sports))
 	rows := make([]g.Node, len(sports))
 	for i, s := range sports {
-		cats[i], vals[i] = fmt.Sprintf("%s (%d)", s.Sport, s.Count), round2(s.AvgTIR)
+		cats[i], vals[i] = fmt.Sprintf("%s (%d)", s.Sport, s.Count), round2(s.TIR)
+		pace := "–"
+		if p := render.FormatPace(s.Sport, s.TotalDistance, s.Duration); p != "" {
+			pace = p
+		}
+		dist := "–"
+		if s.TotalDistance > 0 {
+			dist = fmt.Sprintf("%.1f km", s.TotalDistance/1000)
+		}
 		rows[i] = Tr(Td(g.Text(s.Sport)), Td(Class("num"), g.Textf("%d", s.Count)),
-			Td(Class("num"), g.Text(pct0(s.AvgTIR))), Td(Class("num"), g.Text(render.Value(s.AvgGlucose, d.Unit))))
+			Td(Class("num"), g.Text(pct0(s.TIR))), Td(Class("num"), g.Text(pct0(s.CV))),
+			Td(Class("num"), g.Text(signedGlucose(s.Delta, d.Unit))),
+			Td(Class("num"), g.Text(fmt.Sprintf("%.1f", s.DropRate*unitScale(d.Unit)))),
+			Td(Class("num"), g.Text(pct0(s.PostLowShare))),
+			Td(Class("num"), g.Text(dist)), Td(Class("num"), g.Textf("%.0f m", s.TotalElevation)),
+			Td(Class("num"), g.Text(pace)))
 	}
-	return ovCard("by_sport", "By activity type", "Average time in range of the activities of each type",
+	return ovCard("by_sport", "By activity type", "Averages per activity of each type, over activities with glucose data",
 		Chart("ov-bysport", BarOption(BarInput{
 			Categories: cats, Horizontal: true, Format: fmtPct, Max: 100,
 			Series: []BarSeries{{Name: "Average time in range", Color: ColInRange, Values: vals}},
 		}), 60+38*len(sports)),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text("Type")), Th(Class("num"), g.Text("Activities")), Th(Class("num"), g.Text("Avg time in range")),
-				Th(Class("num"), g.Textf("Avg glucose (%s)", d.Unit)))),
+			THead(Tr(Th(g.Text("Type")), Th(Class("num"), g.Text("Activities")), Th(Class("num"), g.Text("Time in range")),
+				Th(Class("num"), g.Text("CV")), Th(Class("num"), g.Textf("Start→end (%s)", d.Unit)),
+				Th(Class("num"), g.Textf("Drop (%s/10 min)", d.Unit)), Th(Class("num"), g.Text("Low after")),
+				Th(Class("num"), g.Text("Distance")), Th(Class("num"), g.Text("Climb")), Th(Class("num"), g.Text("Pace")))),
 			TBody(g.Group(rows)))...))...),
-		Notice("info", g.Text("Drop rate, heart rate, distance and pace per type are coming with the insights analytics.")),
+		P(Class("muted text-sm"), g.Text("“Low after” is the share of activities followed by a low within three hours. Drop is positive when glucose falls during the activity.")),
 	)
 }
 
-// ---- activity insights (placeholder until the insights analytics land)
+// unitScale converts a mg/dL difference into unit.
+func unitScale(u render.Unit) float64 {
+	if u == render.MmolL {
+		return 1 / stats.MmolFactor
+	}
+	return 1
+}
 
-func insightsCard(_ StatsData, _ map[string]string) g.Node {
-	return ovCard("insights", "Activity insights", "",
-		EmptyState("chart", "Coming with the insights analytics",
-			"Starting glucose against the change during an activity, best and worst activities, and lows after exercise."))
+// signedGlucose formats a mg/dL difference with an explicit sign.
+func signedGlucose(v float64, u render.Unit) string {
+	x := v * unitScale(u)
+	dec := 0
+	if u == render.MmolL {
+		dec = 1
+	}
+	if x >= 0 {
+		return fmt.Sprintf("+%.*f", dec, x)
+	}
+	return fmt.Sprintf("−%.*f", dec, -x)
+}
+
+// insightsCard shows how glucose behaves around activities: start glucose
+// against the change during the activity, the best and worst activities by
+// time in range, and lows in the hours after.
+func insightsCard(d StatsData, _ map[string]string) g.Node {
+	ins := d.Model.Insights
+	withData := 0
+	for _, i := range ins {
+		if i.HasData {
+			withData++
+		}
+	}
+	if withData < 2 {
+		return ovCard("insights", "Activity insights", "", EmptyState("chart", "Not enough activities yet",
+			"Insights need at least two completed activities with glucose data in this range."))
+	}
+	sc := analytics.Scatter(ins)
+	pts := make([]ScatterPoint, len(sc))
+	for i, p := range sc {
+		pts[i] = ScatterPoint{X: p.X, Y: p.Y, Label: p.Sport + " · " + p.Start.In(d.Loc).Format("2 Jan")}
+	}
+	lows, postLows := 0, 0
+	for _, i := range ins {
+		if i.HasData {
+			lows++
+			if i.PostLow() {
+				postLows++
+			}
+		}
+	}
+	best, worst := analytics.BestWorst(ins, 3)
+	list := func(title string, xs []analytics.ActivityInsight) g.Node {
+		items := make([]g.Node, len(xs))
+		for i, x := range xs {
+			items[i] = Li(Class("flex justify-between gap-3 py-1"),
+				A(Href("/activity/"+x.ID), g.Textf("%s · %s", x.Sport, x.Start.In(d.Loc).Format("2 Jan"))),
+				Span(Class("num"), g.Textf("%s · %s→%s %s", pct0(x.TIR.InRange),
+					render.Value(x.StartGlucose, d.Unit), render.Value(x.EndGlucose, d.Unit), d.Unit)))
+		}
+		return Div(H3(g.Text(title)), Ul(g.Group(items)))
+	}
+	return ovCard("insights", "Activity insights", fmt.Sprintf("%d activities with glucose data", withData),
+		Grid("",
+			StatTile("Low within 3 h after", fmt.Sprintf("%d of %d", postLows, lows), "activities followed by a low", nil),
+		),
+		Chart("ov-insight-scatter", ScatterOption(ScatterInput{
+			Points: pts, XName: "Start glucose", YName: "Change during activity",
+			XFormat: glucoseFmt(d.Unit), YFormat: glucoseFmt(d.Unit), Color: colLine,
+		}), 300),
+		P(Class("muted text-sm"), g.Text("Each dot is one activity. Starting higher usually means a bigger drop; the dots low on the chart are the ones to watch.")),
+		Grid("2", list("Best time in range", best), list("Lowest time in range", worst)),
+	)
 }
 
 // ---- table
