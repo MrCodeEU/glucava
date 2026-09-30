@@ -188,7 +188,7 @@
   "overview.tir.empty": "Keine Messwerte",
   "overview.tir.empty_hint": "In diesem Teil des Zeitraums wurde nichts aufgezeichnet.",
   "overview.tir.consensus": "Konsensus-Ziele: im Zielbereich über 70%, unter dem Bereich unter 4%, sehr niedrig unter 1%.",
-  "chart.in_range": "im Zielbereich",
+  "chart.in_range": "im Ziel",
   "overview.agp.title": "Tagesprofil (AGP)",
   "overview.agp.sub": "Median mit den Bändern 25–75% und 5–95%, nach Tageszeit",
   "overview.agp.sub_rest": "Median mit den Bändern 25–75% und 5–95%, nach Tageszeit, außerhalb von Aktivitäten",
