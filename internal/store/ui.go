@@ -14,9 +14,13 @@ import (
 // Config is the user-editable settings row, as the web UI shows it.
 // Secrets (passwords, tokens) are never part of it; they live in the vault.
 type Config struct {
-	Unit           string // "mg/dL" or "mmol/L"
-	RangeLow       float64
-	RangeHigh      float64
+	Unit      string // "mg/dL" or "mmol/L"
+	RangeLow  float64
+	RangeHigh float64
+	// VeryLow and VeryHigh are the level-2 hypo/hyper thresholds (mg/dL);
+	// zero means the consensus defaults 54 and 250.
+	VeryLow        float64
+	VeryHigh       float64
 	PreMin         int
 	PostMin        int
 	PollMin        int
@@ -98,6 +102,7 @@ func (s *PB) LoadConfig() (Config, error) {
 	}
 	return Config{
 		Unit: r.GetString("unit"), RangeLow: r.GetFloat("range_low"), RangeHigh: r.GetFloat("range_high"),
+		VeryLow: r.GetFloat("very_low"), VeryHigh: r.GetFloat("very_high"),
 		PreMin: r.GetInt("pre_minutes"), PostMin: r.GetInt("post_minutes"), PollMin: r.GetInt("poll_interval_minutes"),
 		DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
 		NtfyURL: r.GetString("ntfy_url"), WebhookURL: r.GetString("webhook_url"), EmailTo: r.GetString("email_to"),
@@ -133,6 +138,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("unit", c.Unit)
 	r.Set("range_low", c.RangeLow)
 	r.Set("range_high", c.RangeHigh)
+	r.Set("very_low", c.VeryLow)
+	r.Set("very_high", c.VeryHigh)
 	r.Set("pre_minutes", c.PreMin)
 	r.Set("post_minutes", c.PostMin)
 	r.Set("poll_interval_minutes", c.PollMin)

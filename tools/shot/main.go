@@ -9,11 +9,71 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/cdproto/log"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
+
+// defaultPaths covers every page: dashboard, two activities, every Overview
+// range, and the settings/ops pages.
+const defaultPaths = "/,/activity/140100,/activity/140098,/stats?range=7d,/stats?range=30d,/stats?range=90d,/stats?range=all,/strava,/settings,/tokens,/events,/logs"
+
+// problems collects browser console errors, uncaught exceptions and CSP
+// violations, so a page that looks fine but is broken still fails the run.
+type problems struct {
+	mu     sync.Mutex
+	where  string
+	ignore *regexp.Regexp
+	list   []string
+}
+
+func (p *problems) setWhere(w string) {
+	p.mu.Lock()
+	p.where = w
+	p.mu.Unlock()
+}
+
+func (p *problems) add(kind, msg string) {
+	if p.ignore != nil && p.ignore.MatchString(msg) {
+		return
+	}
+	p.mu.Lock()
+	p.list = append(p.list, fmt.Sprintf("%s: %s: %s", p.where, kind, strings.TrimSpace(msg)))
+	p.mu.Unlock()
+}
+
+func (p *problems) listen(ctx context.Context) {
+	chromedp.ListenTarget(ctx, func(ev any) {
+		switch e := ev.(type) {
+		case *runtime.EventConsoleAPICalled:
+			if e.Type != runtime.APITypeError {
+				return
+			}
+			var parts []string
+			for _, a := range e.Args {
+				parts = append(parts, strings.Trim(string(a.Value), `"`)+a.Description)
+			}
+			p.add("console.error", strings.Join(parts, " "))
+		case *runtime.EventExceptionThrown:
+			msg := e.ExceptionDetails.Text
+			if e.ExceptionDetails.Exception != nil {
+				msg += " " + e.ExceptionDetails.Exception.Description
+			}
+			p.add("exception", msg)
+		case *log.EventEntryAdded:
+			// Chrome reports CSP violations and failed subresource loads here.
+			if e.Entry.Level == log.LevelError {
+				p.add("browser log ("+string(e.Entry.Source)+")", e.Entry.Text+" "+e.Entry.URL)
+			}
+		}
+	})
+}
 
 func main() {
 	base := flag.String("url", "http://127.0.0.1:8090", "server URL")
@@ -23,7 +83,9 @@ func main() {
 	mode := flag.String("mode", "light", "light or dark")
 	width := flag.Int("width", 1280, "viewport width")
 	flow := flag.Bool("flow", false, "click through the main actions instead of visiting pages")
-	paths := flag.String("paths", "/,/activity/140100,/activity/140098,/strava,/settings,/tokens,/events", "comma-separated paths")
+	matrix := flag.Bool("matrix", false, "every page at 1280 and 390 px, light and dark (ignores -mode and -width)")
+	ignore := flag.String("ignore", "", "regexp of console messages to tolerate, e.g. a script that is not deployed yet")
+	paths := flag.String("paths", defaultPaths, "comma-separated paths")
 	flag.Parse()
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -36,29 +98,92 @@ func main() {
 	defer cancel()
 	ctx, cancel := chromedp.NewContext(actx)
 	defer cancel()
-	ctx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel = context.WithTimeout(ctx, 6*time.Minute)
 	defer cancel()
 
+	probs := &problems{}
+	if *ignore != "" {
+		re, err := regexp.Compile(*ignore)
+		if err != nil {
+			slog.Error("bad -ignore", "err", err)
+			os.Exit(2)
+		}
+		probs.ignore = re
+	}
+	probs.listen(ctx)
+	// finish reports collected browser problems; any of them is a failure.
+	finish := func() {
+		if len(probs.list) == 0 {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "\n%d browser problem(s):\n", len(probs.list))
+		for _, l := range probs.list {
+			fmt.Fprintln(os.Stderr, "  "+l)
+		}
+		os.Exit(1)
+	}
+
+	curMode, curWidth := *mode, *width
+	suffix := func() string {
+		if *matrix {
+			return fmt.Sprintf("-%d-%s", curWidth, curMode)
+		}
+		return "-" + curMode
+	}
 	var buf []byte
 	shot := func(name string) {
+		// Grow the viewport to the page first, so fixed elements (the phone tab
+		// bar, toasts) sit at the bottom of the shot, as they would when scrolled there.
+		var h int64
+		if err := chromedp.Run(ctx, chromedp.Evaluate(`Math.ceil(document.documentElement.scrollHeight)`, &h)); err == nil && h > 0 {
+			_ = chromedp.Run(ctx, emulation.SetDeviceMetricsOverride(int64(curWidth), h, 1, curWidth < 600))
+			defer func() {
+				_ = chromedp.Run(ctx, emulation.SetDeviceMetricsOverride(int64(curWidth), 900, 1, curWidth < 600))
+			}()
+		}
 		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 90)); err != nil {
 			slog.Error("screenshot", "err", err)
 			os.Exit(1)
 		}
-		f := filepath.Join(*out, name+"-"+*mode+".png")
+		f := filepath.Join(*out, name+suffix()+".png")
 		if err := os.WriteFile(f, buf, 0o644); err != nil {
 			slog.Error("write screenshot", "err", err)
 			os.Exit(1)
 		}
 		fmt.Println(f)
 	}
-	setMode := chromedp.Evaluate(fmt.Sprintf(`document.documentElement.dataset.mode=%q`, *mode), nil)
+	setMode := chromedp.ActionFunc(func(c context.Context) error {
+		return chromedp.Evaluate(fmt.Sprintf(`document.documentElement.dataset.mode=%q`, curMode), nil).Do(c)
+	})
+	setViewport := func(w int) error {
+		curWidth = w
+		return chromedp.Run(ctx, emulation.SetDeviceMetricsOverride(int64(w), 900, 1, w < 600))
+	}
 
 	if err := chromedp.Run(ctx, chromedp.Navigate(*base+"/login"), setMode, chromedp.Sleep(400*time.Millisecond)); err != nil {
 		slog.Error("navigate to login", "err", err)
 		os.Exit(1)
 	}
-	shot("login")
+	if *matrix {
+		for _, w := range []int{1280, 390} {
+			_ = setViewport(w)
+			for _, m := range []string{"light", "dark"} {
+				curMode = m
+				probs.setWhere(fmt.Sprintf("/login (%dpx, %s)", w, m))
+				if err := chromedp.Run(ctx, chromedp.Navigate(*base+"/login"), setMode, chromedp.Sleep(300*time.Millisecond)); err != nil {
+					slog.Error("navigate to login", "err", err)
+					os.Exit(1)
+				}
+				shot("login")
+			}
+		}
+		_ = setViewport(1280)
+		curMode = "light"
+	} else {
+		probs.setWhere("/login")
+		shot("login")
+	}
+	probs.setWhere("login form")
 	err := chromedp.Run(ctx,
 		chromedp.SendKeys("#email", *email), chromedp.SendKeys("#password", *pass),
 		chromedp.Click(`form[action="/login"] button[type="submit"]`),
@@ -70,19 +195,43 @@ func main() {
 	}
 	if *flow {
 		runFlow(ctx, *base, shot, setMode)
+		finish()
 		return
 	}
-	for _, p := range strings.Split(*paths, ",") {
-		name := strings.Trim(strings.ReplaceAll(p, "/", "-"), "-")
+
+	visit := func(p string) {
+		name := strings.Trim(strings.NewReplacer("/", "-", "?range=", "-").Replace(p), "-")
 		if name == "" {
 			name = "dashboard"
 		}
+		probs.setWhere(fmt.Sprintf("%s (%dpx, %s)", p, curWidth, curMode))
 		if err := chromedp.Run(ctx, chromedp.Navigate(*base+p), setMode, chromedp.Sleep(900*time.Millisecond)); err != nil {
 			slog.Error("navigate", "path", p, "err", err)
 			os.Exit(1)
 		}
 		shot(name)
 	}
+	list := strings.Split(*paths, ",")
+	if !*matrix {
+		for _, p := range list {
+			visit(p)
+		}
+		finish()
+		return
+	}
+	for _, w := range []int{1280, 390} {
+		if err := setViewport(w); err != nil {
+			slog.Error("viewport", "err", err)
+			os.Exit(1)
+		}
+		for _, m := range []string{"light", "dark"} {
+			curMode = m
+			for _, p := range list {
+				visit(p)
+			}
+		}
+	}
+	finish()
 }
 
 func runFlow(ctx context.Context, base string, shot func(string), setMode chromedp.Action) {

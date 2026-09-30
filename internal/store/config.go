@@ -10,7 +10,27 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/render"
+	"github.com/MrCodeEU/glucava/internal/stats"
 )
+
+// Range returns the target range with the very-low/very-high thresholds, the
+// shape stats.Summarize and internal/analytics take.
+func (c Config) Range() stats.Range {
+	return stats.Range{Low: c.RangeLow, High: c.RangeHigh, VeryLow: c.VeryLow, VeryHigh: c.VeryHigh}
+}
+
+// validThresholds checks very low < target low and target high < very high.
+// Zero means the default (54/250) and is not checked, so a target range that
+// sits inside the defaults still saves.
+func (c Config) validThresholds() bool {
+	if c.VeryLow != 0 && (c.VeryLow < 20 || c.VeryLow >= c.RangeLow) {
+		return false
+	}
+	if c.VeryHigh != 0 && (c.VeryHigh <= c.RangeHigh || c.VeryHigh > 600) {
+		return false
+	}
+	return true
+}
 
 // Validate returns a message for the first problem with c, or "". It is the
 // single rule set for every way of changing settings (web UI, CLI, env seeds).
@@ -22,6 +42,8 @@ func (c Config) Validate() string {
 		return "Target low must be between 40 and 200 mg/dL."
 	case c.RangeHigh <= c.RangeLow || c.RangeHigh > 400:
 		return "Target high must be above the low value and at most 400 mg/dL."
+	case !c.validThresholds():
+		return "Very low must be between 20 and the target low, and very high between the target high and 600 mg/dL."
 	case c.PreMin < 0 || c.PreMin > 240 || c.PostMin < 0 || c.PostMin > 240:
 		return "Minutes before and after must be between 0 and 240."
 	case c.ChartTheme != "light" && c.ChartTheme != "dark":
@@ -168,6 +190,8 @@ var configKeys = map[string]configKey{
 	"unit":                        strKey(func(c *Config) *string { return &c.Unit }),
 	"range_low":                   floatKey(func(c *Config) *float64 { return &c.RangeLow }),
 	"range_high":                  floatKey(func(c *Config) *float64 { return &c.RangeHigh }),
+	"very_low":                    floatKey(func(c *Config) *float64 { return &c.VeryLow }),
+	"very_high":                   floatKey(func(c *Config) *float64 { return &c.VeryHigh }),
 	"pre_minutes":                 intKey(func(c *Config) *int { return &c.PreMin }),
 	"post_minutes":                intKey(func(c *Config) *int { return &c.PostMin }),
 	"poll_interval_minutes":       intKey(func(c *Config) *int { return &c.PollMin }),

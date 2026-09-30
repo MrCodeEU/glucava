@@ -134,6 +134,11 @@ func (s *Server) Handler() http.Handler {
 	page("GET /stream/live", s.streamLive)
 	page("GET /stream/activity/{id}", s.streamActivity)
 
+	if s.chartsDemoEnabled() {
+		page("GET /ui/charts", s.chartsDemo)
+		page("GET /ui/charts/refresh", s.chartsDemoRefresh)
+	}
+
 	page("POST /actions/poll", s.actionPoll)
 	page("POST /actions/reprocess/{id}", s.actionReprocess)
 	page("POST /actions/chart/{id}", s.actionChartAgain)
@@ -162,7 +167,7 @@ func (s *Server) Handler() http.Handler {
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events", "/logs",
-	"/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/ui/charts", "/ui/charts/refresh", "/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
 }
 
 // maxBody caps most request bodies. The largest legitimate one otherwise is a

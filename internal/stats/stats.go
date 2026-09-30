@@ -19,9 +19,24 @@ type Sample struct {
 // arrive in mmol/L), so there is exactly one place this ever changes.
 const MmolFactor = 18.016
 
-// Range is an inclusive target range in mg/dL.
+// Range is an inclusive target range in mg/dL. VeryLow and VeryHigh are the
+// level-2 hypo/hyper thresholds; zero means the consensus defaults (54, 250),
+// so a Range{Low, High} literal keeps working.
 type Range struct {
-	Low, High float64
+	Low, High         float64
+	VeryLow, VeryHigh float64
+}
+
+// Thresholds returns VeryLow and VeryHigh with the defaults applied.
+func (r Range) Thresholds() (veryLow, veryHigh float64) {
+	veryLow, veryHigh = r.VeryLow, r.VeryHigh
+	if veryLow <= 0 {
+		veryLow = veryLowThreshold
+	}
+	if veryHigh <= 0 {
+		veryHigh = veryHighThreshold
+	}
+	return veryLow, veryHigh
 }
 
 // DefaultRange is the standard 70-180 mg/dL time-in-range band.
@@ -38,8 +53,8 @@ type Summary struct {
 	TIR        float64 // percent of samples inside the range, 0-100
 	Below      float64 // percent below Low
 	Above      float64 // percent above High
-	VeryLow    float64 // percent below 54 mg/dL: clinical "level 2" hypoglycemia, fixed threshold regardless of Range
-	VeryHigh   float64 // percent above 250 mg/dL: clinical "level 2" hyperglycemia, fixed threshold regardless of Range
+	VeryLow    float64 // percent below Range.VeryLow (default 54 mg/dL): clinical "level 2" hypoglycemia
+	VeryHigh   float64 // percent above Range.VeryHigh (default 250 mg/dL): clinical "level 2" hyperglycemia
 	Start, End float64 // first and last value
 }
 
@@ -63,10 +78,13 @@ func Within(in []Sample, from, to time.Time) []Sample {
 }
 
 // Summarize returns statistics for samples. ok is false when samples is empty.
+// A stored Summary keeps the very-low/very-high thresholds in force when it
+// was computed; changing the settings only affects later computations.
 func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
 	if len(samples) == 0 {
 		return Summary{}, false
 	}
+	vlow, vhigh := r.Thresholds()
 	sorted := append([]Sample(nil), samples...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Time.Before(sorted[j].Time) })
 
@@ -87,10 +105,10 @@ func Summarize(samples []Sample, r Range) (s Summary, ok bool) {
 		default:
 			in++
 		}
-		if p.Value < veryLowThreshold {
+		if p.Value < vlow {
 			veryLow++
 		}
-		if p.Value > veryHighThreshold {
+		if p.Value > vhigh {
 			veryHigh++
 		}
 	}

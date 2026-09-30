@@ -1,4 +1,4 @@
-.PHONY: help hooks build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-photo strava-hr strava-list strava-cookies shot mailshot site reset-mock reset-real clean
+.PHONY: help hooks css css-check build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-photo strava-hr strava-list strava-cookies shot mailshot site reset-mock reset-real clean
 
 SHELL := /bin/bash
 BIN := glucava
@@ -74,8 +74,8 @@ glucose-import: build ## import a CGM export: make glucose-import FILE=export.cs
 	@test -n "$(FILE)" -a -n "$(FORMAT)" || { echo "usage: make glucose-import FILE=<path> FORMAT=libre|nightscout [SOURCE=label]"; exit 1; }
 	./$(BIN) glucose import $(FILE) --format $(FORMAT) --source "$(if $(SOURCE),$(SOURCE),$(FORMAT))" --dir $(REAL_DIR)
 
-shot: ## screenshots of a running mock into ./shots (needs CHROME_PATH)
-	go run ./tools/shot -url http://$(ADDR) -out shots -password $(DEMO_PW)
+shot: ## screenshots of a running mock into ./shots (needs CHROME_PATH); SHOTFLAGS=-matrix for every page x 2 widths x 2 themes
+	go run ./tools/shot -url http://$(ADDR) -out shots -password $(DEMO_PW) $(SHOTFLAGS)
 
 mailshot: ## render sample notification emails to docs/img (needs CHROME_PATH)
 	go run ./tools/mailshot -out docs/img
@@ -83,6 +83,35 @@ mailshot: ## render sample notification emails to docs/img (needs CHROME_PATH)
 site: ## preview the project site on http://127.0.0.1:8000 (docs/site + docs/img)
 	rm -rf .site && mkdir .site && cp -r docs/site/. .site/ && cp -r docs/img .site/img
 	@echo "http://127.0.0.1:8000"; cd .site && python3 -m http.server 8000 --bind 127.0.0.1
+
+## ---- frontend (Tailwind) -------------------------------------------------
+# Tailwind v4 standalone CLI, pinned and checksum-verified, kept in .bin/.
+# The generated internal/web/static/app.css is committed, so go build, go run
+# and the Dockerfile never need Tailwind. Run `make css` after changing
+# input.css or any class string in internal/web/*.go.
+
+TAILWIND_VERSION := v4.3.3
+TAILWIND_ARCH := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shell uname -m | sed 's/x86_64/x64/; s/aarch64/arm64/')
+TAILWIND_SHA256_linux-x64 := dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a
+TAILWIND_SHA256_linux-arm64 := 55fd0b241214eff3de1e8ee4f22796662f2d2e7a49bcfca7477cfd0bac398195
+TAILWIND_SHA256_macos-arm64 := cdf646702987a743464dff4d9c60fd4480d1c1e73dd819a9a67f1078815dce9d
+TAILWIND_SHA256_macos-x64 := 7922e0953f2110c05976e3bf58f14e643d90427575e766b7d433f5f80cbee7e1
+TAILWIND_BIN := .bin/tailwindcss-$(TAILWIND_VERSION)-$(TAILWIND_ARCH)
+CSS_IN := internal/web/static/input.css
+CSS_OUT := internal/web/static/app.css
+
+$(TAILWIND_BIN):
+	@test -n "$(TAILWIND_ARCH)" || { echo "no Tailwind binary for this platform"; exit 1; }
+	mkdir -p .bin
+	curl -fsSL -o $@.tmp https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_ARCH)
+	echo "$(TAILWIND_SHA256_$(TAILWIND_ARCH))  $@.tmp" | sha256sum -c - || { rm -f $@.tmp; exit 1; }
+	chmod +x $@.tmp && mv $@.tmp $@
+
+css: $(TAILWIND_BIN) ## rebuild internal/web/static/app.css from input.css (Tailwind v4, commit the result)
+	$(TAILWIND_BIN) -i $(CSS_IN) -o $(CSS_OUT) --minify
+
+css-check: css ## fail if the committed app.css is stale (CI)
+	@git diff --exit-code -- $(CSS_OUT) || { echo "app.css is stale: run 'make css' and commit it"; exit 1; }
 
 ## ---- quality ------------------------------------------------------------
 
@@ -119,4 +148,4 @@ reset-real: ## delete the REAL data dir (needs CONFIRM=1)
 	rm -rf $(REAL_DIR)
 
 clean: ## remove build output, mock data and screenshots (keeps .data)
-	rm -rf $(BIN) $(MOCK_DIR) shots
+	rm -rf $(BIN) $(MOCK_DIR) shots .bin

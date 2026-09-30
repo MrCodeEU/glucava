@@ -38,7 +38,7 @@ func TestSettingsDefaultsFromMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if set.Unit != render.MgDL || set.Range != stats.DefaultRange || set.Post != 30*time.Minute || set.Pre != 0 || set.PollInterval != 10*time.Minute {
+	if set.Unit != render.MgDL || set.Range != (stats.Range{Low: 70, High: 180, VeryLow: 54, VeryHigh: 250}) || set.Post != 30*time.Minute || set.Pre != 0 || set.PollInterval != 10*time.Minute {
 		t.Errorf("settings = %+v", set)
 	}
 	if set.PostBuffer != 5*time.Minute {
@@ -711,5 +711,192 @@ func TestBufferDoneRoundTripsAndNeverClears(t *testing.T) {
 	}
 	if got, _ := s.Activity(ctx, "b1"); !got.BufferDone {
 		t.Errorf("BufferDone was cleared by a save that did not set it: %+v", got)
+	}
+}
+
+func TestThresholdsMigrationDefaultsAndRoundTrip(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.VeryLow != 54 || cfg.VeryHigh != 250 {
+		t.Fatalf("defaults = %v/%v, want 54/250", cfg.VeryLow, cfg.VeryHigh)
+	}
+	cfg.VeryLow, cfg.VeryHigh = 60, 230
+	if err := s.SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.LoadConfig()
+	if got.VeryLow != 60 || got.VeryHigh != 230 {
+		t.Errorf("round trip = %v/%v", got.VeryLow, got.VeryHigh)
+	}
+	rng, err := s.Settings(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vl, vh := rng.Range.Thresholds(); vl != 60 || vh != 230 {
+		t.Errorf("Settings range thresholds = %v/%v", vl, vh)
+	}
+}
+
+func TestLoadSamplesFastMatchesAny(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	var a, b []stats.Sample
+	for i := 0; i < 40; i++ {
+		a = append(a, stats.Sample{Time: t0.Add(time.Duration(i) * 5 * time.Minute), Value: 100 + float64(i)})
+		if i%3 == 0 { // duplicate timestamps from a second source stay duplicated
+			b = append(b, stats.Sample{Time: t0.Add(time.Duration(i) * 5 * time.Minute), Value: 90 + float64(i)})
+		}
+	}
+	if err := s.SaveSamples(ctx, "dexcom", a); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveSamples(ctx, "glooko", b); err != nil {
+		t.Fatal(err)
+	}
+	from, to := t0.Add(10*time.Minute), t0.Add(150*time.Minute)
+	want, err := s.LoadSamplesAny(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadSamplesFast(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) || len(got) == 0 {
+		t.Fatalf("len fast=%d any=%d", len(got), len(want))
+	}
+	for i := range want {
+		if !got[i].Time.Equal(want[i].Time) {
+			t.Fatalf("[%d] time %v != %v", i, got[i].Time, want[i].Time)
+		}
+	}
+	// Equal-timestamp order between sources is unspecified; compare as multisets.
+	sum := func(xs []stats.Sample) (f float64) {
+		for _, x := range xs {
+			f += x.Value
+		}
+		return
+	}
+	if sum(got) != sum(want) {
+		t.Errorf("value sums differ: %v vs %v", sum(got), sum(want))
+	}
+	if empty, err := s.LoadSamplesFast(ctx, t0.Add(-48*time.Hour), t0.Add(-47*time.Hour)); err != nil || len(empty) != 0 {
+		t.Errorf("empty range = %v, %v", empty, err)
+	}
+}
+
+func TestActivitiesInRangeLightMatchesFull(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	for i, name := range []string{"Run", "Ride"} {
+		a := &jobs.Activity{StravaID: string(rune('1' + i)), Name: name, Sport: name, Start: t0.Add(time.Duration(i) * time.Hour),
+			Duration: 30 * time.Minute, Distance: 5000, ElevationGain: 42, Status: jobs.StatusDone, Attempts: 2,
+			ChartUploaded: i == 0, BufferDone: true, Summary: &stats.Summary{Count: 6, TIR: 80, Avg: 115},
+			HeartRate: []chartimg.HRPoint{{Time: t0, BPM: 140}}}
+		if err := s.SaveActivity(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	from, to := t0.Add(-time.Hour), t0.Add(3*time.Hour)
+	full, err := s.ActivitiesInRange(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	light, err := s.ActivitiesInRangeLight(ctx, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(light) != 2 || len(full) != 2 {
+		t.Fatalf("len light=%d full=%d", len(light), len(full))
+	}
+	for i := range full {
+		f, l := full[i], light[i]
+		if f.StravaID != l.StravaID || f.Name != l.Name || f.Sport != l.Sport || !f.Start.Equal(l.Start) ||
+			f.Duration != l.Duration || f.Distance != l.Distance || f.ElevationGain != l.ElevationGain ||
+			f.Status != l.Status || f.Attempts != l.Attempts || f.ChartUploaded != l.ChartUploaded || f.BufferDone != l.BufferDone {
+			t.Errorf("[%d] light %+v != full %+v", i, l, f)
+		}
+		if l.Summary == nil || l.Summary.TIR != 80 {
+			t.Errorf("[%d] summary lost: %+v", i, l.Summary)
+		}
+		if l.HeartRate != nil || l.Elevation != nil {
+			t.Errorf("[%d] streams should be skipped", i)
+		}
+	}
+}
+
+func TestDataVersionChanges(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	v0, err := s.DataVersion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v1, _ := s.DataVersion(ctx); v1 != v0 {
+		t.Error("version changed with no writes")
+	}
+	_ = s.SaveSamples(ctx, "dexcom", []stats.Sample{{Time: t0, Value: 100}})
+	v1, _ := s.DataVersion(ctx)
+	if v1 == v0 || v1.Samples != 1 || !v1.LatestSample.Equal(t0) {
+		t.Errorf("after sample: %+v", v1)
+	}
+	_ = s.SaveActivity(ctx, &jobs.Activity{StravaID: "9", Name: "R", Start: t0, Duration: time.Minute, Status: jobs.StatusDone})
+	v2, _ := s.DataVersion(ctx)
+	if v2 == v1 || v2.Activities != 1 {
+		t.Errorf("after activity: %+v", v2)
+	}
+}
+
+func BenchmarkLoadSamples100k(b *testing.B) {
+	app := core.NewBaseApp(core.BaseAppConfig{DataDir: b.TempDir()})
+	if err := app.Bootstrap(); err != nil {
+		b.Fatal(err)
+	}
+	if err := app.RunAllMigrations(); err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = app.ClearBootstrap() }()
+	s := &PB{App: app}
+	ctx := context.Background()
+	const n = 100_000
+	samples := make([]stats.Sample, n)
+	for i := range samples {
+		samples[i] = stats.Sample{Time: t0.Add(time.Duration(i) * 5 * time.Minute), Value: 100 + float64(i%80)}
+	}
+	for i := 0; i < n; i += 5000 {
+		if err := s.SaveSamples(ctx, "dexcom", samples[i:i+5000]); err != nil {
+			b.Fatal(err)
+		}
+	}
+	from, to := t0, t0.Add(n*5*time.Minute)
+	b.Run("fast", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if got, err := s.LoadSamplesFast(ctx, from, to); err != nil || len(got) != n {
+				b.Fatal(len(got), err)
+			}
+		}
+	})
+	b.Run("any", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if got, err := s.LoadSamplesAny(ctx, from, to); err != nil || len(got) != n {
+				b.Fatal(len(got), err)
+			}
+		}
+	})
+}
+
+func TestParseStoredMatchesTimeParse(t *testing.T) {
+	for _, in := range []string{"2026-09-20 07:00:00.000Z", "2026-12-31 23:59:59.999Z", "2024-02-29 00:00:00.500Z"} {
+		want, err := time.Parse(pbStoredTime, in)
+		got, ok := parseStored(in)
+		if err != nil || !ok || !got.Equal(want) {
+			t.Errorf("%s: got %v %v, want %v", in, got, ok, want)
+		}
+	}
+	if _, ok := parseStored("garbage"); ok {
+		t.Error("garbage parsed")
 	}
 }

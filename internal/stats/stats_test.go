@@ -105,3 +105,25 @@ func TestSparkline(t *testing.T) {
 		t.Error("empty input should give empty string")
 	}
 }
+
+func TestSummarizeCustomThresholds(t *testing.T) {
+	base := time.Date(2026, 9, 20, 7, 0, 0, 0, time.UTC)
+	var s []Sample
+	for i, v := range []float64{55, 58, 62, 100, 210, 240, 260} {
+		s = append(s, Sample{Time: base.Add(time.Duration(i) * 5 * time.Minute), Value: v})
+	}
+	def, _ := Summarize(s, Range{Low: 70, High: 180})
+	if def.VeryLow != 0 || !(def.VeryHigh > 14 && def.VeryHigh < 15) { // only 260 > 250
+		t.Errorf("defaults: veryLow=%v veryHigh=%v", def.VeryLow, def.VeryHigh)
+	}
+	cus, _ := Summarize(s, Range{Low: 70, High: 180, VeryLow: 60, VeryHigh: 200})
+	if !(cus.VeryLow > 28 && cus.VeryLow < 29) || !(cus.VeryHigh > 42 && cus.VeryHigh < 43) { // 55,58 / 210,240,260
+		t.Errorf("custom: veryLow=%v veryHigh=%v", cus.VeryLow, cus.VeryHigh)
+	}
+	if cus.Below != def.Below || cus.Above != def.Above || cus.TIR != def.TIR {
+		t.Error("very thresholds must not change the target-range split")
+	}
+	if vl, vh := (Range{}).Thresholds(); vl != 54 || vh != 250 {
+		t.Errorf("zero range thresholds = %v/%v", vl, vh)
+	}
+}

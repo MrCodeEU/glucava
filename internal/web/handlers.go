@@ -168,12 +168,12 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key, from, to := statsRangeBounds(r.URL.Query().Get("range"), s.now())
-	acts, err := s.Store.ActivitiesInRange(r.Context(), from, to)
+	acts, err := s.Store.ActivitiesInRangeLight(r.Context(), from, to)
 	if err != nil {
 		s.serverError(w, err)
 		return
 	}
-	samples, err := s.Store.LoadSamplesAny(r.Context(), from, to)
+	samples, err := s.Store.LoadSamplesFast(r.Context(), from, to)
 	if err != nil {
 		s.serverError(w, err)
 		return
@@ -184,7 +184,7 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	loc := s.loc()
-	rng := stats.Range{Low: cfg.RangeLow, High: cfg.RangeHigh}
+	rng := cfg.Range()
 	d := StatsData{
 		Range: key, Overview: overview.Build(acts, loc), General: overview.BuildGeneral(samples, rng, loc),
 		SourceHealth: sources, Unit: render.Unit(cfg.Unit), Loc: loc, Now: s.now(),
@@ -561,6 +561,8 @@ type settingsSignals struct {
 	Unit            string  `json:"unit"`
 	RangeLow        float64 `json:"rangeLow"`
 	RangeHigh       float64 `json:"rangeHigh"`
+	VeryLow         float64 `json:"veryLow"`
+	VeryHigh        float64 `json:"veryHigh"`
 	PreMin          int     `json:"preMin"`
 	PostMin         int     `json:"postMin"`
 	PollMin         int     `json:"pollMin"`
@@ -615,7 +617,7 @@ type settingsSignals struct {
 // config converts the form values to the stored settings shape.
 func (v settingsSignals) config() store.Config {
 	return store.Config{
-		Unit: v.Unit, RangeLow: v.RangeLow, RangeHigh: v.RangeHigh, PreMin: v.PreMin, PostMin: v.PostMin,
+		Unit: v.Unit, RangeLow: v.RangeLow, RangeHigh: v.RangeHigh, VeryLow: v.VeryLow, VeryHigh: v.VeryHigh, PreMin: v.PreMin, PostMin: v.PostMin,
 		PollMin: v.PollMin, DexcomRegion: v.DexcomRegion, DexcomUsername: v.DexcomUsername,
 		NtfyURL: v.NtfyURL, WebhookURL: v.WebhookURL, EmailTo: v.EmailTo, RetentionDays: v.RetentionDays,
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
@@ -654,6 +656,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg.Unit, cfg.RangeLow, cfg.RangeHigh = v.Unit, v.RangeLow, v.RangeHigh
+	cfg.VeryLow, cfg.VeryHigh = v.VeryLow, v.VeryHigh
 	cfg.PreMin, cfg.PostMin, cfg.PollMin = v.PreMin, v.PostMin, v.PollMin
 	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
 	cfg.NtfyURL, cfg.WebhookURL, cfg.EmailTo = v.NtfyURL, v.WebhookURL, v.EmailTo
