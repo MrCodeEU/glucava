@@ -298,6 +298,7 @@ type TrendSeries struct {
 	Color  string // empty picks the default
 	Points []TrendPoint
 	Area   bool
+	Thin   bool // a fine, faded line, for context such as a daily minimum or maximum
 }
 
 // TrendInput describes a time-axis line chart with optional zoom and target
@@ -342,6 +343,10 @@ func TrendOption(in TrendInput) map[string]any {
 		if s.Color != "" {
 			it["itemStyle"] = map[string]any{"color": s.Color}
 			it["lineStyle"] = map[string]any{"width": 2, "color": s.Color}
+		}
+		if s.Thin {
+			ls := it["lineStyle"].(map[string]any)
+			ls["width"], ls["opacity"] = 1, 0.7
 		}
 		if s.Area {
 			it["areaStyle"] = map[string]any{"opacity": 0.12}
@@ -487,11 +492,15 @@ func ScatterOption(in ScatterInput) map[string]any {
 	}
 	xAxis := axis(in.XName, xf)
 	xAxis["nameLocation"], xAxis["nameGap"] = "middle", 28
+	// The y title sits rotated beside the tick labels; a top-of-axis title is
+	// centred on the axis line and gets clipped by the chart edge.
+	yAxis := axis(in.YName, yf)
+	yAxis["nameLocation"], yAxis["nameRotate"], yAxis["nameGap"] = "middle", 90, 40
 	return map[string]any{
-		"grid":    grid(28, 16, 36, 8),
+		"grid":    grid(16, 16, 40, 24),
 		"tooltip": map[string]any{"trigger": "item", "formatter": "gv:point:" + xf[3:] + ":" + yf[3:]},
 		"xAxis":   xAxis,
-		"yAxis":   axis(in.YName, yf),
+		"yAxis":   yAxis,
 		"series": []map[string]any{{
 			"type": "scatter", "data": data, "symbolSize": 9,
 			"itemStyle": map[string]any{"color": col, "opacity": 0.75},

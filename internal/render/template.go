@@ -40,28 +40,35 @@ type TemplateData struct {
 	// a meaningful distance metric) — see formatPace.
 	Distance, Elevation, Pace string
 
+	// TIRBar and TIRWindowBar draw the same split as ten emoji blocks:
+	// red = below range, green = in range, yellow = above range, in glucose
+	// order. See TIRBar.
+	TIRBar, TIRWindowBar string
+
 	Sparkline string // "" when disabled or there were no samples to draw
 }
 
 func newTemplateData(sum, windowSum stats.Summary, samples []stats.Sample, opt Options) TemplateData {
 	pct := func(v float64) string { return num(v, "") }
 	d := TemplateData{
-		Sum:       sum,
-		Unit:      string(opt.Unit),
-		TIR:       pct(sum.TIR),
-		Below:     pct(sum.Below),
-		Above:     pct(sum.Above),
-		VeryLow:   pct(sum.VeryLow),
-		VeryHigh:  pct(sum.VeryHigh),
-		Min:       num(sum.Min, opt.Unit),
-		Max:       num(sum.Max, opt.Unit),
-		Avg:       num(sum.Avg, opt.Unit),
-		StdDev:    num(sum.StdDev, opt.Unit),
-		CV:        pct(sum.CV),
-		GMI:       pct(sum.GMI),
-		Start:     num(sum.Start, opt.Unit),
-		End:       num(sum.End, opt.Unit),
-		TIRWindow: pct(windowSum.TIR),
+		Sum:          sum,
+		Unit:         string(opt.Unit),
+		TIR:          pct(sum.TIR),
+		Below:        pct(sum.Below),
+		Above:        pct(sum.Above),
+		VeryLow:      pct(sum.VeryLow),
+		VeryHigh:     pct(sum.VeryHigh),
+		Min:          num(sum.Min, opt.Unit),
+		Max:          num(sum.Max, opt.Unit),
+		Avg:          num(sum.Avg, opt.Unit),
+		StdDev:       num(sum.StdDev, opt.Unit),
+		CV:           pct(sum.CV),
+		GMI:          pct(sum.GMI),
+		Start:        num(sum.Start, opt.Unit),
+		End:          num(sum.End, opt.Unit),
+		TIRWindow:    pct(windowSum.TIR),
+		TIRBar:       TIRBar(sum),
+		TIRWindowBar: TIRBar(windowSum),
 	}
 	if opt.Distance > 0 {
 		d.Distance = fmt.Sprintf("%.2f km", opt.Distance/1000)
@@ -142,4 +149,44 @@ func RenderBlock(tmplText string, sum, windowSum stats.Summary, samples []stats.
 		return "", err
 	}
 	return sentinel + buf.String() + endSentinel, nil
+}
+
+// tirBarBlocks is the width of the emoji time-in-range bar.
+const tirBarBlocks = 10
+
+// TIRBar draws sum's below/in-range/above split as ten emoji blocks in
+// glucose order (🟥 below, 🟩 in range, 🟨 above). Block counts use the
+// largest-remainder method so they always total ten, and any non-zero share
+// keeps at least one block only when rounding gives it one — a 3% low still
+// shows if it earns a block, but is not inflated. A summary with no readings
+// yields "".
+func TIRBar(sum stats.Summary) string {
+	if sum.Count == 0 {
+		return ""
+	}
+	shares := [3]float64{sum.Below, sum.TIR, sum.Above}
+	total := shares[0] + shares[1] + shares[2]
+	if total <= 0 {
+		return ""
+	}
+	var n [3]int
+	var rem [3]float64
+	used := 0
+	for i, v := range shares {
+		exact := v / total * tirBarBlocks
+		n[i] = int(exact)
+		rem[i] = exact - float64(n[i])
+		used += n[i]
+	}
+	for ; used < tirBarBlocks; used++ {
+		best := 0
+		for i := 1; i < 3; i++ {
+			if rem[i] > rem[best] {
+				best = i
+			}
+		}
+		n[best]++
+		rem[best] = -1
+	}
+	return strings.Repeat("🟥", n[0]) + strings.Repeat("🟩", n[1]) + strings.Repeat("🟨", n[2])
 }

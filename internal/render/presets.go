@@ -22,6 +22,15 @@ var Presets = []Preset{
 		Template:    DefaultTemplate,
 	},
 	{
+		ID:   "bar",
+		Name: "Bar + window",
+		Description: `The default line plus a ten-block time-in-range bar (🟥 low, 🟩 in range, 🟨 high), ` +
+			`and a second bar for the wider before/after window the chart draws when it differs.`,
+		Template: Prefix + `TIR {{.TIR}}% {{.TIRBar}} | min {{.Min}} | max {{.Max}} | avg {{.Avg}} {{.Unit}}` +
+			`{{if ne .TIR .TIRWindow}}` + "\n" + `Incl. before/after: {{.TIRWindow}}% {{.TIRWindowBar}}{{end}}` +
+			`{{if .Sparkline}}` + "\n" + `{{.Sparkline}}{{end}}`,
+	},
+	{
 		ID:          "minimal",
 		Name:        "Minimal",
 		Description: `Just the headline number, one line, no sparkline.`,

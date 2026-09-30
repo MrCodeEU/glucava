@@ -236,6 +236,12 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		start := time.Date(day.Year(), day.Month(), day.Day(), sp.hour, (i*13)%50, 0, 0, day.Location())
 		dur := time.Duration(sp.mins) * time.Minute
 		a := &jobs.Activity{StravaID: id, Name: sp.name, Sport: "Run", Start: start, Duration: dur, Status: jobs.StatusDone, Attempts: 1}
+		// A steady 5:30-6:00 /km, more climbing on the trail and hill days.
+		a.Distance = dur.Minutes() / (5.5 + float64(i%3)*0.25) * 1000
+		a.ElevationGain = float64(20 + (i*17)%45)
+		if sp.name == "Trail Run" || sp.name == "Hill Repeats" {
+			a.ElevationGain += 140
+		}
 
 		// The failed activity has no readings, like a real outage would leave.
 		if i == 2 {

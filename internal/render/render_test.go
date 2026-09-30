@@ -443,3 +443,35 @@ func FuzzStripIdempotent(f *testing.F) {
 		}
 	})
 }
+
+func TestTIRBar(t *testing.T) {
+	cases := []struct {
+		name string
+		sum  stats.Summary
+		want string
+	}{
+		{"empty", stats.Summary{}, ""},
+		{"all in range", stats.Summary{Count: 5, TIR: 100}, "🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩"},
+		{"mixed", stats.Summary{Count: 5, Below: 10, TIR: 70, Above: 20}, "🟥🟩🟩🟩🟩🟩🟩🟩🟨🟨"},
+		{"thirds sum to ten", stats.Summary{Count: 3, Below: 33.3, TIR: 33.3, Above: 33.4}, "🟥🟥🟥🟩🟩🟩🟨🟨🟨🟨"},
+	}
+	for _, c := range cases {
+		if got := TIRBar(c.sum); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBarPresetShowsWindowOnlyWhenDifferent(t *testing.T) {
+	p, _ := PresetByID("bar")
+	a := stats.Summary{Count: 5, TIR: 100, Min: 90, Max: 120, Avg: 100}
+	same, err := RenderBlock(p.Template, a, a, nil, Options{SparkWidth: -1})
+	if err != nil || strings.Contains(same, "Incl.") {
+		t.Fatalf("same window: %q %v", same, err)
+	}
+	w := stats.Summary{Count: 9, Below: 20, TIR: 80}
+	diff, err := RenderBlock(p.Template, a, w, nil, Options{SparkWidth: -1})
+	if err != nil || !strings.Contains(diff, "Incl. before/after: 80% 🟥🟥🟩") {
+		t.Fatalf("differing window: %q %v", diff, err)
+	}
+}
