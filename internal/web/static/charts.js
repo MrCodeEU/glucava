@@ -22,6 +22,8 @@
     mmol: (v) => Number(v).toFixed(1),
     pct: (v) => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : Number(v).toFixed(1)) + '%',
     int: (v) => String(Math.round(v)),
+    bpm: (v) => Math.round(v) + ' bpm',
+    m: (v) => Math.round(v) + ' m',
     num: (v) => String(Math.round(v * 100) / 100),
     hhmm: (v) => v >= 1440 ? '24:00' : pad(Math.floor(v / 60) % 24) + ':' + pad(Math.round(v % 60) % 60),
     min: (v) => {

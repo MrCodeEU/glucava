@@ -272,6 +272,27 @@ func runFlow(ctx context.Context, base string, shot func(string), setMode chrome
 	shot("flow2-reprocess")
 	fmt.Println("failed activity now done:", strings.Contains(text("#activity-body"), "Done"))
 
+	// 2b. A live patch must not rebuild the activity chart: the same element
+	// stays in the page, keeps its rendered SVG, and keeps the zoom.
+	var kept bool
+	must(chromedp.Run(ctx, chromedp.Navigate(base+"/activity/140100"), setMode, chromedp.Sleep(1500*time.Millisecond),
+		chromedp.Evaluate(`(() => {
+			const el = document.querySelector('#activity-chart');
+			if (!el) return false;
+			window.__chartEl = el;
+			const ch = el._chart || null;
+			window.__zoomBefore = ch ? JSON.stringify(ch.getOption().dataZoom.map(z => [z.start, z.end])) : '';
+			return true;
+		})()`, &kept),
+		chromedp.Click(`button[data-on\:click*="/actions/reprocess"]`, chromedp.ByQuery), chromedp.Sleep(6*time.Second)))
+	var same bool
+	must(chromedp.Run(ctx, chromedp.Evaluate(`(() => {
+		const el = document.querySelector('#activity-chart');
+		return !!el && el === window.__chartEl && !!el.shadowRoot && !!el.shadowRoot.querySelector('svg');
+	})()`, &same)))
+	shot("flow2b-activity-chart-after-patch")
+	fmt.Println("activity chart present before patch:", kept, "· same element with rendered SVG after patch:", same)
+
 	// 3. Create a token.
 	must(chromedp.Run(ctx, chromedp.Navigate(base+"/tokens"), setMode, chromedp.Sleep(800*time.Millisecond),
 		chromedp.SendKeys("#tokenName", "phone"),

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/chartimg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -137,6 +138,17 @@ func heartRate(start time.Time, dur time.Duration, seed int) []stats.HRSample {
 	return out
 }
 
+// elevation is a rolling altitude profile that climbs gain metres over the run.
+func elevation(start time.Time, dur time.Duration, gain float64) []chartimg.ElevPoint {
+	var out []chartimg.ElevPoint
+	for m := 0.0; m <= dur.Minutes(); m += 1 {
+		frac := m / dur.Minutes()
+		alt := 300 + gain*frac + 12*math.Sin(frac*9)
+		out = append(out, chartimg.ElevPoint{Time: start.Add(time.Duration(m * float64(time.Minute))), Meters: math.Round(alt*10) / 10})
+	}
+	return out
+}
+
 // Session is a SessionChecker that always succeeds after a short pause.
 type Session struct{}
 
@@ -230,6 +242,7 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		{"Easy Run", 36, 10.6, 18}, {"Hill Repeats", 50, 11.7, 17}, {"Long Run", 88, 12.8, 8}, {"Evening Jog", 30, 13.9, 19},
 	}
 
+	seen := map[int64]bool{}
 	for i, sp := range specs {
 		id := fmt.Sprintf("%d", 140100-i)
 		day := now.Add(-time.Duration(sp.daysA * 24 * float64(time.Hour)))
@@ -256,6 +269,10 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		if err := st.SaveSamples(ctx, SourceName, smp); err != nil {
 			return err
 		}
+		for _, s := range smp {
+			seen[s.Time.Unix()] = true
+		}
+		a.Elevation = elevation(start, dur, a.ElevationGain)
 		if sum, ok := stats.Summarize(smp, rng); ok {
 			a.Summary = &sum
 		}
@@ -263,6 +280,19 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		if err := st.SaveActivity(ctx, a); err != nil {
 			return err
 		}
+	}
+
+	// A continuous background trace for the last day, so the dashboard's "now"
+	// card has a trend, a chart and a 24 hour split. Times already covered by
+	// an activity window keep their activity readings.
+	var rest []stats.Sample
+	for _, s := range samples("background", now.Add(-26*time.Hour), now.Add(-26*time.Hour), now) {
+		if !seen[s.Time.Unix()] {
+			rest = append(rest, s)
+		}
+	}
+	if err := st.SaveSamples(ctx, SourceName, rest); err != nil {
+		return err
 	}
 
 	events := []struct {
