@@ -4,8 +4,12 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Activity page: one interactive chart with glucose, heart rate and elevation, the activity and before/after windows shaded, and zoom. New tiles for variability (CV, SD), GMI, very-low/very-high share, drop rate, duration, distance, pace, elevation gain and rank among activities of the same sport, plus a before/during/after card that flags a low within three hours afterwards. Older/Newer buttons move between activities.
+- Dashboard "now" card: current value with trend arrow, the last three hours with the target band, and a 24-hour time-in-range donut. Activity rows show a sport icon and distance/pace.
+
 ### Changed
-- Overview: the weekday-by-hour heatmap now colours by time in range on a red-to-green gradient by default (average glucose stays available as a card option), and the calendar uses the same gradient. The by-activity-type chart shows the full five-band split (very low to very high) so a bar no longer looks like 100% in range when it is not. Heatmap, calendar, time of day and lows/highs sit two to a row on wide screens, which shortens the page. "Lowest time in range" no longer comes up empty when only a few activities exist. Short bar charts show every axis label.
+- Overview: the weekday-by-hour heatmap now colours by time in range on a red-to-green gradient by default (average glucose stays available as a card option), and the calendar uses the same gradient. The by-activity-type chart shows the full five-band split (very low to very high) so a bar no longer looks like 100% in range when it is not. Heatmap, calendar, time of day and lows/highs sit two to a row on wide screens, which shortens the page. "Lowest time in range" no longer comes up empty when only a few activities exist. Short bar charts show every axis label. The demo data now includes a continuous last-day trace and elevation profiles.
 
 ## [0.7.1] - 2026-09-30
 
