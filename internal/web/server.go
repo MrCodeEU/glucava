@@ -83,6 +83,7 @@ type Server struct {
 	}
 	failures map[string]*loginBucket
 
+	langc         langCache     // stored language setting, see i18n.go
 	overviewCache overviewCache // computed Overview models, see overviewmodel.go
 	reportSt      reportState   // PDF report concurrency and cache, see report.go
 }
@@ -107,7 +108,8 @@ func (s *Server) page(r *http.Request, title, active string) PageData {
 	if err != nil {
 		slog.Error("count recent errors", "err", err)
 	}
-	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n}
+	tr := s.tr(r)
+	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n, T: tr, Lang: tr.Lang()}
 }
 
 // Handler returns the UI routes. Mount it on the paths in Paths.
@@ -167,7 +169,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /export/activities.csv", s.exportActivities)
 	page("GET /export/report.pdf", s.exportReport)
 
-	return secure(mux)
+	return secure(s.withTranslator(mux))
 }
 
 // Routes lists the PocketBase route patterns that forward to Handler. PocketBase

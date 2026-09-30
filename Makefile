@@ -1,4 +1,4 @@
-.PHONY: help hooks css css-check build test vet fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-photo strava-hr strava-list strava-cookies shot mailshot site reset-mock reset-real clean
+.PHONY: help hooks css css-check build test vet i18n-check fmt lint vuln check mock demo dev run cli token dexcom strava-check strava-photo strava-hr strava-list strava-cookies shot mailshot site reset-mock reset-real clean
 
 SHELL := /bin/bash
 BIN := glucava
@@ -123,6 +123,10 @@ test: ## unit tests with the race detector
 
 vet:
 	go vet ./...
+
+i18n-check: ## translation keys vs locale files (missing keys warn, everything else fails)
+	go run ./tools/i18n check
+	go run ./tools/i18n
 
 fmt: ## gofmt everything
 	gofmt -w .

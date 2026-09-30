@@ -252,7 +252,7 @@ func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	s.html(w, http.StatusOK, EventsPage(s.page(r, "Notifications", "events"), evs, s.loc(), s.now()))
+	s.html(w, http.StatusOK, EventsPage(s.page(r, s.tr(r).T("events.title"), "events"), evs, s.loc(), s.now()))
 }
 
 func (s *Server) recentLogs() []logging.Entry {
@@ -672,8 +672,9 @@ type settingsSignals struct {
 	OverviewRange string            `json:"overviewRange"`
 	ArtifactMode  string            `json:"artifactMode"`
 
-	PushAlerts    bool `json:"pushAlerts"`
-	PushSummaries bool `json:"pushSummaries"`
+	PushAlerts    bool   `json:"pushAlerts"`
+	PushSummaries bool   `json:"pushSummaries"`
+	Language      string `json:"language"`
 }
 
 // config converts the form values to the stored settings shape.
@@ -693,6 +694,7 @@ func (v settingsSignals) config() store.Config {
 		DescriptionTemplate: v.DescTemplate,
 		OverviewLayout:      v.overviewLayout(), OverviewDefaultRange: v.OverviewRange, ArtifactMode: v.ArtifactMode,
 		PushAlerts: v.PushAlerts, PushSummaries: v.PushSummaries,
+		Language: v.Language,
 	}
 }
 
@@ -746,10 +748,14 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	if v.ArtifactMode != "" {
 		cfg.ArtifactMode = v.ArtifactMode
 	}
+	if v.Language != "" {
+		cfg.Language = v.Language
+	}
 	if err := s.Store.SaveConfig(cfg); err != nil {
 		s.toast(sse, "error", "Could not save: "+err.Error())
 		return
 	}
+	s.forgetLanguage()
 
 	// Secrets are write-only: an empty field keeps the stored value.
 	for name, val := range map[string]string{

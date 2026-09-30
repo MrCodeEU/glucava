@@ -94,6 +94,7 @@ func main() {
 	flow := flag.Bool("flow", false, "click through the main actions instead of visiting pages")
 	matrix := flag.Bool("matrix", false, "every page at 1280 and 390 px, light and dark (ignores -mode and -width)")
 	ignore := flag.String("ignore", "", "regexp of console messages to tolerate, e.g. a script that is not deployed yet")
+	lang := flag.String("lang", "", "browser language, e.g. de (glucava follows it while Settings > Language is automatic)")
 	paths := flag.String("paths", defaultPaths, "comma-separated paths")
 	flag.Parse()
 
@@ -103,6 +104,9 @@ func main() {
 	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(os.Getenv("CHROME_PATH")), chromedp.Flag("no-sandbox", true), chromedp.WindowSize(*width, 900))
+	if *lang != "" {
+		opts = append(opts, chromedp.Flag("lang", *lang))
+	}
 	actx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 	ctx, cancel := chromedp.NewContext(actx)
