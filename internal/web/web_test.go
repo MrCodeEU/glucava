@@ -856,7 +856,7 @@ func TestRoutesCoverHandlerPatterns(t *testing.T) {
 		"/actions/poll", "/actions/reprocess/{id}", "/actions/chart/{id}", "/actions/process", "/actions/restore/{id}",
 		"/actions/delete/{id}", "/actions/settings", "/actions/account", "/actions/notify/test", "/actions/strava/cookies",
 		"/actions/strava/test", "/actions/strava/login", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
-		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv",
+		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv", "/export/report.pdf",
 	}
 	for _, p := range patterns {
 		if !coveredByRoutes(p) {

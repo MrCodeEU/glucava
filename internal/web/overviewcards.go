@@ -647,7 +647,10 @@ func rangeToolbar(d StatsData) g.Node {
 	}
 	return Div(Class("mb-4 flex flex-wrap items-center gap-2"),
 		Segmented("Date range", items, presetActive(r)), custom,
-		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented("Comparison", cmp, active))))
+		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented("Comparison", cmp, active))),
+		A(append(comp("button"), Href(r.reportHref()), g.Attr("download", ""),
+			g.Attr("data-variant", "ghost"), g.Attr("title", "A printable PDF of this range, made with Typst"),
+			icon("scroll", "size-4"), g.Text("Download report"))...))
 }
 
 func presetActive(r statsRange) string {

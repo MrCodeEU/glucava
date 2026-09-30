@@ -638,6 +638,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Div(append(comp("actions"),
 						A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text("Download readings (CSV)"))...),
 						A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text("Download activities (CSV)"))...),
+						A(append(comp("button"), Href("/export/report.pdf?range=30d"), g.Attr("download", ""), g.Text("Download report, last 30 days (PDF)"))...),
 					)...),
 					Field("purgeConfirm", "Delete all data", "Removes every reading, activity and event. Settings, credentials and tokens stay. Type DELETE to enable the button.",
 						Input(ID("purgeConfirm"), Type("text"), AutoComplete("off"), bind("purgeConfirm"))),
