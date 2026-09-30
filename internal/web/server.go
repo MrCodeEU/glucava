@@ -233,14 +233,14 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.user(r); !ok {
 			if r.Header.Get("Datastar-Request") != "" {
-				http.Error(w, "signed out", http.StatusUnauthorized)
+				http.Error(w, s.tr(r).T("err.http.signed_out"), http.StatusUnauthorized)
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 		if r.Method == http.MethodPost && !sameOrigin(r) {
-			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 			return
 		}
 		next(w, r)

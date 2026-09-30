@@ -33,69 +33,91 @@ func (c Config) validThresholds() bool {
 	return true
 }
 
-// Validate returns a message for the first problem with c, or "". It is the
-// single rule set for every way of changing settings (web UI, CLI, env seeds).
+// Problem is one settings validation failure as a translation key plus its
+// placeholder arguments (alternating name, value), so the web layer can say it
+// in the reader's language. English renders it in English.
+type Problem struct {
+	Key  string
+	Args []any
+}
+
+func problem(key string, args ...any) Problem { return Problem{Key: key, Args: args} }
+
+// English renders the problem in English, for the CLI and logs.
+func (p Problem) English() string { return i18n.English().T(p.Key, p.Args...) } // i18n:dynamic
+
+// Validate returns the English message for the first problem, or "". Use Check
+// where the message should be translated.
 func (c Config) Validate() string {
-	switch {
-	case c.Unit != "mg/dL" && c.Unit != "mmol/L":
-		return "Unit must be mg/dL or mmol/L."
-	case c.RangeLow < 40 || c.RangeLow > 200:
-		return "Target low must be between 40 and 200 mg/dL."
-	case c.RangeHigh <= c.RangeLow || c.RangeHigh > 400:
-		return "Target high must be above the low value and at most 400 mg/dL."
-	case !c.validThresholds():
-		return "Very low must be between 20 and the target low, and very high between the target high and 600 mg/dL."
-	case c.PreMin < 0 || c.PreMin > 240 || c.PostMin < 0 || c.PostMin > 240:
-		return "Minutes before and after must be between 0 and 240."
-	case c.ChartTheme != "light" && c.ChartTheme != "dark":
-		return "Chart theme must be light or dark."
-	case c.ChartSize != "standard" && c.ChartSize != "large":
-		return "Chart size must be standard or large."
-	case c.ChartPreMin < 0 || c.ChartPreMin > 240:
-		return "Chart lead-in must be between 0 and 240 minutes."
-	case c.ChartLine < 1 || c.ChartLine > 4:
-		return "Chart line thickness must be between 1 and 4."
-	case c.PollMin < 1 || c.PollMin > 1440:
-		return "The polling interval must be between 1 and 1440 minutes."
-	case c.PostBufferMin < 0 || c.PostBufferMin > 180:
-		return "The delayed reprocess buffer must be between 0 and 180 minutes."
-	case c.RetentionDays < 0 || c.RetentionDays > 3650:
-		return "Retention must be between 0 and 3650 days."
-	case c.DexcomRegion != "us" && c.DexcomRegion != "ous" && c.DexcomRegion != "jp":
-		return "Choose a Dexcom region."
-	case !validOptionalURL(c.NtfyURL):
-		return "The ntfy URL must start with http:// or https://."
-	case !validOptionalURL(c.WebhookURL):
-		return "The webhook URL must start with http:// or https://."
-	case !validOptionalEmail(c.EmailTo):
-		return "The notification email address is not valid."
-	case c.SMTPPort < 0 || c.SMTPPort > 65535:
-		return "The SMTP port must be between 1 and 65535."
-	case !validOptionalEmail(c.SMTPSender):
-		return "The SMTP sender address is not valid."
-	case c.GapAlertHours < 0 || c.GapAlertHours > 168:
-		return "The glucose gap alert must be between 0 and 168 hours."
-	case !validOptionalURL(c.PublicURL):
-		return "The public URL must start with http:// or https://."
-	case c.SMTPHost != "" && (c.SMTPPort == 0 || c.SMTPSender == ""):
-		return "SMTP needs a port and a sender address."
-	case c.DescriptionTemplate != "":
-		if err := render.CheckTemplate(c.DescriptionTemplate); err != nil {
-			return "Description template: " + err.Error()
-		}
-	case !ValidChartPanelOrder(c.ChartPanelOrder):
-		return "Chart panel order must only list activity, band, dots, hr."
-	case c.Language != "" && c.Language != i18n.Auto && !i18n.Default().Has(c.Language):
-		return "Language must be auto or one of the installed languages."
-	case !validArtifactMode(c.ArtifactMode):
-		return "Suspected artifacts must be handled as flagged or exclude."
-	case !validOverviewRange(c.OverviewDefaultRange):
-		return "The default Overview range must be one of " + strings.Join(OverviewRanges, ", ") + "."
-	}
-	if _, err := ParseOverviewLayout(c.OverviewLayout); err != nil {
-		return "The Overview layout is not valid JSON: " + err.Error()
+	if p, ok := c.Check(); !ok {
+		return p.English()
 	}
 	return ""
+}
+
+// Check reports the first problem with c (ok false). It is the single rule set
+// for every way of changing settings (web UI, CLI, env seeds).
+func (c Config) Check() (Problem, bool) {
+	switch {
+	case c.Unit != "mg/dL" && c.Unit != "mmol/L":
+		return problem(i18n.Key("validate.unit")), false
+	case c.RangeLow < 40 || c.RangeLow > 200:
+		return problem(i18n.Key("validate.range_low")), false
+	case c.RangeHigh <= c.RangeLow || c.RangeHigh > 400:
+		return problem(i18n.Key("validate.range_high")), false
+	case !c.validThresholds():
+		return problem(i18n.Key("validate.thresholds")), false
+	case c.PreMin < 0 || c.PreMin > 240 || c.PostMin < 0 || c.PostMin > 240:
+		return problem(i18n.Key("validate.minutes")), false
+	case c.ChartTheme != "light" && c.ChartTheme != "dark":
+		return problem(i18n.Key("validate.chart_theme")), false
+	case c.ChartSize != "standard" && c.ChartSize != "large":
+		return problem(i18n.Key("validate.chart_size")), false
+	case c.ChartPreMin < 0 || c.ChartPreMin > 240:
+		return problem(i18n.Key("validate.chart_lead")), false
+	case c.ChartLine < 1 || c.ChartLine > 4:
+		return problem(i18n.Key("validate.chart_line")), false
+	case c.PollMin < 1 || c.PollMin > 1440:
+		return problem(i18n.Key("validate.poll")), false
+	case c.PostBufferMin < 0 || c.PostBufferMin > 180:
+		return problem(i18n.Key("validate.post_buffer")), false
+	case c.RetentionDays < 0 || c.RetentionDays > 3650:
+		return problem(i18n.Key("validate.retention")), false
+	case c.DexcomRegion != "us" && c.DexcomRegion != "ous" && c.DexcomRegion != "jp":
+		return problem(i18n.Key("validate.dexcom_region")), false
+	case !validOptionalURL(c.NtfyURL):
+		return problem(i18n.Key("validate.ntfy_url")), false
+	case !validOptionalURL(c.WebhookURL):
+		return problem(i18n.Key("validate.webhook_url")), false
+	case !validOptionalEmail(c.EmailTo):
+		return problem(i18n.Key("validate.email_to")), false
+	case c.SMTPPort < 0 || c.SMTPPort > 65535:
+		return problem(i18n.Key("validate.smtp_port")), false
+	case !validOptionalEmail(c.SMTPSender):
+		return problem(i18n.Key("validate.smtp_sender")), false
+	case c.GapAlertHours < 0 || c.GapAlertHours > 168:
+		return problem(i18n.Key("validate.gap_alert")), false
+	case !validOptionalURL(c.PublicURL):
+		return problem(i18n.Key("validate.public_url")), false
+	case c.SMTPHost != "" && (c.SMTPPort == 0 || c.SMTPSender == ""):
+		return problem(i18n.Key("validate.smtp_needs")), false
+	case c.DescriptionTemplate != "":
+		if err := render.CheckTemplate(c.DescriptionTemplate); err != nil {
+			return problem(i18n.Key("validate.template"), "error", err.Error()), false
+		}
+	case !ValidChartPanelOrder(c.ChartPanelOrder):
+		return problem(i18n.Key("validate.panel_order")), false
+	case c.Language != "" && c.Language != i18n.Auto && !i18n.Default().Has(c.Language):
+		return problem(i18n.Key("validate.language")), false
+	case !validArtifactMode(c.ArtifactMode):
+		return problem(i18n.Key("validate.artifact_mode")), false
+	case !validOverviewRange(c.OverviewDefaultRange):
+		return problem(i18n.Key("validate.overview_range"), "ranges", strings.Join(OverviewRanges, ", ")), false
+	}
+	if _, err := ParseOverviewLayout(c.OverviewLayout); err != nil {
+		return problem(i18n.Key("validate.overview_layout"), "error", err.Error()), false
+	}
+	return Problem{}, true
 }
 
 // ValidChartPanelOrder reports whether s is empty or a comma-separated list

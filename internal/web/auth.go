@@ -65,7 +65,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
-		http.Error(w, "cross-site request refused", http.StatusForbidden)
+		http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 		return
 	}
 	ip := s.Proxies.IP(r)
@@ -83,7 +83,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.startSession(w, r, rec); err != nil {
-		http.Error(w, "cannot create session", http.StatusInternalServerError)
+		http.Error(w, s.tr(r).T("err.http.session"), http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -91,7 +91,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
-		http.Error(w, "cross-site request refused", http.StatusForbidden)
+		http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 		return
 	}
 	// Rotating the token key makes the old token invalid everywhere, not just in this browser.
