@@ -190,6 +190,8 @@ All state is in the data dir (`/data` in Docker): the SQLite database (settings,
 
 Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre-push: tests, govulncheck). `make check` runs everything CI runs. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). See [SECURITY.md](SECURITY.md) for the threat model. Automating Strava's web UI may breach its terms; use at your own risk.
 
+**Frontend build (Tailwind).** The UI is styled with Tailwind v4. `make css` downloads the pinned standalone CLI (checksum-verified, into the gitignored `.bin/`) and rebuilds the committed `internal/web/static/app.css` from `internal/web/static/input.css` plus the class strings in `internal/web/*.go`. `go build`, `go run` and the Docker build never need Tailwind; you only run `make css` after changing `input.css` or a class string, and commit the result. CI runs `make css-check`, which fails if `app.css` is stale. Class strings in Go must be whole literals (see the comment in `internal/web/components.go`). `make shot SHOTFLAGS=-matrix` (with `make mock` running) screenshots every page at 1280 and 390 px in light and dark, and fails on browser console errors or CSP violations.
+
 **Adding a glucose source.** Dexcom Share (`internal/glucose/dexcom.go`) is the only built-in source, but the pipeline (background ingestion, activity processing, live dashboard reading) only depends on the small `glucose.Source` interface:
 
 ```go

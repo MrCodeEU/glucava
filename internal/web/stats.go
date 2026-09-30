@@ -52,12 +52,11 @@ type StatsData struct {
 }
 
 func rangePicker(active string) g.Node {
-	links := make([]g.Node, 0, len(statsRanges))
+	items := make([]NavItem, 0, len(statsRanges))
 	for _, r := range statsRanges {
-		links = append(links, A(Href("/stats?range="+r.key), g.Text(r.label),
-			g.If(r.key == active, g.Attr("aria-current", "page"))))
+		items = append(items, NavItem{Key: r.key, Label: r.label, Href: "/stats?range=" + r.key})
 	}
-	return Div(append(comp("rangepicker"), g.Group(links))...)
+	return Segmented("Date range", items, active)
 }
 
 // trendSpan formats the date range a per-day trend chart covers, so a chart

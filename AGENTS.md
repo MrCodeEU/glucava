@@ -99,6 +99,10 @@ descriptions are normal prose, not caveman/terse notes, since other people
 read them. Attribution footers as instructed in the session (Claude commit
 trailer / PR footer) — don't invent your own.
 
+## Frontend (Tailwind)
+
+`internal/web/static/app.css` is generated: edit `input.css` or the class strings in `internal/web/*.go`, then run `make css` and commit the result (`make css-check` fails CI when it is stale). Class strings in Go must be whole literals; the scanner cannot see names built at run time. Never give one element both `comp()` and `Class()`. After UI changes run `make shot SHOTFLAGS=-matrix` against `make mock` and look at the PNGs.
+
 ## Before you're done
 
 `make check` (vet, test, lint, govulncheck) must pass, and `gofmt -l .`
