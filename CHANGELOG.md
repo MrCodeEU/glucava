@@ -4,6 +4,9 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+- Overview: the weekday-by-hour heatmap now colours by time in range on a red-to-green gradient by default (average glucose stays available as a card option), and the calendar uses the same gradient. The by-activity-type chart shows the full five-band split (very low to very high) so a bar no longer looks like 100% in range when it is not. Heatmap, calendar, time of day and lows/highs sit two to a row on wide screens, which shortens the page. "Lowest time in range" no longer comes up empty when only a few activities exist. Short bar charts show every axis label.
+
 ## [0.7.1] - 2026-09-30
 
 ### Added

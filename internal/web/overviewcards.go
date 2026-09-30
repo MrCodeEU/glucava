@@ -57,6 +57,9 @@ var needsReadings = map[string]bool{
 	"calendar": true, "dayparts": true, "episodes": true,
 }
 
+// halfWidth cards sit two to a row on wide screens; the rest span the row.
+var halfWidth = map[string]bool{"heatmap": true, "calendar": true, "dayparts": true, "episodes": true}
+
 var weekdayLabels = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 
 // mondayRow maps Go's weekday (Sunday = 0) to a Monday-first row.
@@ -233,14 +236,12 @@ func trendCard(d StatsData, _ map[string]string) g.Node {
 // ---- heatmaps
 
 // tirScaleLegend explains the colours of the time-in-range matrices; the
-// bounds mirror tirPieces.
+// gradient mirrors the visual map of PctMatrixOption.
 func tirScaleLegend() g.Node {
-	item := func(color, label string) g.Node {
-		return Span(Class("inline-flex items-center gap-1.5"),
-			Span(Class("size-2.5 rounded-sm"), g.Attr("style", "background:"+color)), g.Text(label))
-	}
 	return Div(append(comp("legend"),
-		item(ColLow, "under 50%"), item(ColHigh, "50–70%"), item("#8fd1b3", "70–90%"), item(ColInRange, "90% or more"))...)
+		Span(g.Text("50% or less")),
+		Span(Class("h-2.5 w-40 rounded-full"), g.Attr("style", "background:linear-gradient(90deg,"+ColLow+","+ColHigh+","+ColInRange+")")),
+		Span(g.Text("100% in range")))...)
 }
 
 func rangeLegend(d StatsData) g.Node {
@@ -260,7 +261,7 @@ func heatmapCard(d StatsData, opts map[string]string) g.Node {
 	for h := range hours {
 		hours[h] = fmt.Sprintf("%02d", h)
 	}
-	if opts["metric"] == "tir" {
+	if opts["metric"] != "mean" { // time in range is the default colouring
 		var cells []PctCell
 		for w := time.Sunday; w <= time.Saturday; w++ {
 			for h := 0; h < 24; h++ {
@@ -448,10 +449,17 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 		return ovCard("by_sport", "By activity type", "", EmptyState("activity", "No completed activities in this range",
 			"Activities show up here once glucava has processed them."))
 	}
-	cats, vals := make([]string, len(sports)), make([]float64, len(sports))
+	cats := make([]string, len(sports))
+	band := func(pick func(analytics.TIR5) float64) []float64 {
+		v := make([]float64, len(sports))
+		for i, s := range sports {
+			v[i] = round2(pick(s.Bands))
+		}
+		return v
+	}
 	rows := make([]g.Node, len(sports))
 	for i, s := range sports {
-		cats[i], vals[i] = fmt.Sprintf("%s (%d)", s.Sport, s.Count), round2(s.TIR)
+		cats[i] = fmt.Sprintf("%s (%d)", s.Sport, s.Count)
 		pace := "–"
 		if p := render.FormatPace(s.Sport, s.TotalDistance, s.Duration); p != "" {
 			pace = p
@@ -473,11 +481,17 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 			Td(Class("num"), g.Text(dist)), Td(Class("num"), g.Textf("%.0f m", s.TotalElevation)),
 			Td(Class("num"), g.Text(pace)))
 	}
-	return ovCard("by_sport", "By activity type", "Averages per activity of each type, over activities with glucose data",
+	return ovCard("by_sport", "By activity type", "Time in range bands and averages per activity of each type, over activities with glucose data",
 		Chart("ov-bysport", BarOption(BarInput{
-			Categories: cats, Horizontal: true, Format: fmtPct, Max: 100,
-			Series: []BarSeries{{Name: "Average time in range", Color: ColInRange, Values: vals}},
-		}), 60+38*len(sports)),
+			Categories: cats, Horizontal: true, Format: fmtPct, Max: 100, Legend: true,
+			Series: []BarSeries{
+				{Name: "Very low", Color: ColVeryLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryLow })},
+				{Name: "Low", Color: ColLow, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.Low })},
+				{Name: "In range", Color: ColInRange, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.InRange })},
+				{Name: "High", Color: ColHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.High })},
+				{Name: "Very high", Color: ColVeryHigh, Stack: "tir", Values: band(func(t analytics.TIR5) float64 { return t.VeryHigh })},
+			},
+		}), 90+40*len(sports)),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
 			THead(Tr(Th(g.Text("Type")), Th(Class("num"), g.Text("Activities")), Th(Class("num"), g.Text("Time in range")),
 				Th(Class("num"), g.Text("CV")), Th(Class("num"), g.Textf("Start→end (%s)", d.Unit)),
@@ -538,7 +552,11 @@ func insightsCard(d StatsData, _ map[string]string) g.Node {
 			}
 		}
 	}
-	best, worst := analytics.BestWorst(ins, 3)
+	n := withData / 2 // best and worst never overlap, so a short list needs a short pick
+	if n > 3 {
+		n = 3
+	}
+	best, worst := analytics.BestWorst(ins, n)
 	list := func(title string, xs []analytics.ActivityInsight) g.Node {
 		items := make([]g.Node, len(xs))
 		for i, x := range xs {
@@ -670,7 +688,11 @@ func StatsPage(pd PageData, d StatsData) g.Node {
 			continue
 		}
 		if draw, ok := overviewCardRenderers[c.ID]; ok {
-			cards = append(cards, draw(d, c.Options))
+			wrap := "min-w-0 xl:col-span-2"
+			if halfWidth[c.ID] {
+				wrap = "min-w-0 [&>*]:h-full"
+			}
+			cards = append(cards, Div(Class(wrap), draw(d, c.Options)))
 		}
 	}
 	var lead g.Node
@@ -685,6 +707,7 @@ func StatsPage(pd PageData, d StatsData) g.Node {
 		PageHead("Overview", "Everything glucava has recorded, not just the activities."),
 		g.If(d.Range.Note != "", Notice("warning", g.Text(d.Range.Note+" Showing the default range instead."))),
 		rangeToolbar(d),
-		Div(Class("stack"), lead, g.Group(cards)),
+		Div(Class("grid grid-cols-1 gap-4 xl:grid-cols-2 xl:grid-flow-row-dense"),
+			g.If(lead != nil, Div(Class("xl:col-span-2"), lead)), g.Group(cards)),
 	)
 }

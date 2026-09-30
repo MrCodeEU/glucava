@@ -40,7 +40,7 @@ var OverviewCards = []OverviewCardDef{
 	}},
 	{ID: "trend", Title: "Daily trends", Help: "Average, range, time in range and variability day by day."},
 	{ID: "heatmap", Title: "Weekday and hour", Help: "When in the week glucose runs high or low.", Options: []OverviewOptionDef{
-		{Key: "metric", Label: "Colour by", Choices: []OverviewChoice{{"mean", "Average glucose"}, {"tir", "Time in range"}}},
+		{Key: "metric", Label: "Colour by", Choices: []OverviewChoice{{"tir", "Time in range"}, {"mean", "Average glucose"}}},
 	}},
 	{ID: "calendar", Title: "Calendar", Help: "Time in range for every day."},
 	{ID: "dayparts", Title: "Time of day", Help: "Night, morning, afternoon and evening compared."},
