@@ -13,6 +13,29 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.buildID=${VERSION}" -o /glucava ./cmd/glucava
 
+# Typst typesets the PDF report (internal/report). A static musl build is
+# downloaded for the target architecture and checked against a pinned sha256;
+# bumping the version means updating all three ARGs (the hashes are of the
+# release tarballs on github.com/typst/typst/releases).
+FROM --platform=$BUILDPLATFORM debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce AS typst
+ARG TYPST_VERSION=0.15.1
+ARG TYPST_SHA256_AMD64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
+ARG TYPST_SHA256_ARM64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
+ARG TARGETARCH
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && case "${TARGETARCH}" in \
+      amd64) triple=x86_64-unknown-linux-musl; sha="${TYPST_SHA256_AMD64}" ;; \
+      arm64) triple=aarch64-unknown-linux-musl; sha="${TYPST_SHA256_ARM64}" ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/typst.tar.xz "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-${triple}.tar.xz" \
+ && echo "${sha}  /tmp/typst.tar.xz" | sha256sum -c - \
+ && tar -xJf /tmp/typst.tar.xz -C /tmp "typst-${triple}/typst" \
+ && install -m 0755 "/tmp/typst-${triple}/typst" /typst \
+ && rm -rf /tmp/typst*
+
 FROM debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
 RUN apt-get update \
  && apt-get install -y --no-install-recommends chromium ca-certificates fonts-noto-color-emoji tini \
@@ -20,6 +43,7 @@ RUN apt-get update \
  && useradd --create-home --uid 10001 glucava \
  && mkdir /data && chown glucava /data
 COPY --from=build /glucava /usr/local/bin/glucava
+COPY --from=typst /typst /usr/local/bin/typst
 USER glucava
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="glucava" \

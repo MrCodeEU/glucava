@@ -253,9 +253,11 @@ type ActivityData struct {
 
 	Thr     analytics.Thresholds
 	Insight *analytics.ActivityInsight // before/during/after numbers; nil without readings
-	Rank    *SportRank                 // nil until there are enough activities of this sport
-	Prev    *ActivityRef               // the activity before and after this one, by start time
-	Next    *ActivityRef
+	// Artifacts are suspected sensor artifacts in the activity's glucose window.
+	Artifacts []analytics.Artifact
+	Rank      *SportRank   // nil until there are enough activities of this sport
+	Prev      *ActivityRef // the activity before and after this one, by start time
+	Next      *ActivityRef
 }
 
 // ActivityPage shows one activity with its glucose chart.
@@ -638,6 +640,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 					Div(append(comp("actions"),
 						A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text("Download readings (CSV)"))...),
 						A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text("Download activities (CSV)"))...),
+						A(append(comp("button"), Href("/export/report.pdf?range=30d"), g.Attr("download", ""), g.Text("Download report, last 30 days (PDF)"))...),
 					)...),
 					Field("purgeConfirm", "Delete all data", "Removes every reading, activity and event. Settings, credentials and tokens stay. Type DELETE to enable the button.",
 						Input(ID("purgeConfirm"), Type("text"), AutoComplete("off"), bind("purgeConfirm"))),

@@ -94,6 +94,9 @@ type DataVersion struct {
 	MaxSampleRowID int64
 	ActivityUpdate time.Time
 	Activities     int64
+	// Marks is the number and newest row of the manual artifact marks, so a
+	// new verdict changes the version.
+	Marks, MaxMarkRowID int64
 }
 
 // DataVersion reads the current DataVersion with two aggregate queries.
@@ -112,6 +115,11 @@ func (s *PB) DataVersion(_ context.Context) (DataVersion, error) {
 		return v, err
 	}
 	v.ActivityUpdate, _ = time.Parse(pbStoredTime, upd.String)
+	var maxMark sql.NullInt64
+	if err := s.App.DB().NewQuery("SELECT count(*), max(rowid) FROM artifact_marks").Row(&v.Marks, &maxMark); err != nil {
+		return v, err
+	}
+	v.MaxMarkRowID = maxMark.Int64
 	return v, nil
 }
 

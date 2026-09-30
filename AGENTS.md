@@ -103,6 +103,10 @@ trailer / PR footer) — don't invent your own.
 
 `internal/web/static/app.css` is generated: edit `input.css` or the class strings in `internal/web/*.go`, then run `make css` and commit the result (`make css-check` fails CI when it is stale). Class strings in Go must be whole literals; the scanner cannot see names built at run time. Never give one element both `comp()` and `Class()`. After UI changes run `make shot SHOTFLAGS=-matrix` against `make mock` and look at the PNGs.
 
+## Report (Typst)
+
+`internal/report` builds the PDF: a numeric model from `internal/analytics`, Go-drawn SVG charts (`svg.go`), the embedded template `report.typ` and the `typst` command line (`render.go`). It must not import `internal/web`; the handler is `internal/web/report.go`. Typst runs in a private temp dir with `--ignore-system-fonts` and only the embedded Inter subset (`fonts/`, OFL, see `fonts/VENDOR.md`), no packages, no network, a 30 s timeout, so the PDF is reproducible. Tests that need the binary skip when `typst` is not on the `PATH` (CI installs it, the Docker image ships it; both pin 0.15.1 with a sha256, keep them and the Dockerfile in step). To look at the layout: `REPORT_PNG_DIR=/tmp/pages go test ./internal/report -run Pages` and read the PNGs. Text in the template data must stay inside the font subset (Latin-1, en/em dash, minus, arrows, ellipsis): add a glyph to the subset before using a new symbol.
+
 ## Before you're done
 
 `make check` (vet, test, lint, govulncheck) must pass, and `gofmt -l .`

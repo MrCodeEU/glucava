@@ -58,7 +58,8 @@ var needsReadings = map[string]bool{
 }
 
 // halfWidth cards sit two to a row on wide screens; the rest span the row.
-var halfWidth = map[string]bool{"heatmap": true, "calendar": true, "dayparts": true, "episodes": true}
+// Cards with wide tables (time of day, lows and highs) need the full row.
+var halfWidth = map[string]bool{"heatmap": true, "calendar": true}
 
 var weekdayLabels = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 
@@ -112,7 +113,7 @@ func kpisCard(d StatsData, _ map[string]string) g.Node {
 			delta(func(x periodKPIs) float64 { return x.GRI.Score }, -1, "pts", 1, 0)),
 		StatTile("Data coverage", pct0(k.Coverage.Pct), fmt.Sprintf("%d days · %s", k.Days, longest),
 			delta(func(x periodKPIs) float64 { return x.Coverage.Pct }, 1, "pts", 1, 1)),
-	))
+	), artifactNote(d))
 }
 
 // prevLabel describes the comparison window.
@@ -381,16 +382,17 @@ func episodesCard(d StatsData, _ map[string]string) g.Node {
 		st := analytics.SummarizeEpisodes(analytics.OfKind(m.Episodes, k.kind))
 		if st.Count == 0 {
 			rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Text("0")),
-				Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-"))))
+				Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-"))))
 			continue
 		}
 		rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Textf("%d", st.Count)),
-			Td(Class("num"), g.Textf("%d", st.Nocturnal)), Td(Class("num"), g.Text(fmtDuration(st.Longest))),
-			Td(Class("num"), g.Text(fmtDuration(st.Total))), Td(Class("num"), g.Text(render.Value(st.Extreme, d.Unit)))))
+			Td(Class("num"), g.Textf("%d", st.Nocturnal)),
+			Td(Class("num"), g.Textf("%s / %s", fmtDuration(st.Longest), fmtDuration(st.Total))),
+			Td(Class("num"), g.Text(render.Value(st.Extreme, d.Unit)))))
 	}
 	summary := Div(append(comp("tablewrap"), Table(append(comp("table"),
 		THead(Tr(Th(g.Text("Kind")), Th(Class("num"), g.Text("Episodes")), Th(Class("num"), g.Text("At night")),
-			Th(Class("num"), g.Text("Longest")), Th(Class("num"), g.Text("Total time")), Th(Class("num"), g.Text("Nadir / peak")))),
+			Th(Class("num"), g.Text("Longest / total")), Th(Class("num"), g.Text("Nadir / peak")))),
 		TBody(g.Group(rows)))...))...)
 
 	recent := recentEpisodes(m.Episodes, 8)
@@ -408,7 +410,7 @@ func episodesCard(d StatsData, _ map[string]string) g.Node {
 					Th(Class("num"), g.Text("Nadir / peak")), Th(g.Text("Around")))),
 				TBody(g.Group(items)))...))...))
 	}
-	return ovCard("episodes", "Lows and highs", "Runs of at least 15 minutes beyond the target range", summary, list)
+	return ovCard("episodes", "Lows and highs", "Runs of at least 15 minutes beyond the target range", summary, artifactNote(d), list, leftOutList(d))
 }
 
 func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
@@ -435,9 +437,14 @@ func episodeRow(e analytics.Episode, m *overviewModel, d StatsData) g.Node {
 		}
 		around = g.Group([]g.Node{Span(Class("muted"), g.Text(when)), A(Href("/activity/"+a.StravaID), g.Text(name))})
 	}
+	art := artifactFor(m, e)
+	var suspect g.Node = g.Group(nil)
+	if art != nil {
+		suspect = Span(Class("ml-1"), g.Attr("title", art.Detail()), Badge("info", artifactLabel(*art)))
+	}
 	return Tr(
 		Td(g.Text(fmtWhen(e.Start, d.Loc, d.Now)), g.If(e.Nocturnal, Span(Class("muted"), g.Text(" · night")))),
-		Td(badge), Td(Class("num"), g.Text(fmtDuration(e.Duration))),
+		Td(badge, suspect, Div(Class("mt-1 flex flex-wrap gap-1"), episodeActions(e, art, d))), Td(Class("num"), g.Text(fmtDuration(e.Duration))),
 		Td(Class("num"), g.Text(render.Value(e.Extreme, d.Unit))), Td(around))
 }
 
@@ -647,7 +654,10 @@ func rangeToolbar(d StatsData) g.Node {
 	}
 	return Div(Class("mb-4 flex flex-wrap items-center gap-2"),
 		Segmented("Date range", items, presetActive(r)), custom,
-		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented("Comparison", cmp, active))))
+		g.If(r.Key != "all", Span(Class("ml-auto"), Segmented("Comparison", cmp, active))),
+		A(append(comp("button"), Href(r.reportHref()), g.Attr("download", ""),
+			g.Attr("data-variant", "ghost"), g.Attr("title", "A printable PDF of this range, made with Typst"),
+			icon("scroll", "size-4"), g.Text("Download report"))...))
 }
 
 func presetActive(r statsRange) string {

@@ -84,6 +84,7 @@ type Server struct {
 	failures map[string]*loginBucket
 
 	overviewCache overviewCache // computed Overview models, see overviewmodel.go
+	reportSt      reportState   // PDF report concurrency and cache, see report.go
 }
 
 func (s *Server) loc() *time.Location {
@@ -148,6 +149,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/restore/{id}", s.actionRestore)
 	page("POST /actions/delete/{id}", s.actionDeleteActivity)
 	page("POST /actions/settings", s.actionSettings)
+	page("POST /actions/artifact-mark", s.actionArtifactMark)
 	page("POST /actions/account", s.actionAccount)
 	page("POST /actions/notify/test", s.actionNotifyTest)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
@@ -161,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST "+importRoute, s.actionGlucoseImport)
 	page("GET /export/samples.csv", s.exportSamples)
 	page("GET /export/activities.csv", s.exportActivities)
+	page("GET /export/report.pdf", s.exportReport)
 
 	return secure(mux)
 }
