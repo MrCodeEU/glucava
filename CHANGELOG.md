@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-30
+
 ### Added
 - Activity page: one interactive chart with glucose, heart rate and elevation, the activity and before/after windows shaded, and zoom. New tiles for variability (CV, SD), GMI, very-low/very-high share, drop rate, duration, distance, pace, elevation gain and rank among activities of the same sport, plus a before/during/after card that flags a low within three hours afterwards. Older/Newer buttons move between activities.
 - Dashboard "now" card: current value with trend arrow, the last three hours with the target band, and a 24-hour time-in-range donut. Activity rows show a sport icon and distance/pace.
