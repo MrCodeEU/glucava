@@ -15,10 +15,12 @@ func TestConfigGetSetRoundTripEveryKey(t *testing.T) {
 		case "dexcom_region":
 			v = "us"
 		case "smtp_tls", "mail_alerts", "mail_activity", "mail_weekly", "mail_health", "chart_image", "chart_band", "chart_activity", "chart_dots", "chart_hr", "chart_elevation", "hr_read",
-			"chart_avg_line", "chart_range_lines", "chart_min_max", "chart_hide_stats",
-			"overview_show_trend", "overview_show_by_sport", "overview_show_table",
-			"overview_show_general", "overview_show_source_health":
+			"chart_avg_line", "chart_range_lines", "chart_min_max", "chart_hide_stats":
 			v = "true"
+		case "overview_default_range":
+			v = "7d"
+		case "overview_layout":
+			v = `[{"id":"kpis","enabled":false}]`
 		case "chart_theme":
 			v = "dark"
 		case "chart_size":

@@ -344,49 +344,50 @@ func TestChartOverlayTogglesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestOverviewTogglesDefaultOnAndRoundTrip guards the same bug class as
-// TestChartOverlayTogglesRoundTrip for the stats overview page's three
-// show/hide toggles: migration 018 must add real columns, and LoadConfig/
-// SaveConfig must actually read and write them, not just carry the Go
-// struct fields.
-func TestOverviewTogglesDefaultOnAndRoundTrip(t *testing.T) {
+// TestOverviewLayoutDefaultsAndRoundTrip guards migration 022: the layout and
+// default-range columns must exist with every card enabled by default, and
+// LoadConfig/SaveConfig must actually read and write them, not just carry the
+// Go struct fields (the same bug class as the chart overlay toggles).
+func TestOverviewLayoutDefaultsAndRoundTrip(t *testing.T) {
 	s := &PB{App: newApp(t)}
 	c, err := s.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !c.OverviewShowTrend || !c.OverviewShowBySport || !c.OverviewShowTable {
-		t.Fatalf("defaults = %+v, want all three true (new content should show up, not need finding)", c)
+	cards := c.OverviewCards()
+	if len(cards) != len(OverviewCards) {
+		t.Fatalf("default layout has %d cards, want %d", len(cards), len(OverviewCards))
 	}
-	c.OverviewShowTrend, c.OverviewShowBySport, c.OverviewShowTable = false, false, false
-	if err := s.SaveConfig(c); err != nil {
-		t.Fatal(err)
+	for _, card := range cards {
+		if !card.Enabled {
+			t.Errorf("card %s off by default (new content should show up, not need finding)", card.ID)
+		}
 	}
-	got, err := s.LoadConfig()
-	if err != nil || got.OverviewShowTrend || got.OverviewShowBySport || got.OverviewShowTable {
-		t.Fatalf("LoadConfig after save = %+v, %v, want all three false", got, err)
+	if c.OverviewRange() != "30d" {
+		t.Errorf("default range = %q, want 30d", c.OverviewRange())
 	}
-}
 
-// TestOverviewGeneralTogglesDefaultOnAndRoundTrip guards the same bug class
-// for migration 019's two toggles (whole-range glucose summary, per-source
-// health list).
-func TestOverviewGeneralTogglesDefaultOnAndRoundTrip(t *testing.T) {
-	s := &PB{App: newApp(t)}
-	c, err := s.LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !c.OverviewShowGeneral || !c.OverviewShowSourceHealth {
-		t.Fatalf("defaults = %+v, want both true (new content should show up, not need finding)", c)
-	}
-	c.OverviewShowGeneral, c.OverviewShowSourceHealth = false, false
+	c.OverviewLayout = EncodeOverviewLayout([]OverviewCard{
+		{ID: "table", Enabled: false},
+		{ID: "heatmap", Enabled: true, Options: map[string]string{"metric": "tir"}},
+	})
+	c.OverviewDefaultRange = "90d"
 	if err := s.SaveConfig(c); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.LoadConfig()
-	if err != nil || got.OverviewShowGeneral || got.OverviewShowSourceHealth {
-		t.Fatalf("LoadConfig after save = %+v, %v, want both false", got, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gc := got.OverviewCards()
+	if gc[0].ID != "table" || gc[0].Enabled || gc[1].ID != "heatmap" || gc[1].Options["metric"] != "tir" {
+		t.Errorf("layout after save = %+v", gc[:2])
+	}
+	if len(gc) != len(OverviewCards) {
+		t.Errorf("missing cards not appended: %d", len(gc))
+	}
+	if got.OverviewRange() != "90d" {
+		t.Errorf("range after save = %q", got.OverviewRange())
 	}
 }
 

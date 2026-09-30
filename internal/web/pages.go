@@ -505,7 +505,7 @@ func importFormatOptions(names []string) g.Node {
 // SettingsPage is the settings form. Its values live in Datastar signals.
 func SettingsPage(pd PageData, d SettingsData) g.Node {
 	c := d.Cfg
-	sig, _ := json.Marshal(map[string]any{
+	sigMap := map[string]any{
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "veryLow": c.VeryLow, "veryHigh": c.VeryHigh, "preMin": c.PreMin, "postMin": c.PostMin,
 		"pollMin": c.PollMin, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
 		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
@@ -515,12 +515,14 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 		"publicURL": c.PublicURL, "mailAlerts": c.MailAlerts, "mailActivity": c.MailActivity, "mailWeekly": c.MailWeekly, "mailHealth": c.MailHealth, "gapAlertHours": c.GapAlertHours, "chartImage": c.ChartImage,
 		"chartTheme": c.ChartTheme, "chartSize": c.ChartSize, "chartBand": c.ChartBand, "chartActivity": c.ChartActivity, "chartDots": c.ChartDots, "chartLine": c.ChartLine, "chartHR": c.ChartHR, "chartElevation": c.ChartElevation, "chartPre": c.ChartPreMin, "hrRead": c.HRRead, "postBuffer": c.PostBufferMin,
 		"chartAvgLine": c.ChartAvgLine, "chartRangeLines": c.ChartRangeLines, "chartMinMax": c.ChartMinMax, "chartHideStats": c.ChartHideStats,
-		"chartPanelOrder":   defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
-		"overviewShowTrend": c.OverviewShowTrend, "overviewShowBySport": c.OverviewShowBySport, "overviewShowTable": c.OverviewShowTable,
-		"overviewShowGeneral": c.OverviewShowGeneral, "overviewShowSourceHealth": c.OverviewShowSourceHealth,
-		"descTemplate": c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
+		"chartPanelOrder": defaultStr(c.ChartPanelOrder, "activity,band,dots,hr"),
+		"descTemplate":    c.DescriptionTemplate, "descPreset": descPresetIDFor(c.DescriptionTemplate), "descPreview": d.DescPreview,
 		"settingsTab": "glucose",
-	})
+	}
+	for k, v := range overviewSignals(c) {
+		sigMap[k] = v
+	}
+	sig, _ := json.Marshal(sigMap)
 	bind := func(name string) g.Node { return g.Attr("data-bind", name) }
 
 	return Page(pd,
@@ -588,14 +590,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						),
 					),
 				),
-				Card(H2(g.Text("Overview page")),
-					P(Class("muted"), g.Text("Turn cards on the Overview page on or off.")),
-					Field("overviewShowGeneral", "General glucose", "Whole-range summary, independent of activities.", Input(ID("overviewShowGeneral"), Type("checkbox"), bind("overviewShowGeneral"))),
-					Field("overviewShowSourceHealth", "Glucose sources", "Per-source reading counts and newest reading, to spot a stopped connection or a failed import.", Input(ID("overviewShowSourceHealth"), Type("checkbox"), bind("overviewShowSourceHealth"))),
-					Field("overviewShowTrend", "Trends over time", "", Input(ID("overviewShowTrend"), Type("checkbox"), bind("overviewShowTrend"))),
-					Field("overviewShowBySport", "By activity type", "", Input(ID("overviewShowBySport"), Type("checkbox"), bind("overviewShowBySport"))),
-					Field("overviewShowTable", "Raw table", "", Input(ID("overviewShowTable"), Type("checkbox"), bind("overviewShowTable"))),
-				),
+				overviewSettingsCard(c),
 				Card(H2(g.Text("Description text")),
 					P(Class("muted"), g.Text("What gets appended to the Strava activity description. Pick a preset to start from, or write your own "+
 						"(Go text/template syntax: {{.TIR}}, {{.TIRWindow}}, {{.TIRBar}}, {{.TIRWindowBar}}, {{.Min}}, {{.Max}}, {{.Avg}}, {{.StdDev}}, {{.CV}}, {{.GMI}}, {{.VeryLow}}, {{.VeryHigh}}, {{.Unit}}, "+

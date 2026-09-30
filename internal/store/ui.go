@@ -70,17 +70,14 @@ type Config struct {
 	// Empty means render.DefaultTemplate, today's built-in wording.
 	DescriptionTemplate string
 
-	// OverviewShowTrend, OverviewShowBySport and OverviewShowTable show or
-	// hide each card on the stats overview page independently.
-	OverviewShowTrend   bool
-	OverviewShowBySport bool
-	OverviewShowTable   bool
+	// OverviewLayout is the Overview page's cards as JSON: an ordered list
+	// of {id, enabled, options} (see OverviewCard). Empty means every card,
+	// enabled, in the default order; Config.OverviewCards normalizes it.
+	OverviewLayout string
 
-	// OverviewShowGeneral and OverviewShowSourceHealth show or hide the
-	// whole-range glucose summary and the per-source health list, both
-	// independent of activities.
-	OverviewShowGeneral      bool
-	OverviewShowSourceHealth bool
+	// OverviewDefaultRange is the range preset the Overview opens with: one
+	// of OverviewRanges, empty meaning 30d.
+	OverviewDefaultRange string
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -119,13 +116,10 @@ func (s *PB) LoadConfig() (Config, error) {
 		ChartPreMin:     r.GetInt("chart_pre_minutes"), HRRead: r.GetBool("hr_read"),
 		ChartAvgLine: r.GetBool("chart_avg_line"), ChartRangeLines: r.GetBool("chart_range_lines"),
 		ChartMinMax: r.GetBool("chart_min_max"), ChartHideStats: r.GetBool("chart_hide_stats"),
-		PostBufferMin:            r.GetInt("post_buffer_minutes"),
-		DescriptionTemplate:      r.GetString("description_template"),
-		OverviewShowTrend:        r.GetBool("overview_show_trend"),
-		OverviewShowBySport:      r.GetBool("overview_show_by_sport"),
-		OverviewShowTable:        r.GetBool("overview_show_table"),
-		OverviewShowGeneral:      r.GetBool("overview_show_general"),
-		OverviewShowSourceHealth: r.GetBool("overview_show_source_health"),
+		PostBufferMin:        r.GetInt("post_buffer_minutes"),
+		DescriptionTemplate:  r.GetString("description_template"),
+		OverviewLayout:       r.GetString("overview_layout"),
+		OverviewDefaultRange: r.GetString("overview_default_range"),
 	}, nil
 }
 
@@ -179,11 +173,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("hr_read", c.HRRead)
 	r.Set("post_buffer_minutes", c.PostBufferMin)
 	r.Set("description_template", c.DescriptionTemplate)
-	r.Set("overview_show_trend", c.OverviewShowTrend)
-	r.Set("overview_show_by_sport", c.OverviewShowBySport)
-	r.Set("overview_show_table", c.OverviewShowTable)
-	r.Set("overview_show_general", c.OverviewShowGeneral)
-	r.Set("overview_show_source_health", c.OverviewShowSourceHealth)
+	r.Set("overview_layout", c.OverviewLayout)
+	r.Set("overview_default_range", c.OverviewDefaultRange)
 	return s.App.Save(r)
 }
 

@@ -82,6 +82,8 @@ type Server struct {
 		err string
 	}
 	failures map[string]*loginBucket
+
+	overviewCache overviewCache // computed Overview models, see overviewmodel.go
 }
 
 func (s *Server) loc() *time.Location {
