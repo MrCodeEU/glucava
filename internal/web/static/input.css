@@ -1,0 +1,666 @@
+/* glucava UI stylesheet source. Build with `make css` (Tailwind v4 standalone CLI);
+   the minified result, app.css, is committed so `go build` never needs Tailwind.
+
+   Utilities come from the class strings in internal/web/*.go (see components.go:
+   they must be whole literals, the scanner cannot see built-up names). What
+   utilities cannot express (SVG-internal styles, descendants of a component,
+   the theme variables) lives here. */
+
+@import "tailwindcss" source(none);
+@source "../*.go";
+
+/* ---- design tokens ---------------------------------------------------------
+   Runtime CSS variables, so light/dark is a variable swap and the charts (which
+   read them from JavaScript) follow the theme. Light is the default; dark comes
+   from data-mode="dark" on <html> (theme.js) or, when the person never chose,
+   from prefers-color-scheme. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --ink: #14181f;
+  --ink-2: #566070;
+  --line: #e2e6ec;
+  --accent: #d63a40;
+  --accent-ink: #ffffff;
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #dc2626;
+  --info: #2563eb;
+  --below: #dc2626;
+  --inrange: #1f9d55;
+  --above: #d97706;
+  --vlow: #991b1b;
+  --vhigh: #c2410c;
+  --band: rgba(31, 157, 85, 0.12);
+  --span: rgba(37, 99, 235, 0.1);
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.07);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+:root[data-mode="dark"] {
+  --bg: #0d1014;
+  --surface: #161a20;
+  --surface-2: #1d2229;
+  --ink: #e8eaed;
+  --ink-2: #9ba5b3;
+  --line: #2a313b;
+  --accent: #f0595e;
+  --accent-ink: #1c0c0d;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --info: #60a5fa;
+  --below: #f87171;
+  --inrange: #34c76e;
+  --above: #f5a524;
+  --vlow: #ef4444;
+  --vhigh: #fb923c;
+  --band: rgba(52, 199, 110, 0.14);
+  --span: rgba(96, 165, 250, 0.14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode="light"]) {
+    --bg: #0d1014;
+    --surface: #161a20;
+    --surface-2: #1d2229;
+    --ink: #e8eaed;
+    --ink-2: #9ba5b3;
+    --line: #2a313b;
+    --accent: #f0595e;
+    --accent-ink: #1c0c0d;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --info: #60a5fa;
+    --below: #f87171;
+    --inrange: #34c76e;
+    --above: #f5a524;
+    --vlow: #ef4444;
+    --vhigh: #fb923c;
+    --band: rgba(52, 199, 110, 0.14);
+    --span: rgba(96, 165, 250, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+
+/* Utilities read the variables above, so they follow the theme with no dark: variant. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --color-below: var(--below);
+  --color-inrange: var(--inrange);
+  --color-above: var(--above);
+  --color-band: var(--band);
+  --color-span: var(--span);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --radius-card: var(--radius);
+  --shadow-card: var(--shadow);
+}
+
+/* ---- base ------------------------------------------------------------------ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--line);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 4.5rem;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: var(--info);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.25rem;
+  }
+  h2 {
+    font-size: 1.0625rem;
+    line-height: 1.3;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    margin: 0 0 0.75rem;
+  }
+  h3 {
+    font-size: 0.9375rem;
+    font-weight: 650;
+    margin: 0 0 0.35rem;
+  }
+  p {
+    margin: 0 0 0.75rem;
+  }
+  code,
+  pre {
+    font-family: var(--mono);
+    font-size: 0.85em;
+  }
+  pre {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    overflow-x: auto;
+    margin: 0 0 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  :focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: 2px;
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--info) 30%, transparent);
+  }
+}
+
+/* ---- legacy one-word classes still used in markup ----------------------------- */
+@layer components {
+  .muted {
+    color: var(--ink-2);
+  }
+  .help {
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .stack > [data-component="card"] {
+    margin-bottom: 0;
+  }
+  .copyrow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0.35rem 0;
+  }
+  .copyrow > span {
+    min-width: 6.5rem;
+  }
+  .copyrow code {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+  @media (max-width: 640px) {
+    .hide-sm {
+      display: none;
+    }
+  }
+}
+
+/* ---- descendants of a component (no class of their own in the markup) -------- */
+@layer components {
+  /* tile */
+  [data-tile] .label {
+    color: var(--ink-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  [data-tile] .value {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin-top: 0.125rem;
+  }
+  [data-tile] .sub {
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+    margin-top: 0.125rem;
+  }
+  [data-tile] .delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  [data-tile] .delta[data-tone="good"] {
+    color: var(--ok);
+  }
+  [data-tile] .delta[data-tone="bad"] {
+    color: var(--bad);
+  }
+
+  /* table */
+  [data-component="table"] th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface);
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-2);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  [data-component="table"] th.num {
+    text-align: right;
+  }
+  [data-component="table"] td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  [data-component="table"] td:first-child {
+    white-space: nowrap;
+  }
+  [data-component="table"] tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  [data-component="table"] tbody tr:hover td {
+    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  }
+  [data-component="table"] tbody tr[data-href] {
+    cursor: pointer;
+  }
+  @media (max-width: 640px) {
+    [data-component="table"] .hide-sm {
+      display: none;
+    }
+  }
+
+  /* form controls: every input in the app, not only those inside a Field */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]),
+  select,
+  textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    line-height: 1.4;
+    box-shadow: 0 1px 1px rgba(16, 24, 40, 0.03);
+    transition:
+      border-color 0.12s,
+      box-shadow 0.12s;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in srgb, var(--ink-2) 65%, transparent);
+  }
+  input:not([type="checkbox"]):not([type="radio"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--info);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 25%, transparent);
+  }
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  textarea {
+    min-height: 7rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--accent);
+    flex: none;
+  }
+  [data-component="field"] label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+  }
+  [data-component="field"] .help {
+    margin-top: 0.25rem;
+  }
+  /* a lone checkbox reads better as "[ ] Label" than a label above a box */
+  [data-component="field"]:has(> input[type="checkbox"]) {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.65rem;
+    align-items: start;
+  }
+  [data-component="field"]:has(> input[type="checkbox"]) > input {
+    grid-column: 1;
+    grid-row: 1;
+    margin-top: 0.15rem;
+  }
+  [data-component="field"]:has(> input[type="checkbox"]) > label {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+  [data-component="field"]:has(> input[type="checkbox"]) > .help {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0.1rem;
+  }
+
+  /* button spinner + busy state */
+  [data-component="button"] .spinner {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: gv-spin 0.6s linear infinite;
+  }
+  @keyframes gv-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes gv-shimmer {
+    to {
+      background-position-x: -200%;
+    }
+  }
+  @keyframes gv-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  /* dialog */
+  [data-component="confirmdialog"] {
+    margin: auto;
+  }
+  [data-component="confirmdialog"]::backdrop {
+    background: rgba(8, 12, 20, 0.55);
+    backdrop-filter: blur(2px);
+  }
+  [data-component="confirmdialog"] h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.0625rem;
+  }
+  [data-component="confirmdialog"] p {
+    margin: 0;
+    color: var(--ink-2);
+  }
+  [data-component="secretbox"] code {
+    user-select: all;
+    word-break: break-all;
+    font-size: 0.95rem;
+  }
+
+  /* dl */
+  [data-component="dl"] dt {
+    color: var(--ink-2);
+  }
+  [data-component="dl"] dd {
+    margin: 0;
+  }
+
+  /* time-in-range bar: three spans in below / in range / above order */
+  [data-component="tirbar"] span:nth-child(1) {
+    background: var(--below);
+  }
+  [data-component="tirbar"] span:nth-child(2) {
+    background: var(--inrange);
+  }
+  [data-component="tirbar"] span:nth-child(3) {
+    background: var(--above);
+  }
+  [data-component="tircell"] b {
+    min-width: 2.6rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* sport bars */
+  [data-component="sportbar"] .name {
+    width: 6rem;
+    flex: none;
+    font-weight: 550;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  [data-component="sportbar"] .track {
+    flex: 1;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  [data-component="sportbar"] .track > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  [data-component="sportbar"] .val {
+    width: 8rem;
+    flex: none;
+    text-align: right;
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+  }
+  @media (max-width: 480px) {
+    [data-component="sportbar"] .val {
+      width: 6rem;
+    }
+  }
+
+  /* legend swatches */
+  [data-component="legend"] i {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 3px;
+    margin-right: 0.4rem;
+    vertical-align: -1px;
+  }
+
+  /* theme toggle icon follows the mode */
+  .icon-moon {
+    display: none;
+  }
+  :root[data-mode="dark"] .icon-sun {
+    display: none;
+  }
+  :root[data-mode="dark"] .icon-moon {
+    display: inline-block;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-mode="light"]) .icon-sun {
+      display: none;
+    }
+    :root:not([data-mode="light"]) .icon-moon {
+      display: inline-block;
+    }
+  }
+
+  /* skeleton */
+  [data-component="skeleton"] {
+    background: linear-gradient(90deg, var(--surface-2) 25%, color-mix(in srgb, var(--line) 60%, var(--surface-2)) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    animation: gv-shimmer 1.4s linear infinite;
+  }
+
+  /* tooltip */
+  [data-component="tip"] > [role="tooltip"] {
+    display: none;
+  }
+  [data-component="tip"]:hover > [role="tooltip"],
+  [data-component="tip"]:focus > [role="tooltip"],
+  [data-component="tip"]:focus-within > [role="tooltip"] {
+    display: block;
+  }
+
+  /* user + system menus (native <details>) */
+  details[data-component="menu"] > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  details[data-component="menu"] > summary::-webkit-details-marker {
+    display: none;
+  }
+  details[data-component="menu"][open] > summary [data-chevron] {
+    transform: rotate(180deg);
+  }
+  [data-component="menuitem"] {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 0.5rem;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    background: none;
+    border: 0;
+    text-decoration: none;
+  }
+  [data-component="menuitem"]:hover {
+    background: var(--surface-2);
+    text-decoration: none;
+  }
+  [data-component="menuitem"][aria-current="page"] {
+    background: var(--surface-2);
+    font-weight: 600;
+  }
+}
+
+/* ---- SVG charts (the server-drawn activity chart and trend charts) ------------ */
+@layer components {
+  [data-component="chart"] text {
+    fill: var(--ink-2);
+    font-size: 11px;
+    font-family: var(--font);
+  }
+  [data-component="chart"] .grid {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  [data-component="chart"] .band {
+    fill: var(--band);
+  }
+  [data-component="chart"] .span {
+    fill: var(--span);
+  }
+  [data-component="chart"] .line {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  [data-component="chart"] .dot-low {
+    fill: var(--below);
+  }
+  [data-component="chart"] .dot-high {
+    fill: var(--above);
+  }
+  [data-component="chart"] .limit {
+    stroke: var(--inrange);
+    stroke-dasharray: 4 4;
+    stroke-width: 1;
+  }
+  [data-component="trendchart-label"] {
+    fill: var(--ink-2);
+    font-size: 10px;
+    font-family: var(--font);
+  }
+}
+
+/* On phones the nav is a bottom tab bar: the alert count rides the bell icon. */
+@media (max-width: 767px) {
+  #nav-alerts {
+    position: absolute;
+    top: 0.2rem;
+    left: calc(50% + 0.3rem);
+  }
+  #nav-alerts [data-component="badge"] {
+    padding: 0 0.3rem;
+    font-size: 0.625rem;
+    line-height: 1.1rem;
+  }
+}
+
+/* ---- motion + print ------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media print {
+  [data-component="nav"],
+  #toast,
+  [data-component="banner"],
+  [data-print="hide"] {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  [data-component="card"] {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+}

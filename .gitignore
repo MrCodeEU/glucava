@@ -6,3 +6,4 @@ shots/
 .data/
 .env
 .site/
+.bin/

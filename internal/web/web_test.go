@@ -960,7 +960,7 @@ func TestDeleteUnknownActivityIsFine(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	c := e.login(t)
-	if w := e.action("/actions/delete/999", "{}", c, nil); strings.Contains(w.Body.String(), "error") {
+	if w := e.action("/actions/delete/999", "{}", c, nil); strings.Contains(w.Body.String(), `data-variant="error"`) {
 		t.Errorf("body = %s", w.Body.String())
 	}
 }

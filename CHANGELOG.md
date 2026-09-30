@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+- The web UI is restyled on Tailwind CSS v4 (standalone CLI, compiled `app.css` committed, `make css` / `make css-check`). New app shell: a responsive top bar that becomes a bottom tab bar on phones, a "System" menu for the less-used pages, and a compact account menu with the theme toggle and sign out (fixes the sign-out button wrapping on narrow screens). New component kit: stat tiles with trend, segmented control (used for the Overview range picker), tabs, empty/error/skeleton states, help tooltips, ghost/danger buttons, improved forms, tables with a sticky header, and print styles. Light and dark palettes were retuned for contrast.
+- `tools/shot` covers every page, `-matrix` runs 1280 and 390 px in light and dark, and it now fails on browser console errors and CSP violations.
+
 ## [0.6.0] - 2026-09-29
 
 ### Added
