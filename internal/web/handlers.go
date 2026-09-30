@@ -75,7 +75,7 @@ func (s *Server) dashData(ctx context.Context) (DashData, error) {
 	if err != nil {
 		return DashData{}, err
 	}
-	d := DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo()}
+	d := DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo(), T: trCtx(ctx)}
 	if s.LatestGlucose != nil {
 		// Short timeout: a slow or unreachable source must not hold up the
 		// whole page. A nil result just leaves the tile showing "-".
@@ -124,7 +124,7 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 		return nil, err
 	}
 
-	d := &ActivityData{Act: *act, Samples: samples, Cfg: cfg, Loc: s.loc(), Now: s.now()}
+	d := &ActivityData{Act: *act, Samples: samples, Cfg: cfg, Loc: s.loc(), Now: s.now(), T: trCtx(ctx)}
 	if s.Progress != nil {
 		d.Step = s.Progress.Step(id)
 	}

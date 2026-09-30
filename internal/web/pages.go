@@ -14,6 +14,7 @@ import (
 	. "maragu.dev/gomponents/html"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -95,6 +96,9 @@ type DashData struct {
 	Loc     *time.Location
 	Now     time.Time
 	Session SessionInfo
+	// T translates the live parts (LiveDash is also patched over SSE, where
+	// there is no PageData); nil means English.
+	T *i18n.Translator
 
 	// Latest is the most recent glucose reading, if the source made one
 	// available quickly. Nil means unknown, not necessarily unavailable.
@@ -250,6 +254,7 @@ type ActivityData struct {
 	Events []store.EventRow
 	Loc    *time.Location
 	Now    time.Time
+	T      *i18n.Translator // nil means English
 
 	Thr     analytics.Thresholds
 	Insight *analytics.ActivityInsight // before/during/after numbers; nil without readings
