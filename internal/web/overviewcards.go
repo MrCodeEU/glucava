@@ -58,7 +58,8 @@ var needsReadings = map[string]bool{
 }
 
 // halfWidth cards sit two to a row on wide screens; the rest span the row.
-var halfWidth = map[string]bool{"heatmap": true, "calendar": true, "dayparts": true, "episodes": true}
+// Cards with wide tables (time of day, lows and highs) need the full row.
+var halfWidth = map[string]bool{"heatmap": true, "calendar": true}
 
 var weekdayLabels = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 
@@ -381,16 +382,17 @@ func episodesCard(d StatsData, _ map[string]string) g.Node {
 		st := analytics.SummarizeEpisodes(analytics.OfKind(m.Episodes, k.kind))
 		if st.Count == 0 {
 			rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Text("0")),
-				Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-"))))
+				Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-")), Td(Class("num"), g.Text("-"))))
 			continue
 		}
 		rows = append(rows, Tr(Td(g.Text(k.label)), Td(Class("num"), g.Textf("%d", st.Count)),
-			Td(Class("num"), g.Textf("%d", st.Nocturnal)), Td(Class("num"), g.Text(fmtDuration(st.Longest))),
-			Td(Class("num"), g.Text(fmtDuration(st.Total))), Td(Class("num"), g.Text(render.Value(st.Extreme, d.Unit)))))
+			Td(Class("num"), g.Textf("%d", st.Nocturnal)),
+			Td(Class("num"), g.Textf("%s / %s", fmtDuration(st.Longest), fmtDuration(st.Total))),
+			Td(Class("num"), g.Text(render.Value(st.Extreme, d.Unit)))))
 	}
 	summary := Div(append(comp("tablewrap"), Table(append(comp("table"),
 		THead(Tr(Th(g.Text("Kind")), Th(Class("num"), g.Text("Episodes")), Th(Class("num"), g.Text("At night")),
-			Th(Class("num"), g.Text("Longest")), Th(Class("num"), g.Text("Total time")), Th(Class("num"), g.Text("Nadir / peak")))),
+			Th(Class("num"), g.Text("Longest / total")), Th(Class("num"), g.Text("Nadir / peak")))),
 		TBody(g.Group(rows)))...))...)
 
 	recent := recentEpisodes(m.Episodes, 8)
