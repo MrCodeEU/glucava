@@ -48,7 +48,7 @@ func (s *PB) Settings(context.Context) (jobs.Settings, error) {
 		out.Unit = render.Unit(u)
 	}
 	if lo, hi := r.GetFloat("range_low"), r.GetFloat("range_high"); lo > 0 && hi > lo {
-		out.Range = stats.Range{Low: lo, High: hi}
+		out.Range = stats.Range{Low: lo, High: hi, VeryLow: r.GetFloat("very_low"), VeryHigh: r.GetFloat("very_high")}
 	}
 	out.ChartImage = r.GetBool("chart_image")
 	out.ChartStyle = Config{

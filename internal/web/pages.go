@@ -334,7 +334,7 @@ func ActivityBody(d ActivityData) g.Node {
 		),
 		Card(H2(g.Text("Glucose")), GlucoseChart(ChartData{
 			Samples: d.Samples, Unit: unit, Loc: d.Loc, Start: a.Start, End: a.End(),
-			Range: stats.Range{Low: d.Cfg.RangeLow, High: d.Cfg.RangeHigh},
+			Range: d.Cfg.Range(),
 		})),
 	)
 }
@@ -506,7 +506,7 @@ func importFormatOptions(names []string) g.Node {
 func SettingsPage(pd PageData, d SettingsData) g.Node {
 	c := d.Cfg
 	sig, _ := json.Marshal(map[string]any{
-		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "preMin": c.PreMin, "postMin": c.PostMin,
+		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "veryLow": c.VeryLow, "veryHigh": c.VeryHigh, "preMin": c.PreMin, "postMin": c.PostMin,
 		"pollMin": c.PollMin, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
 		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
 		"emailTo":  c.EmailTo,
@@ -535,6 +535,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Div(append(comp("fieldrow"),
 							Field("rangeLow", "Target low (mg/dL)", "", Input(ID("rangeLow"), Type("number"), Min("40"), Max("200"), bind("rangeLow"))),
 							Field("rangeHigh", "Target high (mg/dL)", "", Input(ID("rangeHigh"), Type("number"), Min("80"), Max("400"), bind("rangeHigh"))),
+							Field("veryLow", "Very low below (mg/dL)", "Level-2 hypoglycemia threshold (consensus: 54). Used by the Overview analytics.", Input(ID("veryLow"), Type("number"), Min("20"), Max("100"), bind("veryLow"))),
+							Field("veryHigh", "Very high above (mg/dL)", "Level-2 hyperglycemia threshold (consensus: 250).", Input(ID("veryHigh"), Type("number"), Min("150"), Max("600"), bind("veryHigh"))),
 						)...),
 						Div(append(comp("fieldrow"),
 							Field("preMin", "Minutes before start", "", Input(ID("preMin"), Type("number"), Min("0"), Max("240"), bind("preMin"))),

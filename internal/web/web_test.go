@@ -1342,3 +1342,30 @@ func TestActivityPageShowsHeartRateStats(t *testing.T) {
 		t.Error("heart rate tiles shown for an activity without heart rate")
 	}
 }
+
+func TestSettingsSaveVeryLowHighThresholds(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	ok := strings.TrimSuffix(validSettings, "}") + `,"veryLow":60,"veryHigh":230}`
+	if w := e.action("/actions/settings", ok, c, nil); !strings.Contains(w.Body.String(), "Settings saved") {
+		t.Fatalf("response = %s", w.Body)
+	}
+	cfg, _ := e.srv.Store.LoadConfig()
+	if cfg.VeryLow != 60 || cfg.VeryHigh != 230 {
+		t.Errorf("thresholds = %v/%v", cfg.VeryLow, cfg.VeryHigh)
+	}
+
+	for name, body := range map[string]string{
+		"very low above target low":   strings.TrimSuffix(validSettings, "}") + `,"veryLow":80,"veryHigh":230}`,
+		"very high below target high": strings.TrimSuffix(validSettings, "}") + `,"veryLow":60,"veryHigh":150}`,
+	} {
+		if w := e.action("/actions/settings", body, c, nil); !strings.Contains(w.Body.String(), `data-variant="error"`) {
+			t.Errorf("%s not rejected: %s", name, w.Body)
+		}
+	}
+	if cfg2, _ := e.srv.Store.LoadConfig(); cfg2.VeryLow != 60 || cfg2.VeryHigh != 230 {
+		t.Errorf("rejected save changed thresholds: %v/%v", cfg2.VeryLow, cfg2.VeryHigh)
+	}
+}

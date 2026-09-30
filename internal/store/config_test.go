@@ -141,3 +141,34 @@ func TestConfigValidateAcceptsAValidDescriptionTemplate(t *testing.T) {
 		t.Errorf("valid description template rejected: %s", msg)
 	}
 }
+
+func TestConfigValidateThresholds(t *testing.T) {
+	ok := func(vl, vh float64) bool {
+		c := valid()
+		c.VeryLow, c.VeryHigh = vl, vh
+		return c.Validate() == ""
+	}
+	for _, tc := range []struct {
+		vl, vh float64
+		want   bool
+	}{
+		{0, 0, true}, {54, 250, true}, {60, 200, true}, {69, 181, true},
+		{70, 250, false}, {19, 250, false}, {54, 180, false}, {54, 601, false}, {54, 600, true},
+	} {
+		if got := ok(tc.vl, tc.vh); got != tc.want {
+			t.Errorf("very low %v / very high %v: valid = %v, want %v", tc.vl, tc.vh, got, tc.want)
+		}
+	}
+}
+
+func TestConfigRangeCarriesThresholds(t *testing.T) {
+	c := valid()
+	c.VeryLow, c.VeryHigh = 60, 240
+	r := c.Range()
+	if vl, vh := r.Thresholds(); r.Low != 70 || r.High != 180 || vl != 60 || vh != 240 {
+		t.Errorf("range = %+v (%v, %v)", r, vl, vh)
+	}
+	if vl, vh := valid().Range().Thresholds(); vl != 54 || vh != 250 {
+		t.Errorf("zero thresholds resolve to %v/%v, want 54/250", vl, vh)
+	}
+}

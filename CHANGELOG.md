@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Configurable very-low and very-high glucose thresholds (Settings → target range; defaults 54 and 250 mg/dL), used by the very-low/very-high shares in every summary.
+
+### Changed
+- The Overview loads glucose readings and activities with lean raw queries (about 4x faster on a year of data), and the database gets an index on reading time.
+
 ## [0.6.0] - 2026-09-29
 
 ### Added
