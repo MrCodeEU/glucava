@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/strava"
 )
@@ -54,11 +55,11 @@ func (r *Runner) Once(ctx context.Context) error {
 
 	rep, err := r.Inspector.Inspect(ctx, acts[0].StravaID, false)
 	if err != nil {
-		return r.fail(ctx, acts[0].StravaID, fmt.Sprintf("could not open the edit page: %v", err))
+		return r.fail(ctx, acts[0].StravaID, fmt.Sprintf("could not open the edit page: %v", err), eventmsg.KeyCanaryOpenFailed, map[string]any{"err": err.Error()})
 	}
 	switch {
 	case !rep.LoggedIn:
-		return r.fail(ctx, acts[0].StravaID, "Strava sent the browser to the login page: the stored session is no longer valid")
+		return r.fail(ctx, acts[0].StravaID, "Strava sent the browser to the login page: the stored session is no longer valid", eventmsg.KeyCanaryLogin, nil)
 	case rep.NotFound:
 		// Not drift: the checked activity itself is gone (e.g. deleted on
 		// Strava), not a sign the edit page's markup changed. Recorded as
@@ -66,23 +67,26 @@ func (r *Runner) Once(ctx context.Context) error {
 		return r.Store.RecordEvent(ctx, jobs.Event{
 			Type: jobs.EventActivityNotFound, Severity: "info", StravaID: acts[0].StravaID,
 			Message: "canary: the most recently processed activity was not found on Strava (it may have been deleted); this check will keep reporting that until a different activity is processed",
+			MsgKey:  eventmsg.KeyCanaryNotFound,
 		})
 	case rep.DescriptionSelector == "":
-		return r.fail(ctx, acts[0].StravaID, "the description field was not found with the configured selectors")
+		return r.fail(ctx, acts[0].StravaID, "the description field was not found with the configured selectors", eventmsg.KeyCanaryNoField, nil)
 	case rep.SaveMethod == "":
-		return r.fail(ctx, acts[0].StravaID, "no way to save the form was found")
+		return r.fail(ctx, acts[0].StravaID, "no way to save the form was found", eventmsg.KeyCanaryNoSave, nil)
 	}
 
 	r.lastFailed = false
 	return nil
 }
 
-func (r *Runner) fail(ctx context.Context, stravaID, msg string) error {
+// fail records the failure once (until the check passes again) and returns it.
+// msg is the English text; key and args let the reader translate it.
+func (r *Runner) fail(ctx context.Context, stravaID, msg, key string, args map[string]any) error {
 	if !r.lastFailed {
 		r.lastFailed = true
 		if rerr := r.Store.RecordEvent(ctx, jobs.Event{
 			Type: jobs.EventCanaryFailed, Severity: "error", StravaID: stravaID,
-			Message: "canary check failed: " + msg,
+			Message: "canary check failed: " + msg, MsgKey: key, MsgArgs: args,
 		}); rerr != nil {
 			slog.Error("record event", "err", rerr)
 		}

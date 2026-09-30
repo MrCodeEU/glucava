@@ -23,6 +23,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/mailer"
 
 	"github.com/MrCodeEU/glucava/internal/digest"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -31,9 +32,10 @@ import (
 
 // htmlOf renders m through the real Email channel and returns the HTML part,
 // with the inline chart turned into a data URI so it displays standalone.
-func htmlOf(m notify.Message) string {
+func htmlOf(tr *i18n.Translator, m notify.Message) string {
 	var out string
 	e := &notify.Email{
+		Tr: func() *i18n.Translator { return tr },
 		To: "you@example.com", From: mail.Address{Address: "glucava@example.com"},
 		SendFunc: func(msg *mailer.Message) error {
 			out = msg.HTML
@@ -44,7 +46,7 @@ func htmlOf(m notify.Message) string {
 			return nil
 		},
 	}
-	m.Link, m.LinkLabel = notify.LinkFor("https://glucava.example.com", m)
+	m.Link, m.LinkLabel = notify.LinkFor(tr, "https://glucava.example.com", m)
 	if err := e.Send(context.Background(), m); err != nil {
 		slog.Error("send", "err", err)
 		os.Exit(1)
@@ -54,7 +56,9 @@ func htmlOf(m notify.Message) string {
 
 func main() {
 	outDir := flag.String("out", "docs/img", "output directory")
+	lang := flag.String("lang", "en", "language of the mail texts (a locale tag such as de)")
 	flag.Parse()
+	tr := i18n.Default().Match("", *lang)
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		slog.Error("mkdir out dir", "err", err)
 		os.Exit(1)
@@ -71,10 +75,10 @@ func main() {
 	for i := -6; i < 16; i++ {
 		samples = append(samples, stats.Sample{Time: a.Start.Add(time.Duration(i) * 5 * time.Minute), Value: 128 + 40*math.Sin(float64(i)/5) - float64(i)*1.5})
 	}
-	activity, _ := digest.ActivityMessage(a, render.MgDL, stats.DefaultRange, samples, loc)
+	activity, _ := digest.ActivityMessage(tr, a, render.MgDL, stats.DefaultRange, samples, loc)
 	cur := []jobs.Activity{mk("1", "Easy Run", 6, 92, 84, 0), mk("2", "Intervals", 4, 71, 58, 6), mk("3", "Long Run", 2, 85, 74, 0), mk("4", "Recovery Jog", 1, 100, 90, 0)}
-	weekly, _ := digest.WeeklyMessage(cur, []jobs.Activity{mk("5", "Tempo", 9, 88, 80, 0)}, now.AddDate(0, 0, -7), now, render.MgDL, loc)
-	alert := notify.Message{Type: "session_expired", Severity: "error", Title: notify.Title("session_expired"),
+	weekly, _ := digest.WeeklyMessage(tr, cur, []jobs.Activity{mk("5", "Tempo", 9, 88, 80, 0)}, now.AddDate(0, 0, -7), now, render.MgDL, loc)
+	alert := notify.Message{Type: "session_expired", Severity: "error", Title: notify.Title(tr, "session_expired"),
 		Body: "polling failed: the Strava session has expired, import fresh cookies"}
 	for _, m := range []*notify.Message{&activity, &weekly, &alert} {
 		m.Time = now
@@ -90,7 +94,7 @@ func main() {
 	defer cancel()
 
 	for name, m := range map[string]notify.Message{"mail-activity": activity, "mail-weekly": weekly, "mail-alert": alert} {
-		doc := htmlOf(m)
+		doc := htmlOf(tr, m)
 		var png []byte
 		err := chromedp.Run(ctx,
 			chromedp.Navigate("about:blank"),

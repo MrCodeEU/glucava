@@ -827,7 +827,7 @@ func EventsPage(pd PageData, evs []store.EventRow, loc *time.Location, now time.
 			rows = append(rows, Tr(
 				Td(g.Text(fmtWhenT(tr, e.Created, loc, now))), Td(SeverityBadgeT(tr, e.Severity)),
 				Td(g.Text(eventTypeLabel(tr, e.Type))),
-				Td(g.Text(e.Message), g.If(e.StravaID != "", A(Href("/activity/"+e.StravaID), g.Text(" "+tr.T("events.link.activity"))))),
+				Td(g.Text(eventMessage(tr, loc, e)), g.If(e.StravaID != "", A(Href("/activity/"+e.StravaID), g.Text(" "+tr.T("events.link.activity"))))),
 				Td(Class("hide-sm"), delivered),
 			))
 		}

@@ -1,6 +1,10 @@
 package notify
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
+)
 
 func TestLinkFor(t *testing.T) {
 	tests := []struct {
@@ -23,7 +27,7 @@ func TestLinkFor(t *testing.T) {
 		{Message{Type: "strava_failed", StravaID: "42"}, "  ", ""},
 	}
 	for _, tc := range tests {
-		got, label := LinkFor(tc.base, tc.m)
+		got, label := LinkFor(i18n.English(), tc.base, tc.m)
 		if got != tc.want || (got != "") != (label != "") {
 			t.Errorf("LinkFor(%q, %s) = %q, %q; want %q", tc.base, tc.m.Type, got, label, tc.want)
 		}

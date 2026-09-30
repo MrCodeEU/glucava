@@ -121,7 +121,13 @@ type Settings struct {
 type Event struct {
 	Type     string
 	Severity string // info, warning, error
-	Message  string
+	// Message is the English text. It is kept for logs and as the fallback
+	// for readers that cannot render MsgKey.
+	Message string
+	// MsgKey and MsgArgs let the reader render the message in its own
+	// language (see internal/eventmsg). Both are optional.
+	MsgKey   string
+	MsgArgs  map[string]any
 	StravaID string
 	Repaired bool
 }

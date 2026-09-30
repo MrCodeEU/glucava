@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -46,6 +47,9 @@ type Input struct {
 	Now  time.Time
 	// Build is the glucava version shown in the footer.
 	Build string
+	// T translates every text of the report and formats its dates and
+	// numbers. Nil means English.
+	T *i18n.Translator
 
 	// Compare adds the previous period's numbers as deltas on the key tiles.
 	Compare          bool

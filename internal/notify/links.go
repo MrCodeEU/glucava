@@ -1,6 +1,10 @@
 package notify
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
+)
 
 // Message types that are not failures. Summaries are sent to email only.
 const (
@@ -23,25 +27,25 @@ func IsAlert(msgType string) bool {
 // LinkFor returns the web UI page that best matches a message, and a label
 // for it. base is the public URL of the UI; with none configured there is no
 // link, so nothing points at a made-up address.
-func LinkFor(base string, m Message) (href, label string) {
+func LinkFor(tr *i18n.Translator, base string, m Message) (href, label string) {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if base == "" {
 		return "", ""
 	}
 	switch m.Type {
 	case TypeWeeklySummary, "glucose_gap":
-		return base + "/", "Open dashboard"
+		return base + "/", tr.T("notify.link.dashboard")
 	case TypeHealthReport:
-		return base + "/events", "See all events"
+		return base + "/events", tr.T("notify.link.events")
 	case "session_expired", "canary_failed":
-		return base + "/strava", "Check the Strava connection"
+		return base + "/strava", tr.T("notify.link.strava")
 	case "trigger_rejected":
-		return base + "/tokens", "Manage trigger tokens"
+		return base + "/tokens", tr.T("notify.link.tokens")
 	case TypeTest:
-		return base + "/settings", "Open settings"
+		return base + "/settings", tr.T("notify.link.settings")
 	}
 	if m.StravaID != "" {
-		return base + "/activity/" + m.StravaID, "Open in glucava"
+		return base + "/activity/" + m.StravaID, tr.T("notify.link.activity")
 	}
-	return base + "/events", "See all events"
+	return base + "/events", tr.T("notify.link.events")
 }

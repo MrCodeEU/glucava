@@ -2,8 +2,11 @@ package web
 
 import (
 	"strings"
+	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/i18n"
+	"github.com/MrCodeEU/glucava/internal/store"
 )
 
 // eventTypeKeys maps a jobs event type to its translation key. Keep it in step
@@ -26,4 +29,11 @@ func eventTypeLabel(tr *i18n.Translator, typ string) string {
 		return tr.T(k) // i18n:dynamic (keys registered in eventTypeKeys)
 	}
 	return strings.ReplaceAll(typ, "_", " ")
+}
+
+// eventMessage is the message of a stored event in the reader's language. A
+// row without a message key (written by an older version) shows the English
+// text it was stored with.
+func eventMessage(tr *i18n.Translator, loc *time.Location, e store.EventRow) string {
+	return eventmsg.Render(tr, loc, e.MsgKey, e.MsgArgs, e.Message)
 }

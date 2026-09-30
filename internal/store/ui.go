@@ -8,6 +8,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 )
 
@@ -258,6 +259,8 @@ type EventRow struct {
 	Type     string
 	Severity string
 	Message  string
+	MsgKey   string         // translation key of the message, "" for old rows
+	MsgArgs  map[string]any // its arguments (see internal/eventmsg)
 	StravaID string
 	Repaired bool
 	Notified bool
@@ -285,6 +288,7 @@ func (s *PB) ListEvents(_ context.Context, limit int) ([]EventRow, error) {
 	for i, r := range recs {
 		out[i] = EventRow{
 			ID: r.Id, Type: r.GetString("type"), Severity: r.GetString("severity"), Message: r.GetString("message"),
+			MsgKey: r.GetString("msg_key"), MsgArgs: eventmsg.Decode(r.GetString("msg_args")),
 			StravaID: r.GetString("strava_id"), Repaired: r.GetBool("repaired"), Notified: r.GetBool("notified"),
 			Created: r.GetDateTime("created").Time(),
 		}

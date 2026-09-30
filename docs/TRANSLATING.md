@@ -111,3 +111,12 @@ Never add a user-visible string without a key. The rules and helpers:
 - When you convert a file, add it to `convertedFiles` in
   `internal/web/i18n_lint_test.go`; the test then rejects new hard-coded English
   in it.
+- Texts made without a request (alerts, summary emails, the PDF report) have
+  no browser to ask. Notifications and emails use the installation language
+  (Settings > Language; "auto" means English) through `notify.Translator`; the
+  PDF takes `report.Input.T`. `internal/notify/i18n_test.go` rejects a hard-coded
+  English `Label`, `Title` or `Body` in `notify`, `digest` and `report`.
+- A stored event keeps an English `Message` and also a `MsgKey` with `MsgArgs`
+  (`jobs.Event`). Store arguments neutral: minutes in a `*_min` argument and an
+  RFC 3339 time in a `*_at` argument; `eventmsg.Render` formats them for the
+  reader. Add the key to `internal/eventmsg` so the key check sees it.
