@@ -34,6 +34,7 @@ type reportKey struct {
 	Unit     string
 	Loc      string
 	Thr      analytics.Thresholds
+	Mode     string // suspected-artifact handling, which changes the numbers
 	Ver      store.DataVersion
 }
 
@@ -98,7 +99,7 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := reportKey{Range: rng.Key, From: rng.From.Unix() / 300, To: rng.To.Unix() / 300, Compare: rng.Compare,
-		Unit: cfg.Unit, Loc: loc.String(), Thr: thr, Ver: ver}
+		Unit: cfg.Unit, Loc: loc.String(), Thr: thr, Mode: cfg.ArtifactsMode(), Ver: ver}
 
 	rs := s.reports()
 	if hit, ok := rs.cache.Get(key); ok {
@@ -166,6 +167,23 @@ func (s *Server) reportInput(ctx context.Context, rng statsRange, cfg store.Conf
 	if rng.Compare {
 		if in.PrevSamples, err = s.Store.LoadSamplesFast(ctx, rng.PrevFrom, rng.PrevTo); err != nil {
 			return in, err
+		}
+	}
+	// With "exclude suspected artifacts" on, the report follows the Overview
+	// and uses the same cleaned readings.
+	if cfg.ArtifactsMode() == store.ArtifactExclude {
+		marksFrom := rng.From
+		if rng.Compare {
+			marksFrom = rng.PrevFrom
+		}
+		stored, err := s.Store.ArtifactMarks(ctx, marksFrom, rng.To)
+		if err != nil {
+			return in, err
+		}
+		oi := overviewInput{Acts: in.Acts, Thr: thr, Loc: in.Loc, Marks: toAnalyticsMarks(stored), ArtifactMode: store.ArtifactExclude}
+		in.Samples, _, _ = oi.prepare(in.Samples)
+		if in.PrevSamples != nil {
+			in.PrevSamples, _, _ = oi.prepare(in.PrevSamples)
 		}
 	}
 	src, err := s.Store.SourceHealth(ctx)

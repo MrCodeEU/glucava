@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- A printable PDF report: the Overview's "Download report" button (and a link in Settings → Your data) produces an A4 report for the selected range, with the previous-period comparison, in mg/dL or mmol/L. It is typeset by Typst from glucava's own charts with an embedded font, so it looks the same on every host. It has key numbers, time in range against the consensus targets, the daily profile (AGP), a day-by-day chart, time of day, lows and highs, per-activity-type numbers, recent activities and glucose sources. The Docker image includes typst; other setups need it on the `PATH` or `GLUCAVA_TYPST`, otherwise the download answers 503.
+- Suspected sensor artifacts: compression lows and sudden sensor dips are detected and flagged on the Overview (badge with reasons, and a note such as "time below range is 1.6% as recorded and 1.0% without the suspected artifacts"). Each low episode has "Not real" / "It was real" buttons that override the detector. Settings → Overview page → "Suspected sensor artifacts" can exclude them from the statistics and from the PDF report. The Activity page shows a notice when one overlaps the activity.
+
 ## [0.7.2] - 2026-09-30
 
 ### Added
