@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-30
+
 ### Changed
 - Overview: the time-of-day and lows-and-highs cards use the full row, and the lows-and-highs summary merges longest and total time into one column, so their tables no longer scroll sideways on desktop.
 
