@@ -19,17 +19,8 @@ type PctMatrixInput struct {
 	XEvery           int
 }
 
-// tirPieces colour a time-in-range percentage. The scale legend in the
-// Overview (tirScaleLegend) repeats these bounds and colours.
-var tirPieces = []map[string]any{
-	{"lt": 50, "color": ColLow},
-	{"gte": 50, "lt": 70, "color": ColHigh},
-	{"gte": 70, "lt": 90, "color": "#8fd1b3"},
-	{"gte": 90, "color": ColInRange},
-}
-
-// PctMatrixOption builds a heatmap of percentages coloured by time-in-range
-// band. Cells that are not given stay blank.
+// PctMatrixOption builds a heatmap of percentages coloured on a red-to-green
+// gradient from 50% to 100% in range. Cells that are not given stay blank.
 func PctMatrixOption(in PctMatrixInput) map[string]any {
 	data := make([]map[string]any, 0, len(in.Cells))
 	for _, c := range in.Cells {
@@ -49,7 +40,9 @@ func PctMatrixOption(in PctMatrixInput) map[string]any {
 		"xAxis":   xAxis,
 		"yAxis":   map[string]any{"type": "category", "data": in.YLabels, "inverse": true, "axisTick": map[string]any{"show": false}},
 		"visualMap": map[string]any{
-			"show": false, "type": "piecewise", "dimension": 2, "pieces": tirPieces,
+			"show": false, "type": "continuous", "dimension": 2, "min": 50, "max": 100,
+			"inRange":    map[string]any{"color": []string{ColLow, ColHigh, ColInRange}},
+			"outOfRange": map[string]any{"color": ColLow},
 		},
 		"series": []map[string]any{{
 			"type": "heatmap", "data": data,

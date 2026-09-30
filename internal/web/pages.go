@@ -13,6 +13,7 @@ import (
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 
+	"github.com/MrCodeEU/glucava/internal/analytics"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -98,6 +99,13 @@ type DashData struct {
 	// Latest is the most recent glucose reading, if the source made one
 	// available quickly. Nil means unknown, not necessarily unavailable.
 	Latest *stats.Sample
+
+	// Day is the last 24 hours of readings, oldest first, and DayTIR their
+	// five-band split; Thr says where the bands lie. All optional: without
+	// readings the "now" card explains that instead of drawing.
+	Day    []stats.Sample
+	DayTIR analytics.TIR5
+	Thr    analytics.Thresholds
 }
 
 // LiveDash is the part of the dashboard that updates without a reload.
@@ -126,17 +134,10 @@ func LiveDash(d DashData) g.Node {
 	if failed > 0 {
 		attention = "Open an activity to reprocess"
 	}
-	glucoseVal, glucoseSub := "-", "no recent reading"
-	if d.Latest != nil {
-		glucoseVal = render.Value(d.Latest.Value, d.Unit)
-		if age := d.Now.Sub(d.Latest.Time); age >= 0 {
-			glucoseSub = fmt.Sprintf("%s · %s ago", d.Latest.Time.In(d.Loc).Format("15:04"), fmtDuration(age))
-		}
-	}
 
 	return Div(ID("live"),
+		nowCard(d),
 		Grid("",
-			Tile("Current glucose", glucoseVal, glucoseSub),
 			Tile("Annotated, 14 days", fmt.Sprint(done), "activities with a glucose block"),
 			Tile("Average time in range", tir, "across those activities"),
 			Tile("Failed", fmt.Sprint(failed), attention),
@@ -151,9 +152,13 @@ func LiveDash(d DashData) g.Node {
 
 func activityTable(d DashData) g.Node {
 	if len(d.Acts) == 0 {
-		return Div(append(comp("empty"),
-			P(g.Text("No activities yet.")),
-			P(Class("muted"), g.Text("New Strava activities appear here once the session is set up and polling finds them.")))...)
+		hint := "New Strava activities appear here once polling finds them. Use “Check Strava now” to look right away."
+		var action []g.Node
+		if !d.Session.Configured {
+			hint = "glucava needs your Strava session before it can find activities."
+			action = append(action, A(append(comp("button"), Href("/strava"), g.Text("Set up the Strava session"))...))
+		}
+		return EmptyState("activity", "No activities yet", hint, action...)
 	}
 	rows := make([]g.Node, 0, len(d.Acts))
 	for _, a := range d.Acts {
@@ -163,6 +168,7 @@ func activityTable(d DashData) g.Node {
 		Table(append(comp("table"),
 			THead(Tr(
 				Th(g.Text("When")), Th(g.Text("Activity")), Th(Class("hide-sm"), g.Text("Duration")),
+				Th(Class("hide-sm"), g.Text("Distance")),
 				Th(g.Text("Time in range")), Th(Class("hide-sm num"), g.Text("Min / Max")),
 				Th(Class("hide-sm num"), g.Text("Avg")), Th(g.Text("Status")),
 			)),
@@ -186,13 +192,28 @@ func activityRow(a jobs.Activity, d DashData) g.Node {
 	}
 	return Tr(g.Attr("data-href", href), g.Attr("data-on:click", fmt.Sprintf("window.location='%s'", jsQuote(href))),
 		Td(g.Text(fmtWhen(a.Start, d.Loc, d.Now))),
-		Td(A(Href(href), g.Text(name)), g.If(a.Sport != "", Span(Class("muted"), g.Text(" · "+a.Sport)))),
+		Td(Div(Class("flex items-start gap-2"),
+			Span(Class("mt-0.5 text-ink-2"), g.Attr("title", orDash(a.Sport)), icon(sportIcon(a.Sport), "size-4")),
+			Div(A(Href(href), g.Text(name)), g.If(a.Sport != "", Span(Class("muted"), g.Text(" · "+a.Sport)))))),
 		Td(Class("hide-sm"), g.Text(fmtDuration(a.Duration))),
+		Td(Class("hide-sm"), distanceCell(a)),
 		Td(tirCell),
 		Td(Class("hide-sm num"), g.Text(minmax)),
 		Td(Class("hide-sm num"), g.Text(avg)),
 		Td(StatusBadge(a.Status)),
 	)
+}
+
+// distanceCell is "12.0 km · 5:30 /km", or a dash when the activity has no distance.
+func distanceCell(a jobs.Activity) g.Node {
+	if a.Distance <= 0 {
+		return Span(Class("muted"), g.Text("-"))
+	}
+	txt := fmt.Sprintf("%.1f km", a.Distance/1000)
+	if pace := render.FormatPace(a.Sport, a.Distance, a.Duration); pace != "" {
+		txt += " · " + pace
+	}
+	return g.Text(txt)
 }
 
 func tirBar(s stats.Summary) g.Node {
@@ -229,6 +250,12 @@ type ActivityData struct {
 	Events []store.EventRow
 	Loc    *time.Location
 	Now    time.Time
+
+	Thr     analytics.Thresholds
+	Insight *analytics.ActivityInsight // before/during/after numbers; nil without readings
+	Rank    *SportRank                 // nil until there are enough activities of this sport
+	Prev    *ActivityRef               // the activity before and after this one, by start time
+	Next    *ActivityRef
 }
 
 // ActivityPage shows one activity with its glucose chart.
@@ -241,6 +268,7 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 
 	return Page(pd,
 		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhen(a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
+			g.Group(activityNav(d)),
 			A(append(comp("button"), Href("/"), g.Text("Back"))...),
 			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
 				Target("_blank"), Rel("noopener noreferrer"), g.Text("View on Strava ↗"))...),
@@ -262,81 +290,6 @@ func processingText(step string) string {
 		return "Starting the browser and writing to Strava usually takes under a minute; this page updates by itself."
 	}
 	return step + "… this page updates by itself."
-}
-
-// ActivityBody is the part of the activity page that updates live.
-func ActivityBody(d ActivityData) g.Node {
-	a := d.Act
-	unit := render.Unit(d.Cfg.Unit)
-
-	var tileList []g.Node
-	if s := a.Summary; s != nil {
-		tileList = append(tileList,
-			Tile("Time in range", fmt.Sprintf("%.0f%%", s.TIR), fmt.Sprintf("%.0f%% below · %.0f%% above", s.Below, s.Above)),
-			Tile("Average", render.Value(s.Avg, unit), string(unit)),
-			Tile("Min / Max", render.Value(s.Min, unit)+" / "+render.Value(s.Max, unit), string(unit)),
-			Tile("Readings", fmt.Sprint(s.Count), fmt.Sprintf("start %s → end %s", render.Value(s.Start, unit), render.Value(s.End, unit))),
-		)
-	}
-	if h := d.HR; h != nil {
-		tileList = append(tileList, Tile("Heart rate", fmt.Sprintf("%.0f", h.Avg), fmt.Sprintf("bpm average · max %.0f · min %.0f", h.Max, h.Min)))
-	}
-	if a.Distance > 0 || a.ElevationGain > 0 {
-		pace := render.FormatPace(a.Sport, a.Distance, a.Duration)
-		sub := fmt.Sprintf("%.0f m elevation", a.ElevationGain)
-		if pace != "" {
-			sub += " · " + pace
-		}
-		tileList = append(tileList, Tile("Distance", fmt.Sprintf("%.2f km", a.Distance/1000), sub))
-	}
-	var tiles g.Node
-	if len(tileList) > 0 {
-		tiles = Grid("", tileList...)
-	}
-
-	cols := "2"
-	if d.Cfg.ChartImage {
-		cols = "photo"
-	}
-	return Div(ID("activity-body"),
-		g.If(a.Status == jobs.StatusFailed && a.Error != "",
-			Notice("error", Strong(g.Text("This activity failed. ")), g.Text(a.Error))),
-		g.If(a.Status == jobs.StatusPending, Notice("", Strong(g.Text("Waiting in the queue. ")), g.Text("Jobs run one at a time; this page updates by itself."))),
-		g.If(a.Status == jobs.StatusProcessing && a.Error == "", Notice("", Strong(g.Text("Working on it. ")), g.Text(processingText(d.Step)))),
-		g.If(a.Status == jobs.StatusProcessing && a.Error != "", Notice("warning", Strong(g.Text("Not finished yet. ")), g.Text(a.Error))),
-		g.If(tiles != nil, tiles),
-		// The chart photo is square, so it sits beside the text cards instead
-		// of stretching across the page.
-		Grid(cols,
-			g.If(d.Cfg.ChartImage, Card(H2(g.Text("Chart photo for Strava")),
-				Img(Alt("Glucose chart as attached to Strava"), Src("/chart/"+a.StravaID+".png"),
-					g.Attr("style", "display:block;width:100%;height:auto;border-radius:8px")),
-				P(Class("muted"), g.Text("What glucava attaches, with your current chart settings.")),
-			)),
-			Div(Class("stack"),
-				Card(H2(g.Text("Strava description block")),
-					g.If(d.Block != "", Pre(g.Text(d.Block))),
-					g.If(d.Block == "", P(Class("muted"), g.Text("Nothing to show yet: no glucose readings are stored for this activity."))),
-					P(Class("muted"), g.Text("This block is added to the description on Strava. Your own text there is kept."))),
-				Card(H2(g.Text("Processing")),
-					Dl(append(comp("dl"),
-						Dt(g.Text("Status")), Dd(StatusBadge(a.Status)),
-						Dt(g.Text("Attempts")), Dd(g.Textf("%d", a.Attempts)),
-						g.If(d.Cfg.ChartImage, Dt(g.Text("Chart photo"))),
-						g.If(d.Cfg.ChartImage, Dd(g.Text(map[bool]string{true: "sent once", false: "not sent"}[a.ChartUploaded]))),
-						g.If(d.Cfg.HRRead, Dt(g.Text("Heart rate"))),
-						g.If(d.Cfg.HRRead, Dd(g.Text(map[bool]string{true: "stored", false: "not read yet"}[len(a.HeartRate) > 0]))),
-						Dt(g.Text("Strava ID")), Dd(Code(g.Text(a.StravaID))),
-					)...),
-					eventList(d.Events, d.Loc, d.Now),
-				),
-			),
-		),
-		Card(H2(g.Text("Glucose")), GlucoseChart(ChartData{
-			Samples: d.Samples, Unit: unit, Loc: d.Loc, Start: a.Start, End: a.End(),
-			Range: d.Cfg.Range(),
-		})),
-	)
 }
 
 func orDash(s string) string {

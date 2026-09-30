@@ -168,6 +168,7 @@ type SportStats struct {
 	Count    int     `json:"count"`    // all activities
 	WithData int     `json:"withData"` // activities with glucose readings
 	TIR      float64 `json:"tir"`      // mean of per-activity in-range %
+	Bands    TIR5    `json:"bands"`    // mean of each per-activity band, percent (sums to about 100)
 	CV       float64 `json:"cv"`       // mean per-activity CV, percent
 	Delta    float64 `json:"delta"`    // mean start-to-end change, mg/dL
 	DropRate float64 `json:"dropRate"` // mean, mg/dL per 10 min, positive = falling
@@ -192,6 +193,7 @@ func BySport(insights []ActivityInsight) []SportStats {
 	type acc struct {
 		st                   SportStats
 		tir, cv, delta, drop float64
+		bands                TIR5
 		postLow              int
 		hr                   float64
 		hrN, distN           int
@@ -212,6 +214,11 @@ func BySport(insights []ActivityInsight) []SportStats {
 		if in.HasData {
 			a.st.WithData++
 			a.tir += in.TIR.InRange
+			a.bands.VeryLow += in.TIR.VeryLow
+			a.bands.Low += in.TIR.Low
+			a.bands.InRange += in.TIR.InRange
+			a.bands.High += in.TIR.High
+			a.bands.VeryHigh += in.TIR.VeryHigh
 			a.cv += in.CV
 			a.delta += in.Delta
 			a.drop += in.DropRate
@@ -237,6 +244,8 @@ func BySport(insights []ActivityInsight) []SportStats {
 		if n := float64(st.WithData); n > 0 {
 			st.TIR, st.CV, st.Delta, st.DropRate = a.tir/n, a.cv/n, a.delta/n, a.drop/n
 			st.PostLowShare = float64(a.postLow) / n * 100
+			st.Bands = TIR5{VeryLow: a.bands.VeryLow / n, Low: a.bands.Low / n, InRange: a.bands.InRange / n,
+				High: a.bands.High / n, VeryHigh: a.bands.VeryHigh / n, Count: st.WithData}
 		}
 		if a.hrN > 0 {
 			st.AvgHR = a.hr / float64(a.hrN)

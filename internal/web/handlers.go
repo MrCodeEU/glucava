@@ -86,6 +86,14 @@ func (s *Server) dashData(ctx context.Context) (DashData, error) {
 		}
 		d.Latest = sample
 	}
+	d.Thr = analytics.FromRange(cfg.Range())
+	// The last 24 hours feed the now card's trend arrow, mini chart and
+	// donut; a failure only empties that card, not the page.
+	day, err := s.Store.LoadSamplesFast(ctx, d.Now.Add(-24*time.Hour), d.Now)
+	if err != nil {
+		slog.Error("last 24 h readings", "err", err)
+	}
+	d.Day, d.DayTIR = day, analytics.ComputeTIR5(day, d.Thr)
 	return d, nil
 }
 
@@ -128,6 +136,17 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 	if hs, ok := stats.SummarizeHR(act.HeartRate, act.Start, act.End()); ok {
 		d.HR = &hs
 	}
+	d.Thr = analytics.FromRange(cfg.Range())
+	all, ins, err := s.loadActivityContext(ctx, d.Act)
+	if err != nil {
+		return nil, err
+	}
+	d.Prev, d.Next, d.Rank = activityNeighbours(all, d.Act)
+	var hr stats.HRSummary
+	if d.HR != nil {
+		hr = *d.HR
+	}
+	d.Insight = activityInsight(ins, d.Act, hr, d.HR != nil, d.Thr, d.Loc)
 	evs, err := s.Store.ListEvents(ctx, 200)
 	if err != nil {
 		return nil, err

@@ -430,6 +430,9 @@ func BarOption(in BarInput) map[string]any {
 		series = append(series, it)
 	}
 	cat := map[string]any{"type": "category", "data": in.Categories, "axisTick": map[string]any{"show": false}}
+	if len(in.Categories) <= 12 {
+		cat["axisLabel"] = map[string]any{"interval": 0} // never skip a label of a short axis
+	}
 	val := map[string]any{"type": "value", "axisLabel": map[string]any{"formatter": f}}
 	if in.Max > 0 {
 		val["max"] = in.Max

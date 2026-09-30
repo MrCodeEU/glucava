@@ -20,7 +20,7 @@ func TestPctMatrixOption(t *testing.T) {
 	if strings.Contains(s, "outside") {
 		t.Error("cells outside the grid were kept")
 	}
-	for _, want := range []string{`"gv:cell:pct"`, `"interval":3`, `"type":"piecewise"`, `92.35`, `"inverse":true`} {
+	for _, want := range []string{`"gv:cell:pct"`, `"interval":3`, `"type":"continuous"`, `92.35`, `"inverse":true`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("option is missing %s: %s", want, s)
 		}
