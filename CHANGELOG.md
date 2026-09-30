@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-30
+
 ### Added
 - Overview rewrite: key numbers (TIR, GMI, average, CV, glucose risk index, coverage), five-band TIR donuts for all readings and for activities only, AGP (median and percentile bands by time of day), daily trends with zoom, weekday-by-hour and calendar heatmaps, time-of-day breakdown, lows and highs episodes with the activity they happened around, by-activity-type table (CV, start-to-end change, drop rate, lows afterwards, average heart rate, distance, climb, pace), activity insights (start glucose against change, best and worst activities), and a sources and coverage strip. Charts use Apache ECharts.
 - Range presets 7/14/30/90 days and all time, a custom from–to range, and comparison with the previous period. Default range is a setting.
