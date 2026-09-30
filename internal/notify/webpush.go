@@ -20,6 +20,7 @@ import (
 
 	"github.com/SherClockHolmes/webpush-go"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 )
 
@@ -221,7 +222,7 @@ func pushPayload(m Message) PushPayload {
 // opens. It reuses LinkFor, so the two never disagree, and keeps only the
 // path: the service worker opens it on whatever origin it runs on.
 func pushPath(m Message) string {
-	href, _ := LinkFor("https://x.invalid", m)
+	href, _ := LinkFor(i18n.English(), "https://x.invalid", m)
 	u, err := url.Parse(href)
 	if err != nil || u.Path == "" {
 		return "/"

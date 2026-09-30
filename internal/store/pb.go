@@ -12,6 +12,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -284,6 +285,8 @@ func (s *PB) RecordEvent(_ context.Context, e jobs.Event) error {
 	r.Set("type", e.Type)
 	r.Set("severity", e.Severity)
 	r.Set("message", e.Message)
+	r.Set("msg_key", e.MsgKey)
+	r.Set("msg_args", eventmsg.Encode(e.MsgArgs))
 	r.Set("strava_id", e.StravaID)
 	r.Set("repaired", e.Repaired)
 	r.Set("notified", false)
@@ -312,8 +315,8 @@ func (s *PB) Pending(context.Context) ([]notify.OutboxEvent, error) {
 	for i, r := range recs {
 		out[i] = notify.OutboxEvent{
 			ID: r.Id, Type: r.GetString("type"), Severity: r.GetString("severity"),
-			Message: r.GetString("message"), StravaID: r.GetString("strava_id"),
-			Repaired: r.GetBool("repaired"), Created: r.GetDateTime("created").Time(),
+			Message: r.GetString("message"), MsgKey: r.GetString("msg_key"), MsgArgs: eventmsg.Decode(r.GetString("msg_args")),
+			StravaID: r.GetString("strava_id"), Repaired: r.GetBool("repaired"), Created: r.GetDateTime("created").Time(),
 		}
 	}
 	return out, nil

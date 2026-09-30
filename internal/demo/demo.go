@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -306,11 +307,14 @@ func Seed(ctx context.Context, st *store.PB, now time.Time) error {
 		notified bool
 	}{
 		{jobs.Event{Type: jobs.EventGlucoseUnavailable, Severity: "error", StravaID: "140098",
-			Message: "activity 140098: jobs: no glucose data for the activity window"}, true},
+			Message: "activity 140098: jobs: no glucose data for the activity window",
+			MsgKey:  eventmsg.KeyActivityFailed, MsgArgs: map[string]any{"id": "140098", "err": "jobs: no glucose data for the activity window"}}, true},
 		{jobs.Event{Type: jobs.EventSessionExpired, Severity: "error",
-			Message: "polling failed: the Strava session has expired, import fresh cookies"}, true},
+			Message: "polling failed: the Strava session has expired, import fresh cookies",
+			MsgKey:  eventmsg.KeyPollSession}, true},
 		{jobs.Event{Type: "trigger_rejected", Severity: "warning",
-			Message: "trigger call from 203.0.113.7 rejected: invalid token"}, false},
+			Message: "trigger call from 203.0.113.7 rejected: invalid token",
+			MsgKey:  eventmsg.KeyTriggerInvalid, MsgArgs: map[string]any{"ip": "203.0.113.7"}}, false},
 	}
 	for _, ev := range events {
 		if err := st.RecordEvent(ctx, ev.e); err != nil {

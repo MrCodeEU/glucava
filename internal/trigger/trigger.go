@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 )
 
@@ -123,11 +124,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !valid {
-		reason := "invalid token"
+		reason, key := "invalid token", eventmsg.KeyTriggerInvalid
 		if !ok {
-			reason = "missing token"
+			reason, key = "missing token", eventmsg.KeyTriggerMissing
 		}
-		h.reject(r.Context(), ip, reason)
+		h.reject(r.Context(), ip, reason, key)
 		writeJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -148,7 +149,7 @@ func (h *Handler) blocked(ip string) bool {
 }
 
 // reject counts a failed attempt and reports the first one per window as an event.
-func (h *Handler) reject(ctx context.Context, ip, reason string) {
+func (h *Handler) reject(ctx context.Context, ip, reason, key string) {
 	_, win := h.params()
 	h.mu.Lock()
 	if h.fail == nil {
@@ -169,6 +170,8 @@ func (h *Handler) reject(ctx context.Context, ip, reason string) {
 			Type:     "trigger_rejected",
 			Severity: "warning",
 			Message:  fmt.Sprintf("trigger call from %s rejected: %s", ip, reason),
+			MsgKey:   key,
+			MsgArgs:  map[string]any{"ip": ip},
 		})
 	}
 }

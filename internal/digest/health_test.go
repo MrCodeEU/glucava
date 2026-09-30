@@ -51,7 +51,7 @@ func TestHealthMessageHealthy(t *testing.T) {
 		Activities: []jobs.Activity{act("1", augFrom.AddDate(0, 0, 3), 90, 80, 0), act("2", augFrom.AddDate(0, 0, 10), 80, 70, 0)},
 		Samples:    hourly(31 * 24), From: augFrom, To: augTo, Build: "v1.2.3",
 	}
-	m := HealthMessage(in, vienna)
+	m := HealthMessage(en, in, vienna)
 	if m.Severity != "info" || m.Type != notify.TypeHealthReport || !strings.Contains(m.Title, "August 2026") || !strings.Contains(m.Body, "healthy") {
 		t.Fatalf("%+v", m)
 	}
@@ -72,8 +72,8 @@ func TestHealthMessageFlagsProblems(t *testing.T) {
 		},
 		Samples: hourly(31 * 12), From: augFrom, To: augTo,
 	}
-	m := HealthMessage(in, vienna)
-	if m.Severity != "warning" || !strings.Contains(m.Body, "1 activities failed") || !strings.Contains(m.Body, "50%") {
+	m := HealthMessage(en, in, vienna)
+	if m.Severity != "warning" || !strings.Contains(m.Body, "1 activity failed") || !strings.Contains(m.Body, "50%") {
 		t.Errorf("body = %q sev=%s", m.Body, m.Severity)
 	}
 	if factOf(m, "Activities annotated") != "0" || factOf(m, "Alert: Strava session expired") != "2" || factOf(m, "Alert: Strava canary check failed") != "" {

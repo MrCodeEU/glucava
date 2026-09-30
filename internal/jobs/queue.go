@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/metrics"
 )
@@ -130,7 +131,8 @@ func (q *Queue) handle(ctx context.Context, j Job) {
 		slog.Error("save activity", "activity", a.StravaID, "err", serr)
 	}
 	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
-		Message: fmt.Sprintf("activity %s: %v", a.StravaID, err)}
+		Message: fmt.Sprintf("activity %s: %v", a.StravaID, err),
+		MsgKey:  eventmsg.KeyActivityFailed, MsgArgs: map[string]any{"id": a.StravaID, "err": err.Error()}}
 	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
 		slog.Error("record event", "err", rerr)
 	}
@@ -144,7 +146,8 @@ func (q *Queue) restore(ctx context.Context, a Activity) {
 	}
 	typ, sev := classify(err)
 	ev := Event{Type: typ, Severity: sev, StravaID: a.StravaID,
-		Message: fmt.Sprintf("restore activity %s: %v", a.StravaID, err)}
+		Message: fmt.Sprintf("restore activity %s: %v", a.StravaID, err),
+		MsgKey:  eventmsg.KeyRestoreFailed, MsgArgs: map[string]any{"id": a.StravaID, "err": err.Error()}}
 	if rerr := q.P.Store.RecordEvent(ctx, ev); rerr != nil {
 		slog.Error("record event", "err", rerr)
 	}

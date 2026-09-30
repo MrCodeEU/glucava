@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/stats"
@@ -40,7 +41,7 @@ func coverage(samples []stats.Sample, from, to time.Time) float64 {
 }
 
 // HealthMessage builds the monthly report: is glucava still doing its job?
-func HealthMessage(in HealthInput, loc *time.Location) notify.Message {
+func HealthMessage(tr *i18n.Translator, in HealthInput, loc *time.Location) notify.Message {
 	var done, failed int
 	var lastDone time.Time
 	for _, a := range in.Activities {
@@ -72,49 +73,35 @@ func HealthMessage(in HealthInput, loc *time.Location) notify.Message {
 
 	cov := coverage(in.Samples, in.From, in.To)
 	facts := []notify.Fact{
-		{Label: "Activities annotated", Value: fmt.Sprint(done)},
-		{Label: "Activities that failed", Value: fmt.Sprint(failed)},
-		{Label: "Glucose data coverage", Value: pct(cov)},
+		{Label: tr.T("email.health.done"), Value: tr.Int(done)},
+		{Label: tr.T("email.health.failed"), Value: tr.Int(failed)},
+		{Label: tr.T("email.health.coverage"), Value: pct(tr, cov)},
 	}
 	if !lastDone.IsZero() {
-		facts = append(facts, notify.Fact{Label: "Latest annotated activity", Value: lastDone.In(loc).Format("2 Jan, 15:04")})
+		facts = append(facts, notify.Fact{Label: tr.T("email.health.latest"), Value: tr.Date(lastDone.In(loc), false) + ", " + tr.Time(lastDone.In(loc))})
 	}
 	for _, t := range types {
-		facts = append(facts, notify.Fact{Label: "Alert: " + notify.Title(t), Value: fmt.Sprint(byType[t])})
+		facts = append(facts, notify.Fact{Label: tr.T("email.health.alert", "title", notify.Title(tr, t)), Value: tr.Int(byType[t])})
 	}
 	if in.Build != "" {
-		facts = append(facts, notify.Fact{Label: "glucava version", Value: in.Build})
+		facts = append(facts, notify.Fact{Label: tr.T("email.health.version"), Value: in.Build})
 	}
 
 	var problems []string
 	if failed > 0 {
-		problems = append(problems, fmt.Sprintf("%d activities failed", failed))
+		problems = append(problems, tr.Tn("email.health.problem.failed", failed))
 	}
 	if cov < 90 {
-		problems = append(problems, fmt.Sprintf("glucose data covered only %.0f%% of the month", cov))
+		problems = append(problems, tr.T("email.health.problem.coverage", "pct", pct(tr, cov)))
 	}
-	sev, body := "info", "glucava ran the whole month and everything looks healthy."
+	sev, body := "info", tr.T("email.health.ok")
 	if len(problems) > 0 {
-		sev, body = "warning", "Worth a look: "+joinAnd(problems)+"."
+		sev, body = "warning", tr.T("email.health.problems", "list", tr.List(problems))
 	}
 	return notify.Message{
 		Type: notify.TypeHealthReport, Severity: sev, Body: body, Facts: facts, Time: time.Now(),
-		Title: "Monthly health report, " + in.From.In(loc).Format("January 2006"),
+		Title: tr.T("email.health.title", "month", tr.Month(in.From.In(loc).Month(), true), "year", fmt.Sprint(in.From.In(loc).Year())),
 	}
-}
-
-func joinAnd(parts []string) string {
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	}
-	out := parts[0]
-	for _, p := range parts[1 : len(parts)-1] {
-		out += ", " + p
-	}
-	return out + " and " + parts[len(parts)-1]
 }
 
 // MonthStart returns the 1st of t's month at 08:00 in loc.
@@ -142,6 +129,8 @@ type Health struct {
 	Send    func(ctx context.Context, m notify.Message) error
 	Now     func() time.Time
 	Every   time.Duration // default 30 minutes
+	// Tr gives the installation language at send time; nil means English.
+	Tr notify.Translator
 }
 
 func (h *Health) now() time.Time {
@@ -177,7 +166,7 @@ func (h *Health) Once(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	msg := HealthMessage(HealthInput{Activities: acts, Events: events, Samples: samples, From: from, To: to, Build: h.Build}, loc)
+	msg := HealthMessage(h.Tr.Get(), HealthInput{Activities: acts, Events: events, Samples: samples, From: from, To: to, Build: h.Build}, loc)
 	if err := h.Send(ctx, msg); err != nil {
 		return false, err
 	}

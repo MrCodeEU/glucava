@@ -26,6 +26,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/digest"
 	"github.com/MrCodeEU/glucava/internal/gap"
 	"github.com/MrCodeEU/glucava/internal/glucose"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/ingest"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
@@ -168,7 +169,7 @@ func main() {
 			}
 			// Same window the description used, so the chart shows what was summarized.
 			samples, _ := st.LoadSamplesAny(ctx, a.Start.Add(-set.Pre), a.End().Add(set.Post))
-			if m, ok := digest.ActivityMessage(a, set.Unit, set.Range, samples, time.Local); ok {
+			if m, ok := digest.ActivityMessage(installTr(st).Get(), a, set.Unit, set.Range, samples, time.Local); ok {
 				if err := sendSummary(ctx, st, vault, demoMode, m); err != nil {
 					slog.Error("notify activity summary", "err", err)
 				}
@@ -232,6 +233,7 @@ func main() {
 				return render.MgDL
 			},
 			Send: func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, demoMode, m) },
+			Tr:   installTr(st),
 		}
 		go weekly.Run(ctx)
 
@@ -239,6 +241,7 @@ func main() {
 			Store: st, Loc: func() *time.Location { return time.Local }, Build: buildID,
 			Enabled: func() bool { cfg, err := st.LoadConfig(); return err == nil && cfg.MailHealth },
 			Send:    func(ctx context.Context, m notify.Message) error { return sendSummary(ctx, st, vault, demoMode, m) },
+			Tr:      installTr(st),
 		}
 		go health.Run(ctx)
 
@@ -255,7 +258,7 @@ func main() {
 			}).Run(ctx)
 		}
 
-		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Channels: func() []notify.Channel { return channels(st, vault, demoMode) }}
+		d := &notify.Dispatcher{Outbox: st, Cooldown: tun.NotifyCooldown, MaxAge: tun.NotifyMaxAge, Link: publicLink(st), Tr: installTr(st), Loc: func() *time.Location { return time.Local }, Channels: func() []notify.Channel { return channels(st, vault, demoMode) }}
 		go d.Run(ctx, 30*time.Second)
 
 		e.Router.GET("/health", func(re *core.RequestEvent) error {
@@ -317,7 +320,9 @@ func main() {
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,
 			Logs:    logHandler,
 			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
-			SendTest:    func(ctx context.Context) error { return sendTest(ctx, channels(st, vault, demoMode)) },
+			SendTest: func(ctx context.Context) error {
+				return sendTest(ctx, channels(st, vault, demoMode), installTr(st).Get())
+			},
 			StravaLogin: stravaLogin,
 			GlucoseTest: func(ctx context.Context) error {
 				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
@@ -394,13 +399,13 @@ func storeDemoCookies(vault *secrets.Vault) error {
 }
 
 // sendTest delivers a test message to every configured channel.
-func sendTest(ctx context.Context, chans []notify.Channel) error {
+func sendTest(ctx context.Context, chans []notify.Channel, tr *i18n.Translator) error {
 	if len(chans) == 0 {
 		return errors.New("no channel is set up; save a ntfy or webhook URL, an email recipient (with SMTP configured), or enable push on a device, first")
 	}
 	msg := notify.Message{
-		Type: "test", Severity: "info", Title: "glucava test",
-		Body: "This is a test notification from glucava.", Time: time.Now(),
+		Type: notify.TypeTest, Severity: "info", Title: notify.Title(tr, notify.TypeTest),
+		Body: tr.T("notify.test.body"), Time: time.Now(),
 	}
 	var errs []error
 	for _, c := range chans {
@@ -427,7 +432,7 @@ func channels(st *store.PB, vault *secrets.Vault, demo bool) []notify.Channel {
 		secret, _, _ := vault.Get(secrets.NameWebhookSecret)
 		out = append(out, &notify.Webhook{URL: cfg.WebhookURL, Secret: secret})
 	}
-	if e := newEmail(cfg, vault, func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.MailAlerts) }); e != nil {
+	if e := newEmail(cfg, vault, func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.MailAlerts) }, installTr(st)); e != nil {
 		out = append(out, e)
 	}
 	wants := func(t string) bool { return t == notify.TypeTest || (notify.IsAlert(t) && cfg.PushAlerts) }
@@ -455,7 +460,7 @@ func newPush(st *store.PB, vault *secrets.Vault, cfg store.Config, demo bool, wa
 
 // newEmail builds the email channel from settings, or returns nil when email
 // is not set up. wants picks which kinds of message it sends.
-func newEmail(cfg store.Config, vault *secrets.Vault, wants func(msgType string) bool) *notify.Email {
+func newEmail(cfg store.Config, vault *secrets.Vault, wants func(msgType string) bool, tr notify.Translator) *notify.Email {
 	if cfg.EmailTo == "" || cfg.SMTPHost == "" || cfg.SMTPSender == "" {
 		return nil
 	}
@@ -466,6 +471,20 @@ func newEmail(cfg store.Config, vault *secrets.Vault, wants func(msgType string)
 		From:     mail.Address{Name: cfg.SMTPSenderName, Address: cfg.SMTPSender},
 		To:       cfg.EmailTo,
 		Wants:    wants,
+		Tr:       tr,
+	}
+}
+
+// installTr follows the installation language setting at call time. Background
+// texts (alerts, summaries, the test message) have no request to take a
+// language from, so "auto" means English there.
+func installTr(st *store.PB) notify.Translator {
+	return func() *i18n.Translator {
+		cfg, err := st.LoadConfig()
+		if err != nil {
+			return i18n.English()
+		}
+		return i18n.Default().Match("", cfg.Language)
 	}
 }
 
@@ -480,9 +499,9 @@ func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, demo b
 	mailOn := (isType(notify.TypeActivitySummary) && cfg.MailActivity) || (isType(notify.TypeWeeklySummary) && cfg.MailWeekly) ||
 		(isType(notify.TypeHealthReport) && cfg.MailHealth)
 	pushOn := cfg.PushSummaries && (isType(notify.TypeActivitySummary) || isType(notify.TypeWeeklySummary) || isType(notify.TypeHealthReport))
-	m.Link, m.LinkLabel = notify.LinkFor(cfg.PublicURL, m)
+	m.Link, m.LinkLabel = notify.LinkFor(installTr(st).Get(), cfg.PublicURL, m)
 	var errs []error
-	if e := newEmail(cfg, vault, nil); mailOn && e != nil {
+	if e := newEmail(cfg, vault, nil, installTr(st)); mailOn && e != nil {
 		if err := e.Send(ctx, m); err != nil {
 			errs = append(errs, err)
 		}
@@ -496,13 +515,13 @@ func sendSummary(ctx context.Context, st *store.PB, vault *secrets.Vault, demo b
 }
 
 // publicLink adds a web UI link to alert messages when a public URL is set.
-func publicLink(st *store.PB) func(notify.Message) (string, string) {
-	return func(m notify.Message) (string, string) {
+func publicLink(st *store.PB) func(notify.Translator, notify.Message) (string, string) {
+	return func(tr notify.Translator, m notify.Message) (string, string) {
 		cfg, err := st.LoadConfig()
 		if err != nil {
 			return "", ""
 		}
-		return notify.LinkFor(cfg.PublicURL, m)
+		return notify.LinkFor(tr.Get(), cfg.PublicURL, m)
 	}
 }
 

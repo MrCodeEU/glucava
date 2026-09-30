@@ -7,11 +7,14 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
+
+var en = i18n.English()
 
 var vienna, _ = time.LoadLocation("Europe/Vienna")
 
@@ -33,7 +36,7 @@ func factOf(m notify.Message, label string) string {
 
 func TestActivityMessage(t *testing.T) {
 	a := act("1", time.Date(2026, 9, 21, 6, 0, 0, 0, time.UTC), 92, 78, 0)
-	m, ok := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, vienna)
+	m, ok := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, vienna)
 	if !ok || m.Type != notify.TypeActivitySummary || m.StravaID != "1" || m.Severity != "info" {
 		t.Fatalf("%+v ok=%v", m, ok)
 	}
@@ -44,14 +47,14 @@ func TestActivityMessage(t *testing.T) {
 		t.Errorf("body should use the local time: %q", m.Body)
 	}
 	a.Summary.Below = 4
-	if m, _ := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, vienna); m.Severity != "warning" {
+	if m, _ := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, vienna); m.Severity != "warning" {
 		t.Error("a low should raise the severity")
 	}
-	if m, _ := ActivityMessage(a, render.MmolL, stats.DefaultRange, nil, vienna); factOf(m, "Lowest") != "4.3 mmol/L" {
+	if m, _ := ActivityMessage(en, a, render.MmolL, stats.DefaultRange, nil, vienna); factOf(m, "Lowest") != "4.3 mmol/L" {
 		t.Errorf("mmol/L: %q", factOf(m, "Lowest"))
 	}
 	a.Summary = nil
-	if _, ok := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, vienna); ok {
+	if _, ok := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, vienna); ok {
 		t.Error("no summary, no mail")
 	}
 }
@@ -153,22 +156,22 @@ func TestActivityMessageHasChartAndSportIcon(t *testing.T) {
 	a := act("1", time.Date(2026, 9, 21, 6, 0, 0, 0, time.UTC), 92, 78, 0)
 	a.Sport = "Ride"
 	samples := []stats.Sample{{Time: a.Start, Value: 110}, {Time: a.Start.Add(20 * time.Minute), Value: 95}}
-	m, _ := ActivityMessage(a, render.MgDL, stats.DefaultRange, samples, vienna)
+	m, _ := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, samples, vienna)
 	if len(m.Chart) == 0 || m.ChartAlt == "" || m.Icon != "\U0001F6B4" {
 		t.Errorf("chart=%d bytes alt=%q icon=%q", len(m.Chart), m.ChartAlt, m.Icon)
 	}
-	if m, _ := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, vienna); len(m.Chart) != 0 {
+	if m, _ := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, vienna); len(m.Chart) != 0 {
 		t.Error("no samples, no chart")
 	}
 	a.Sport = "Curling"
-	if m, _ := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, vienna); m.Icon != "\U0001F3C5" {
+	if m, _ := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, vienna); m.Icon != "\U0001F3C5" {
 		t.Errorf("unknown sport icon = %q", m.Icon)
 	}
 }
 
 func TestWeeklyMessageHasBarChart(t *testing.T) {
 	cur := []jobs.Activity{act("a", time.Date(2026, 9, 15, 6, 0, 0, 0, time.UTC), 90, 80, 0)}
-	m, ok := WeeklyMessage(cur, nil, time.Date(2026, 9, 14, 0, 0, 0, 0, vienna), time.Date(2026, 9, 21, 0, 0, 0, 0, vienna), render.MgDL, vienna)
+	m, ok := WeeklyMessage(en, cur, nil, time.Date(2026, 9, 14, 0, 0, 0, 0, vienna), time.Date(2026, 9, 21, 0, 0, 0, 0, vienna), render.MgDL, vienna)
 	if !ok || len(m.Chart) == 0 {
 		t.Fatalf("ok=%v chart=%d", ok, len(m.Chart))
 	}
@@ -178,7 +181,7 @@ func TestActivityMessageIncludesHeartRateWhenKnown(t *testing.T) {
 	at := time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 	a := jobs.Activity{StravaID: "1", Name: "Run", Start: at, Duration: time.Hour, Summary: &stats.Summary{TIR: 90, Count: 5},
 		HeartRate: []chartimg.HRPoint{{Time: at.Add(time.Minute), BPM: 120}, {Time: at.Add(2 * time.Minute), BPM: 160}}}
-	m, ok := ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, time.UTC)
+	m, ok := ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, time.UTC)
 	if !ok {
 		t.Fatal("no message")
 	}
@@ -192,7 +195,7 @@ func TestActivityMessageIncludesHeartRateWhenKnown(t *testing.T) {
 		t.Errorf("facts = %+v", m.Facts)
 	}
 	a.HeartRate = nil
-	m, _ = ActivityMessage(a, render.MgDL, stats.DefaultRange, nil, time.UTC)
+	m, _ = ActivityMessage(en, a, render.MgDL, stats.DefaultRange, nil, time.UTC)
 	for _, f := range m.Facts {
 		if strings.HasPrefix(f.Label, "Heart rate") {
 			t.Error("heart rate fact without heart rate")

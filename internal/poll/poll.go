@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 )
 
@@ -81,6 +82,7 @@ func (p *Poller) Once(ctx context.Context) (int, error) {
 			_ = p.Store.RecordEvent(ctx, jobs.Event{
 				Type: jobs.EventSessionExpired, Severity: "error",
 				Message: "polling failed: the Strava session has expired, import fresh cookies",
+				MsgKey:  eventmsg.KeyPollSession,
 			})
 		}
 		return 0, fmt.Errorf("list activities: %w", err)

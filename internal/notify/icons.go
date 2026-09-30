@@ -10,6 +10,7 @@ var icons = map[string]string{
 	"glucose_gap":         "\U0001F4F5", // no mobile phones
 	"canary_failed":       "\U0001F424", // canary-yellow chick
 	"trigger_rejected":    "\U0001F6D1", // stop sign
+	"activity_not_found":  "\U0001F50D", // magnifying glass
 	TypeTest:              "\U0001F9EA", // test tube
 	TypeActivitySummary:   "\U0001F3C5", // medal
 	TypeWeeklySummary:     "\U0001F4CA", // bar chart
