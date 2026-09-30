@@ -19,6 +19,10 @@ var convertedFiles = map[string][]string{
 	"events_i18n.go": nil,
 	"i18n.go":        nil,
 	"auth.go":        nil,
+	"handlers.go":    nil,
+	"account.go":     nil,
+	"server.go":      nil,
+	"report.go":      nil,
 	"pages.go":       {"EventsPage"},
 	"components.go":  {"StatusBadgeT", "SeverityBadgeT", "ConfirmDialogT", "fmtWhenT"},
 }
@@ -64,20 +68,32 @@ func TestConvertedFilesHaveNoHardCodedText(t *testing.T) {
 }
 
 // visibleLiterals returns the string literals in call that end up as text in
-// the page: g.Text("..."), and g.Attr("aria-label", "...") style attributes.
+// the page: g.Text("..."), g.Attr("aria-label", "...") style attributes, toast
+// messages and http.Error bodies.
 func visibleLiterals(call *ast.CallExpr) []*ast.BasicLit {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return nil
-	}
-	x, ok := sel.X.(*ast.Ident)
-	if !ok || x.Name != "g" {
 		return nil
 	}
 	str := func(e ast.Expr) *ast.BasicLit {
 		if l, ok := e.(*ast.BasicLit); ok && l.Kind == token.STRING {
 			return l
 		}
+		return nil
+	}
+	// A toast message or an http.Error body is read by the person too.
+	switch {
+	case sel.Sel.Name == "toast" && len(call.Args) == 3:
+		if l := str(call.Args[2]); l != nil {
+			return []*ast.BasicLit{l}
+		}
+	case sel.Sel.Name == "Error" && len(call.Args) == 3:
+		if l := str(call.Args[1]); l != nil {
+			return []*ast.BasicLit{l}
+		}
+	}
+	x, ok := sel.X.(*ast.Ident)
+	if !ok || x.Name != "g" {
 		return nil
 	}
 	switch sel.Sel.Name {

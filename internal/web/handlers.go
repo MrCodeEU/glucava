@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
 	"github.com/MrCodeEU/glucava/internal/glucose/importers"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/logging"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -104,7 +104,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	s.html(w, http.StatusOK, DashboardPage(s.page(r, "Activities", "dashboard"), d))
+	s.html(w, http.StatusOK, DashboardPage(s.page(r, s.tr(r).T("nav.activities"), "dashboard"), d))
 }
 
 func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, error) {
@@ -187,11 +187,11 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.html(w, http.StatusOK, ActivityPage(s.page(r, "Activity", "dashboard"), *d))
+	s.html(w, http.StatusOK, ActivityPage(s.page(r, s.tr(r).T("page.activity"), "dashboard"), *d))
 }
 
 func (s *Server) stravaPage(w http.ResponseWriter, r *http.Request) {
-	s.html(w, http.StatusOK, StravaPage(s.page(r, "Strava session", "strava"), s.sessionInfo()))
+	s.html(w, http.StatusOK, StravaPage(s.page(r, s.tr(r).T("nav.strava"), "strava"), s.sessionInfo()))
 }
 
 func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +216,7 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request) {
 		Range: rng, Model: model, Cards: cfg.OverviewCards(), Sources: sources,
 		Unit: render.Unit(cfg.Unit), Thr: analytics.FromRange(cfg.Range()), Loc: loc, Now: now,
 	}
-	s.html(w, http.StatusOK, StatsPage(s.page(r, "Overview", "stats"), d))
+	s.html(w, http.StatusOK, StatsPage(s.page(r, s.tr(r).T("nav.overview"), "stats"), d))
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +228,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
 	q := r.URL.Query()
 	email, _ := s.user(r)
-	s.html(w, http.StatusOK, SettingsPage(s.page(r, "Settings", "settings"), SettingsData{
+	s.html(w, http.StatusOK, SettingsPage(s.page(r, s.tr(r).T("nav.settings"), "settings"), SettingsData{
 		AccountEmail: email, Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
@@ -243,7 +243,7 @@ func (s *Server) tokensPage(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, err)
 		return
 	}
-	s.html(w, http.StatusOK, TokensPage(s.page(r, "Triggers", "tokens"), list, s.baseURL(r), s.loc()))
+	s.html(w, http.StatusOK, TokensPage(s.page(r, s.tr(r).T("nav.triggers"), "tokens"), list, s.baseURL(r), s.loc()))
 }
 
 func (s *Server) eventsPage(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +263,7 @@ func (s *Server) recentLogs() []logging.Entry {
 }
 
 func (s *Server) logsPage(w http.ResponseWriter, r *http.Request) {
-	s.html(w, http.StatusOK, LogsPage(s.page(r, "Logs", "logs"), s.recentLogs(), s.loc()))
+	s.html(w, http.StatusOK, LogsPage(s.page(r, s.tr(r).T("nav.logs"), "logs"), s.recentLogs(), s.loc()))
 }
 
 // ----------------------------------------------------------------- streams
@@ -324,9 +324,9 @@ func (s *Server) streamActivity(w http.ResponseWriter, r *http.Request) {
 		waiting := prev == jobs.StatusPending || prev == jobs.StatusProcessing
 		switch {
 		case waiting && d.Act.Status == jobs.StatusDone:
-			s.toast(sse, "ok", "Finished: the description is on Strava."+chartNote(d))
+			s.toast(sse, "ok", s.tr(r).T("toast.activity.finished")+chartNote(s.tr(r), d))
 		case waiting && d.Act.Status == jobs.StatusFailed:
-			s.toast(sse, "error", "Failed: "+d.Act.Error)
+			s.toast(sse, "error", s.tr(r).T("toast.activity.failed", "error", d.Act.Error))
 		}
 		prev = d.Act.Status
 		return sse.PatchElements(renderString(ActivityBody(*d)))
@@ -346,10 +346,10 @@ func (s *Server) actionPoll(w http.ResponseWriter, r *http.Request) {
 		// No way to run it inline (e.g. demo mode); fall back to nudging the
 		// background loop, with no result to report back.
 		if s.Signal.Kick() {
-			s.toast(sse, "ok", "Checking Strava now.")
+			s.toast(sse, "ok", s.tr(r).T("toast.poll.checking"))
 			return
 		}
-		s.toast(sse, "", "A check is already waiting to run.")
+		s.toast(sse, "", s.tr(r).T("toast.poll.waiting"))
 		return
 	}
 
@@ -365,34 +365,27 @@ func (s *Server) actionPoll(w http.ResponseWriter, r *http.Request) {
 		slog.Error("check strava now", "err", err)
 		msg := err.Error()
 		if errors.Is(err, jobs.ErrSessionExpired) {
-			msg = "the Strava session has expired; import fresh cookies."
+			msg = s.tr(r).T("err.strava.session_expired")
 		}
-		s.toast(sse, "error", "Check failed: "+msg)
+		s.toast(sse, "error", s.tr(r).T("toast.poll.failed", "error", msg))
 		return
 	}
 	if n > 0 {
-		s.toast(sse, "ok", fmt.Sprintf("Checked. Queued %d new activit%s.", n, plural(n)))
+		s.toast(sse, "ok", s.tr(r).Tn("toast.poll.queued", n))
 	} else {
-		s.toast(sse, "ok", "Checked. Nothing new.")
+		s.toast(sse, "ok", s.tr(r).T("toast.poll.nothing"))
 	}
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return "y"
-	}
-	return "ies"
 }
 
 // chartNote says what happened to the chart photo, for the finish message.
-func chartNote(d *ActivityData) string {
+func chartNote(tr *i18n.Translator, d *ActivityData) string {
 	switch {
 	case !d.Cfg.ChartImage:
 		return ""
 	case d.Act.ChartUploaded:
-		return " The chart photo was sent (Strava's answer is not checked, so look at the activity)."
+		return " " + tr.T("toast.activity.chart_sent")
 	default:
-		return " The chart photo was not sent."
+		return " " + tr.T("toast.activity.chart_not_sent")
 	}
 }
 
@@ -400,57 +393,57 @@ func chartNote(d *ActivityData) string {
 func (s *Server) actionChartAgain(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if !digits.MatchString(r.PathValue("id")) {
-		s.toast(sse, "error", "That is not an activity id.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.id"))
 		return
 	}
 	cfg, err := s.Store.LoadConfig()
 	if err != nil || !cfg.ChartImage {
-		s.toast(sse, "error", "Turn on the chart photo in Settings first.")
+		s.toast(sse, "error", s.tr(r).T("err.chart_again.off"))
 		return
 	}
 	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
 	if err != nil || act == nil {
-		s.toast(sse, "error", "That activity no longer exists.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.gone"))
 		return
 	}
 	act.Status, act.Error, act.RetryChart = jobs.StatusPending, "", true
 	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
-		s.toast(sse, "error", "Could not update the activity: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.update", "error", err.Error()))
 		return
 	}
 	if queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true}); err != nil {
-		s.toast(sse, "error", "Could not queue it: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.queue", "error", err.Error()))
 	} else if !queued {
-		s.toast(sse, "", "This activity is already queued.")
+		s.toast(sse, "", s.tr(r).T("toast.activity.already_queued"))
 	} else {
-		s.toast(sse, "ok", "Queued. This adds another chart photo on Strava; delete the old one there.")
+		s.toast(sse, "ok", s.tr(r).T("toast.chart_again.queued"))
 	}
 }
 
 func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if !digits.MatchString(r.PathValue("id")) {
-		s.toast(sse, "error", "That is not an activity id.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.id"))
 		return
 	}
 	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
 	if err != nil || act == nil {
-		s.toast(sse, "error", "That activity no longer exists.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.gone"))
 		return
 	}
 	act.Status, act.Error = jobs.StatusPending, ""
 	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
-		s.toast(sse, "error", "Could not update the activity: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.update", "error", err.Error()))
 		return
 	}
 	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true})
 	switch {
 	case err != nil:
-		s.toast(sse, "error", "Could not queue it: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.queue", "error", err.Error()))
 	case !queued:
-		s.toast(sse, "", "This activity is already queued.")
+		s.toast(sse, "", s.tr(r).T("toast.activity.already_queued"))
 	default:
-		s.toast(sse, "ok", "Queued for reprocessing.")
+		s.toast(sse, "ok", s.tr(r).T("toast.reprocess.queued"))
 	}
 }
 
@@ -467,17 +460,17 @@ func (s *Server) actionProcessActivity(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	id := strings.TrimSpace(v.ActivityID)
 	if readErr != nil || !digits.MatchString(id) {
-		s.toast(sse, "error", "Enter a numeric Strava activity id.")
+		s.toast(sse, "error", s.tr(r).T("err.process.id"))
 		return
 	}
 	if s.FindActivity == nil {
-		s.toast(sse, "error", "Looking up an activity by id is not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.process.unavailable"))
 		return
 	}
 
 	act, err := s.Store.Activity(r.Context(), id)
 	if err != nil {
-		s.toast(sse, "error", "Could not look up that activity: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.lookup", "error", err.Error()))
 		return
 	}
 	if act == nil {
@@ -486,58 +479,58 @@ func (s *Server) actionProcessActivity(w http.ResponseWriter, r *http.Request) {
 		found, ferr := s.FindActivity(ctx, id)
 		switch {
 		case errors.Is(ferr, jobs.ErrSessionExpired):
-			s.toast(sse, "error", "The Strava session has expired; import fresh cookies.")
+			s.toast(sse, "error", s.tr(r).T("err.strava.session_expired"))
 			return
 		case ferr != nil:
 			slog.Error("find activity", "activity", id, "err", ferr)
-			s.toast(sse, "error", "Could not look it up: "+ferr.Error())
+			s.toast(sse, "error", s.tr(r).T("err.process.lookup", "error", ferr.Error()))
 			return
 		case found == nil:
-			s.toast(sse, "error", "No activity with that id was found in your Strava training log.")
+			s.toast(sse, "error", s.tr(r).T("err.process.not_found"))
 			return
 		}
 		act = found
 	}
 	act.Status, act.Error = jobs.StatusPending, ""
 	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
-		s.toast(sse, "error", "Could not save the activity: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.process.save", "error", err.Error()))
 		return
 	}
 	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true})
 	switch {
 	case err != nil:
-		s.toast(sse, "error", "Could not queue it: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.queue", "error", err.Error()))
 	case !queued:
-		s.toast(sse, "", "This activity is already queued.")
+		s.toast(sse, "", s.tr(r).T("toast.activity.already_queued"))
 	default:
 		_ = sse.PatchSignals([]byte(`{"processActivityId":""}`))
-		s.toast(sse, "ok", `Queued "`+act.Name+`" for processing.`)
+		s.toast(sse, "ok", s.tr(r).T("toast.process.queued", "name", act.Name))
 	}
 }
 
 func (s *Server) actionRestore(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if !digits.MatchString(r.PathValue("id")) {
-		s.toast(sse, "error", "That is not an activity id.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.id"))
 		return
 	}
 	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
 	if err != nil || act == nil {
-		s.toast(sse, "error", "That activity no longer exists.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.gone"))
 		return
 	}
 	if act.Original == nil {
-		s.toast(sse, "error", "No original description was saved for this activity.")
+		s.toast(sse, "error", s.tr(r).T("err.restore.no_original"))
 		return
 	}
 	queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Restore: true})
 	switch {
 	case err != nil:
-		s.toast(sse, "error", "Could not queue it: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.queue", "error", err.Error()))
 	case !queued:
-		s.toast(sse, "", "This activity is already queued.")
+		s.toast(sse, "", s.tr(r).T("toast.activity.already_queued"))
 	default:
-		s.toast(sse, "ok", "Restoring the original description.")
+		s.toast(sse, "ok", s.tr(r).T("toast.restore.queued"))
 	}
 }
 
@@ -551,12 +544,12 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	id := r.PathValue("id")
 	if !digits.MatchString(id) {
-		s.toast(sse, "error", "That is not an activity id.")
+		s.toast(sse, "error", s.tr(r).T("err.activity.id"))
 		return
 	}
 	act, err := s.Store.Activity(r.Context(), id)
 	if err != nil {
-		s.toast(sse, "error", "Could not look up that activity: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.activity.lookup", "error", err.Error()))
 		return
 	}
 	restored := ""
@@ -564,14 +557,14 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 		if rerr := s.Restore(ctx, act); rerr != nil {
 			slog.Error("restore before delete", "activity", id, "err", rerr)
-			restored = ", but the original description could not be restored on Strava: " + rerr.Error()
+			restored = s.tr(r).T("toast.delete.done_restore_failed", "error", rerr.Error())
 		} else {
-			restored = " and the original description was restored on Strava"
+			restored = s.tr(r).T("toast.delete.done_restored")
 		}
 		cancel()
 	}
 	if err := s.Store.DeleteActivity(r.Context(), id); err != nil {
-		s.toast(sse, "error", "Could not delete it: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.delete.failed", "error", err.Error()))
 		return
 	}
 	// The client navigates itself once this request resolves (see
@@ -580,7 +573,10 @@ func (s *Server) actionDeleteActivity(w http.ResponseWriter, r *http.Request) {
 	// Publish so any OTHER open dashboard tab's /stream/live drops the row
 	// too, not just the tab that clicked delete.
 	s.Bus.Publish()
-	s.toast(sse, "ok", "Activity deleted"+restored+".")
+	if restored == "" {
+		restored = s.tr(r).T("toast.delete.done")
+	}
+	s.toast(sse, "ok", restored)
 }
 
 // actionArtifactMark records a manual verdict on a span of readings: kind
@@ -595,20 +591,20 @@ func (s *Server) actionArtifactMark(w http.ResponseWriter, r *http.Request) {
 	kind := q.Get("kind")
 	switch {
 	case err1 != nil || err2 != nil || end < start || end-start > 24*60*60:
-		s.toast(sse, "error", "That is not a valid span of readings.")
+		s.toast(sse, "error", s.tr(r).T("err.artifact.span"))
 		return
 	case kind != store.MarkArtifact && kind != store.MarkReal:
-		s.toast(sse, "error", "Unknown verdict.")
+		s.toast(sse, "error", s.tr(r).T("err.artifact.verdict"))
 		return
 	}
 	if err := s.Store.AddArtifactMark(r.Context(), time.Unix(start, 0), time.Unix(end, 0), kind); err != nil {
-		s.toast(sse, "error", "Could not save that: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.artifact.save", "error", err.Error()))
 		return
 	}
 	s.Bus.Publish()
-	msg := "Marked as not real."
+	msg := s.tr(r).T("toast.artifact.not_real")
 	if kind == store.MarkReal {
-		msg = "Marked as real."
+		msg = s.tr(r).T("toast.artifact.real")
 	}
 	s.toast(sse, "ok", msg)
 }
@@ -698,19 +694,19 @@ func (v settingsSignals) config() store.Config {
 	}
 }
 
-// validate returns a message for the first problem, or "".
-func (v settingsSignals) validate() string { return v.config().Validate() }
+// check reports the first problem with the form, for translation.
+func (v settingsSignals) check() (store.Problem, bool) { return v.config().Check() }
 
 func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	var v settingsSignals
 	readErr := datastar.ReadSignals(r, &v) // must run before NewSSE, which takes over the request body
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil {
-		s.toast(sse, "error", "Could not read the form.")
+		s.toast(sse, "error", s.tr(r).T("err.form"))
 		return
 	}
-	if msg := v.validate(); msg != "" {
-		s.toast(sse, "error", msg)
+	if p, ok := v.check(); !ok {
+		s.toast(sse, "error", s.tr(r).T(p.Key, p.Args...)) // i18n:dynamic
 		return
 	}
 
@@ -752,7 +748,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 		cfg.Language = v.Language
 	}
 	if err := s.Store.SaveConfig(cfg); err != nil {
-		s.toast(sse, "error", "Could not save: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.save", "error", err.Error()))
 		return
 	}
 	s.forgetLanguage()
@@ -768,7 +764,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := s.Vault.Set(name, val); err != nil {
-			s.toast(sse, "error", "Could not store a secret: "+err.Error())
+			s.toast(sse, "error", s.tr(r).T("err.settings.secret", "error", err.Error()))
 			return
 		}
 	}
@@ -778,23 +774,26 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElements(renderString(NtfySecretStatus(has(secrets.NameNtfyToken))))
 	_ = sse.PatchElements(renderString(WebhookSecretStatus(has(secrets.NameWebhookSecret))))
 	_ = sse.PatchElements(renderString(SMTPSecretStatus(has(secrets.NameSMTPPassword))))
-	s.toast(sse, "ok", "Settings saved.")
+	// Say it in the language that was just saved, which is what the reload
+	// that follows will show.
+	saved := i18n.Default().Match(r.Header.Get("Accept-Language"), s.languageSetting())
+	s.toast(sse, "ok", saved.T("toast.settings.saved"))
 	s.Bus.Publish()
 }
 
 func (s *Server) actionNotifyTest(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.SendTest == nil {
-		s.toast(sse, "error", "Notifications are not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.notify.unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	if err := s.SendTest(ctx); err != nil {
-		s.toast(sse, "error", "Test failed: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.notify.test_failed", "error", err.Error()))
 		return
 	}
-	s.toast(sse, "ok", "Test notification sent.")
+	s.toast(sse, "ok", s.tr(r).T("toast.notify.test_sent"))
 }
 
 func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
@@ -804,7 +803,7 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil {
-		s.toast(sse, "error", "Could not read the form.")
+		s.toast(sse, "error", s.tr(r).T("err.form"))
 		return
 	}
 	list, err := strava.ParseCookies(v.Cookies)
@@ -817,7 +816,7 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 		err = s.Vault.Set(secrets.NameStravaCookies, enc)
 	}
 	if err != nil {
-		s.toast(sse, "error", "Could not store the cookies: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.cookies.store", "error", err.Error()))
 		return
 	}
 	s.mu.Lock()
@@ -826,7 +825,7 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 
 	_ = sse.PatchSignals([]byte(`{"cookies":""}`))
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
-	s.toast(sse, "ok", fmt.Sprintf("Stored %d cookies.", len(list)))
+	s.toast(sse, "ok", s.tr(r).Tn("toast.cookies.stored", len(list)))
 	s.Bus.Publish()
 }
 
@@ -852,13 +851,13 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/settings?importErr="+url.QueryEscape(msg), http.StatusSeeOther)
 	}
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		fail("Could not read the upload: " + err.Error())
+		fail(s.tr(r).T("err.import.upload", "error", err.Error()))
 		return
 	}
 	format := r.FormValue("format")
 	imp, ok := importers.Get(format)
 	if !ok {
-		fail(fmt.Sprintf("Unknown format %q.", format))
+		fail(s.tr(r).T("err.import.format", "format", format))
 		return
 	}
 	source := r.FormValue("source")
@@ -867,7 +866,7 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	}
 	file, _, err := r.FormFile("file")
 	if err != nil {
-		fail("Choose a file to import.")
+		fail(s.tr(r).T("err.import.no_file"))
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -878,23 +877,23 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 	}
 	samples, skipped, err := imp.Parse(file)
 	if err != nil {
-		fail("Could not read the file: " + err.Error())
+		fail(s.tr(r).T("err.import.read", "error", err.Error()))
 		return
 	}
 	if len(samples) == 0 {
-		fail("No readings found in that file. Wrong format, or an empty export?")
+		fail(s.tr(r).T("err.import.empty"))
 		return
 	}
 	if err := s.Store.SaveSamples(r.Context(), source, samples); err != nil {
 		slog.Error("glucose import: store", "err", err)
-		fail("Could not store the readings.")
+		fail(s.tr(r).T("err.import.store"))
 		return
 	}
 	slog.Info("glucose import stored", "readings", len(samples), "skipped", skipped, "source", source)
 
-	msg := fmt.Sprintf("Stored %d readings as %q.", len(samples), source)
+	msg := s.tr(r).Tn("toast.import.stored", len(samples), "source", source)
 	if skipped > 0 {
-		msg += fmt.Sprintf(" %d rows were skipped (not a glucose reading, or unparseable).", skipped)
+		msg += " " + s.tr(r).Tn("toast.import.skipped", skipped)
 	}
 	if ajax {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -907,7 +906,7 @@ func (s *Server) actionGlucoseImport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) actionStravaTest(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.Session == nil {
-		s.toast(sse, "error", "Session testing is not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.strava.test_unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
@@ -926,9 +925,9 @@ func (s *Server) actionStravaTest(w http.ResponseWriter, r *http.Request) {
 
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
 	if err != nil {
-		s.toast(sse, "error", "The session test failed.")
+		s.toast(sse, "error", s.tr(r).T("err.strava.test_failed"))
 	} else {
-		s.toast(sse, "ok", "Strava accepts the stored cookies.")
+		s.toast(sse, "ok", s.tr(r).T("toast.strava.test_ok"))
 	}
 	s.Bus.Publish()
 }
@@ -940,7 +939,7 @@ func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil {
-		s.toast(sse, "error", "Could not read the form.")
+		s.toast(sse, "error", s.tr(r).T("err.form"))
 		return
 	}
 	token, err := s.Tokens.Create(v.TokenName)
@@ -964,7 +963,7 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 	list, _ := s.Tokens.List()
 	_ = sse.PatchElements(renderString(TokenList(list, s.loc())))
-	s.toast(sse, "ok", "Token revoked.")
+	s.toast(sse, "ok", s.tr(r).T("toast.token.revoked"))
 }
 
 func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
@@ -975,11 +974,11 @@ func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil || v.Email == "" || v.Password == "" {
-		s.toast(sse, "error", "Enter an email and password.")
+		s.toast(sse, "error", s.tr(r).T("err.strava.login_fields"))
 		return
 	}
 	if s.StravaLogin == nil {
-		s.toast(sse, "error", "Automatic sign-in is not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.strava.login_unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
@@ -997,28 +996,28 @@ func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
 	if err != nil {
 		slog.Error("strava automatic sign-in failed", "email", v.Email, "err", err)
-		s.toast(sse, "error", "Automatic sign-in stopped: "+strava.ExplainLoginError(err))
+		s.toast(sse, "error", s.tr(r).T("err.strava.login_stopped", "error", strava.ExplainLoginError(err)))
 		return
 	}
 	slog.Info("strava automatic sign-in succeeded", "email", v.Email)
-	s.toast(sse, "ok", "Signed in and stored the session.")
+	s.toast(sse, "ok", s.tr(r).T("toast.strava.login_ok"))
 }
 
 func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.GlucoseTest == nil {
-		s.toast(sse, "error", "Dexcom testing is not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.dexcom.unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.GlucoseTest(ctx); err != nil {
 		slog.Error("dexcom test connection", "err", err)
-		s.toast(sse, "error", "Dexcom check failed: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.dexcom.failed", "error", err.Error()))
 		return
 	}
 	slog.Info("dexcom test connection accepted")
-	s.toast(sse, "ok", "Dexcom accepted the stored credentials.")
+	s.toast(sse, "ok", s.tr(r).T("toast.dexcom.ok"))
 }
 
 // actionGlucoseResync forces one ingest fetch with a widened window (up to
@@ -1027,7 +1026,7 @@ func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) actionGlucoseResync(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.Resync == nil {
-		s.toast(sse, "error", "Resync is not available here.")
+		s.toast(sse, "error", s.tr(r).T("err.resync.unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -1035,18 +1034,14 @@ func (s *Server) actionGlucoseResync(w http.ResponseWriter, r *http.Request) {
 	n, err := s.Resync(ctx)
 	if err != nil {
 		slog.Error("glucose resync", "err", err)
-		s.toast(sse, "error", "Resync failed: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.resync.failed", "error", err.Error()))
 		return
 	}
 	if n == 0 {
-		s.toast(sse, "", "Resynced. Nothing new.")
+		s.toast(sse, "", s.tr(r).T("toast.resync.nothing"))
 		return
 	}
-	suffix := "s"
-	if n == 1 {
-		suffix = ""
-	}
-	s.toast(sse, "ok", fmt.Sprintf("Resynced. Stored %d reading%s.", n, suffix))
+	s.toast(sse, "ok", s.tr(r).Tn("toast.resync.stored", n))
 }
 
 func (s *Server) actionPurge(w http.ResponseWriter, r *http.Request) {
@@ -1056,15 +1051,15 @@ func (s *Server) actionPurge(w http.ResponseWriter, r *http.Request) {
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
 	if readErr != nil || v.Confirm != "DELETE" {
-		s.toast(sse, "error", "Type DELETE to confirm.")
+		s.toast(sse, "error", s.tr(r).T("err.purge.confirm"))
 		return
 	}
 	n, err := s.Store.PurgeAll(r.Context())
 	if err != nil {
-		s.toast(sse, "error", "Could not delete: "+err.Error())
+		s.toast(sse, "error", s.tr(r).T("err.purge.failed", "error", err.Error()))
 		return
 	}
-	s.toast(sse, "ok", fmt.Sprintf("Deleted %d readings, %d activities and %d events.", n.Samples, n.Activities, n.Events))
+	s.toast(sse, "ok", s.tr(r).T("toast.purge.done", "readings", n.Samples, "activities", n.Activities, "events", n.Events))
 }
 
 func (s *Server) exportSamples(w http.ResponseWriter, _ *http.Request) {

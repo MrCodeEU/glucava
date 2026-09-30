@@ -1074,15 +1074,15 @@ func TestExportNeedsLoginAndSetsHeaders(t *testing.T) {
 func TestRetentionValidation(t *testing.T) {
 	t.Parallel()
 	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", RetentionDays: -1, ChartTheme: "light", ChartSize: "standard", ChartLine: 2}
-	if v.validate() == "" {
+	if v.config().Validate() == "" {
 		t.Error("negative retention accepted")
 	}
 	v.RetentionDays = 3651
-	if v.validate() == "" {
+	if v.config().Validate() == "" {
 		t.Error("huge retention accepted")
 	}
 	v.RetentionDays = 0
-	if msg := v.validate(); msg != "" {
+	if msg := v.config().Validate(); msg != "" {
 		t.Errorf("0 rejected: %s", msg)
 	}
 }

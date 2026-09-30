@@ -81,8 +81,7 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request) {
 	typst, err := report.FindTypst()
 	if err != nil {
 		slog.Warn("report: typst unavailable", "err", err)
-		http.Error(w, "The report needs the typst binary, which is not installed on this server. "+
-			"The official glucava image includes it; for other setups install typst or set "+report.EnvTypst+".", http.StatusServiceUnavailable)
+		http.Error(w, s.tr(r).T("err.report.no_typst", "env", report.EnvTypst), http.StatusServiceUnavailable)
 		return
 	}
 	cfg, err := s.Store.LoadConfig()
@@ -123,7 +122,7 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request) {
 	pdf, err := m.PDF(ctx, typst)
 	if err != nil {
 		if errors.Is(err, report.ErrNoTypst) {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			http.Error(w, s.tr(r).T("err.report.no_typst", "env", report.EnvTypst), http.StatusServiceUnavailable)
 			return
 		}
 		s.serverError(w, err)
