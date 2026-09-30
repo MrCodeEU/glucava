@@ -456,6 +456,10 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 		if p := render.FormatPace(s.Sport, s.TotalDistance, s.Duration); p != "" {
 			pace = p
 		}
+		hr := "–"
+		if s.AvgHR > 0 {
+			hr = fmt.Sprintf("%.0f bpm", s.AvgHR)
+		}
 		dist := "–"
 		if s.TotalDistance > 0 {
 			dist = fmt.Sprintf("%.1f km", s.TotalDistance/1000)
@@ -465,6 +469,7 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 			Td(Class("num"), g.Text(signedGlucose(s.Delta, d.Unit))),
 			Td(Class("num"), g.Text(fmt.Sprintf("%.1f", s.DropRate*unitScale(d.Unit)))),
 			Td(Class("num"), g.Text(pct0(s.PostLowShare))),
+			Td(Class("num"), g.Text(hr)),
 			Td(Class("num"), g.Text(dist)), Td(Class("num"), g.Textf("%.0f m", s.TotalElevation)),
 			Td(Class("num"), g.Text(pace)))
 	}
@@ -477,7 +482,7 @@ func bySportCard(d StatsData, _ map[string]string) g.Node {
 			THead(Tr(Th(g.Text("Type")), Th(Class("num"), g.Text("Activities")), Th(Class("num"), g.Text("Time in range")),
 				Th(Class("num"), g.Text("CV")), Th(Class("num"), g.Textf("Start→end (%s)", d.Unit)),
 				Th(Class("num"), g.Textf("Drop (%s/10 min)", d.Unit)), Th(Class("num"), g.Text("Low after")),
-				Th(Class("num"), g.Text("Distance")), Th(Class("num"), g.Text("Climb")), Th(Class("num"), g.Text("Pace")))),
+				Th(Class("num"), g.Text("Avg HR")), Th(Class("num"), g.Text("Distance")), Th(Class("num"), g.Text("Climb")), Th(Class("num"), g.Text("Pace")))),
 			TBody(g.Group(rows)))...))...),
 		P(Class("muted text-sm"), g.Text("“Low after” is the share of activities followed by a low within three hours. Drop is positive when glucose falls during the activity.")),
 	)

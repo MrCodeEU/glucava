@@ -492,11 +492,15 @@ func ScatterOption(in ScatterInput) map[string]any {
 	}
 	xAxis := axis(in.XName, xf)
 	xAxis["nameLocation"], xAxis["nameGap"] = "middle", 28
+	// The y title sits rotated beside the tick labels; a top-of-axis title is
+	// centred on the axis line and gets clipped by the chart edge.
+	yAxis := axis(in.YName, yf)
+	yAxis["nameLocation"], yAxis["nameRotate"], yAxis["nameGap"] = "middle", 90, 40
 	return map[string]any{
-		"grid":    grid(28, 16, 36, 8),
+		"grid":    grid(16, 16, 40, 24),
 		"tooltip": map[string]any{"trigger": "item", "formatter": "gv:point:" + xf[3:] + ":" + yf[3:]},
 		"xAxis":   xAxis,
-		"yAxis":   axis(in.YName, yf),
+		"yAxis":   yAxis,
 		"series": []map[string]any{{
 			"type": "scatter", "data": data, "symbolSize": 9,
 			"itemStyle": map[string]any{"color": col, "opacity": 0.75},

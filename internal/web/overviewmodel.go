@@ -45,6 +45,7 @@ type overviewInput struct {
 	Acts             []jobs.Activity
 	PrevFrom, PrevTo time.Time
 	PrevSamples      []stats.Sample // nil unless comparing
+	HR               map[string]store.HRStat
 	Compare          bool
 	Thr              analytics.Thresholds
 	Loc              *time.Location
@@ -78,22 +79,24 @@ func buildOverviewModel(in overviewInput) *overviewModel {
 	m.Heat = analytics.ComputeWeekdayHour(in.Samples, in.Thr, in.Loc)
 	m.Parts = analytics.ComputeDayParts(in.Samples, in.Thr, in.Loc)
 	m.Episodes = analytics.DetectEpisodes(in.Samples, in.Thr, analytics.EpisodeOptions{Loc: in.Loc})
-	m.Insights = analytics.InsightsFor(in.Samples, activityInputs(in.Acts), in.Thr, in.Loc)
+	m.Insights = analytics.InsightsFor(in.Samples, activityInputs(in.Acts, in.HR), in.Thr, in.Loc)
 	m.Sports = analytics.BySport(m.Insights)
 	return m
 }
 
 // activityInputs maps stored activities onto the analytics input type.
-// Averages of heart rate are left out: the light activity loader skips the
-// heart-rate series on purpose.
-func activityInputs(acts []jobs.Activity) []analytics.ActivityInput {
+// Heart rate comes from a separate SQL aggregate, so the light loader can
+// keep skipping the series.
+func activityInputs(acts []jobs.Activity, hr map[string]store.HRStat) []analytics.ActivityInput {
 	out := make([]analytics.ActivityInput, 0, len(acts))
 	for _, a := range acts {
 		if a.Duration <= 0 || a.Status != jobs.StatusDone {
 			continue
 		}
+		h := hr[a.StravaID]
 		out = append(out, analytics.ActivityInput{
 			ID: a.StravaID, Sport: a.Sport, Start: a.Start, End: a.End(),
+			AvgHR: h.Avg, MaxHR: h.Max,
 			DistanceM: a.Distance, ElevationGain: a.ElevationGain,
 		})
 	}
@@ -157,6 +160,9 @@ func (s *Server) overviewModelFor(ctx context.Context, r statsRange, cfg store.C
 		return nil, err
 	}
 	if in.Acts, err = s.Store.ActivitiesInRangeLight(ctx, r.From, r.To); err != nil {
+		return nil, err
+	}
+	if in.HR, err = s.Store.ActivityHRStats(ctx, r.From, r.To); err != nil {
 		return nil, err
 	}
 	if r.Compare {

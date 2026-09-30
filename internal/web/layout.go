@@ -44,7 +44,7 @@ const (
 		"max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:rounded-none max-md:px-1 max-md:py-2 max-md:text-[0.6875rem] " +
 		"max-md:aria-[current=page]:bg-transparent max-md:aria-[current=page]:text-accent"
 	// navInlineClass hides a System link until the bar is wide enough for it.
-	navInlineClass = "max-xl:hidden"
+	navInlineClass = "max-[1180px]:hidden"
 	menuPanelClass = "absolute right-0 top-full z-40 mt-2 w-60 rounded-xl border border-line bg-surface p-1.5 text-left shadow-xl " +
 		"max-md:bottom-full max-md:top-auto max-md:mb-2"
 	userPanelClass = "absolute right-0 top-full z-40 mt-2 w-64 rounded-xl border border-line bg-surface p-1.5 shadow-xl"
@@ -114,7 +114,7 @@ func systemMenu(active string) g.Node {
 			icon(it.icon, "size-4 text-ink-2"), g.Text(it.label),
 			g.If(it.key == active, g.Attr("aria-current", "page")))...))
 	}
-	return g.El("details", append(comp("menu"), Class("relative max-md:contents xl:hidden"),
+	return g.El("details", append(comp("menu"), Class("relative max-md:contents min-[1180px]:hidden"),
 		g.Attr("data-on:click__outside", closeOutside),
 		g.El("summary", Class(navLinkClass), icon("more", "size-4 max-md:size-5"), Span(g.Text("System")),
 			g.If(inSystem, g.Attr("aria-current", "page"))),

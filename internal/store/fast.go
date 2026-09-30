@@ -144,3 +144,35 @@ func parseStored(s string) (time.Time, bool) {
 	t, err := time.Parse(pbStoredTime, s)
 	return t, err == nil
 }
+
+// HRStat is the average and peak heart rate of one activity.
+type HRStat struct{ Avg, Max float64 }
+
+// ActivityHRStats returns average and maximum heart rate per Strava ID for
+// activities in [from, to] that have a stored heart-rate series. SQLite
+// aggregates the JSON so the series is never decoded in Go.
+func (s *PB) ActivityHRStats(_ context.Context, from, to time.Time) (map[string]HRStat, error) {
+	rows, err := s.App.DB().NewQuery(`SELECT a.strava_id,
+		AVG(json_extract(h.value, '$.BPM')), MAX(json_extract(h.value, '$.BPM'))
+		FROM activities a, json_each(a.heart_rate) h
+		WHERE a.start_time >= {:from} AND a.start_time <= {:to}
+		  AND json_valid(a.heart_rate) AND json_type(a.heart_rate) = 'array'
+		GROUP BY a.strava_id`).
+		Bind(dbx.Params{"from": pbTime(from), "to": pbTime(to)}).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]HRStat{}
+	for rows.Next() {
+		var id sql.NullString
+		var avg, max sql.NullFloat64
+		if err := rows.Scan(&id, &avg, &max); err != nil {
+			return nil, err
+		}
+		if avg.Valid && avg.Float64 > 0 {
+			out[id.String] = HRStat{Avg: avg.Float64, Max: max.Float64}
+		}
+	}
+	return out, rows.Err()
+}

@@ -901,3 +901,23 @@ func TestParseStoredMatchesTimeParse(t *testing.T) {
 		t.Error("garbage parsed")
 	}
 }
+
+func TestActivityHRStats(t *testing.T) {
+	s := &PB{App: newApp(t)}
+	ctx := context.Background()
+	with := &jobs.Activity{StravaID: "1", Name: "Run", Sport: "Run", Start: t0, Duration: time.Hour, Status: jobs.StatusDone,
+		HeartRate: []chartimg.HRPoint{{Time: t0, BPM: 120}, {Time: t0.Add(time.Minute), BPM: 160}}}
+	without := &jobs.Activity{StravaID: "2", Name: "Ride", Sport: "Ride", Start: t0.Add(time.Hour), Duration: time.Hour, Status: jobs.StatusDone}
+	for _, a := range []*jobs.Activity{with, without} {
+		if err := s.SaveActivity(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ActivityHRStats(ctx, t0.Add(-time.Hour), t0.Add(3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got["1"].Avg != 140 || got["1"].Max != 160 {
+		t.Fatalf("got %+v", got)
+	}
+}
