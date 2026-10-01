@@ -3,6 +3,7 @@ package web
 import (
 	"math"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 )
 
@@ -29,13 +30,15 @@ type ActivityChartInput struct {
 	VeryLow    float64      // 0 leaves the line out
 	VeryHigh   float64
 	Unit       render.Unit
-	Start, End int64 // the activity
-	From, To   int64 // the whole window drawn (before ... after); 0 derives it from Glucose
+	Start, End int64            // the activity
+	From, To   int64            // the whole window drawn (before ... after); 0 derives it from Glucose
+	T          *i18n.Translator // series and span names; nil means English
 }
 
 // ActivityChartOption builds the multi-series option of the activity page.
 func ActivityChartOption(in ActivityChartInput) map[string]any {
 	u := in.Unit
+	tr := orEnglish(in.T)
 	gf := glucoseFmt(u)
 	from, to := in.From, in.To
 	if len(in.Glucose) > 0 {
@@ -62,14 +65,14 @@ func ActivityChartOption(in ActivityChartInput) map[string]any {
 	if in.End > in.Start {
 		if in.Start > from {
 			areas = append(areas, []map[string]any{
-				{"name": "Before", "xAxis": from, "itemStyle": map[string]any{"color": colBuffer}, "label": map[string]any{"show": false}}, {"xAxis": in.Start}})
+				{"name": tr.T("chart.before"), "xAxis": from, "itemStyle": map[string]any{"color": colBuffer}, "label": map[string]any{"show": false}}, {"xAxis": in.Start}})
 		}
 		areas = append(areas, []map[string]any{
-			{"name": "Activity", "xAxis": in.Start, "itemStyle": map[string]any{"color": colDuring},
+			{"name": tr.T("chart.activity"), "xAxis": in.Start, "itemStyle": map[string]any{"color": colDuring},
 				"label": map[string]any{"show": true, "position": "insideTop"}}, {"xAxis": in.End}})
 		if in.End < to {
 			areas = append(areas, []map[string]any{
-				{"name": "After", "xAxis": in.End, "itemStyle": map[string]any{"color": colBuffer}, "label": map[string]any{"show": false}}, {"xAxis": to}})
+				{"name": tr.T("chart.after"), "xAxis": in.End, "itemStyle": map[string]any{"color": colBuffer}, "label": map[string]any{"show": false}}, {"xAxis": to}})
 		}
 	}
 	var lines []map[string]any
@@ -83,11 +86,11 @@ func ActivityChartOption(in ActivityChartInput) map[string]any {
 			"label":     map[string]any{"show": false},
 		})
 	}
-	limit(in.VeryLow, "Very low", colLimitLow)
-	limit(in.VeryHigh, "Very high", ColVeryHigh)
+	limit(in.VeryLow, tr.T("band.very_low"), colLimitLow)
+	limit(in.VeryHigh, tr.T("band.very_high"), ColVeryHigh)
 
 	glucoseSeries := map[string]any{
-		"name": "Glucose (" + string(u) + ")", "type": "line", "data": glucose, "symbol": "none", "smooth": 0.15,
+		"name": tr.T("chart.series.glucose", "unit", string(u)), "type": "line", "data": glucose, "symbol": "none", "smooth": 0.15,
 		"lineStyle": map[string]any{"width": 2.5}, "z": 5,
 		"markArea": map[string]any{"silent": true, "data": areas},
 		"tooltip":  map[string]any{"valueFormatter": gf},
@@ -110,11 +113,11 @@ func ActivityChartOption(in ActivityChartInput) map[string]any {
 			"axisLabel": map[string]any{"formatter": fmtInt},
 		})
 		series = append(series, map[string]any{
-			"name": "Heart rate (bpm)", "type": "line", "data": hr, "symbol": "none", "smooth": 0.2, "yAxisIndex": len(yAxes) - 1,
+			"name": tr.T("chart.series.hr"), "type": "line", "data": hr, "symbol": "none", "smooth": 0.2, "yAxisIndex": len(yAxes) - 1,
 			"lineStyle": map[string]any{"width": 1.5, "color": colHR}, "itemStyle": map[string]any{"color": colHR},
 			"tooltip": map[string]any{"valueFormatter": "gv:bpm"},
 		})
-		legend = append(legend, "Heart rate (bpm)")
+		legend = append(legend, tr.T("chart.series.hr"))
 		rightPad = 8
 	}
 	if len(in.Elevation) > 0 {
@@ -132,12 +135,12 @@ func ActivityChartOption(in ActivityChartInput) map[string]any {
 			"splitLine": map[string]any{"show": false},
 		})
 		series = append(series, map[string]any{
-			"name": "Elevation (m)", "type": "line", "data": el, "symbol": "none", "yAxisIndex": len(yAxes) - 1, "z": 1,
+			"name": tr.T("chart.series.elevation"), "type": "line", "data": el, "symbol": "none", "yAxisIndex": len(yAxes) - 1, "z": 1,
 			"lineStyle": map[string]any{"width": 0}, "itemStyle": map[string]any{"color": colElev},
 			"areaStyle": map[string]any{"color": colElev, "opacity": 0.22},
 			"tooltip":   map[string]any{"valueFormatter": "gv:m"},
 		})
-		legend = append(legend, "Elevation (m)")
+		legend = append(legend, tr.T("chart.series.elevation"))
 	}
 
 	return map[string]any{

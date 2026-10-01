@@ -10,6 +10,7 @@ import (
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -21,6 +22,7 @@ type ChartData struct {
 	Unit       render.Unit
 	Start, End time.Time // the activity, shaded on the chart
 	Loc        *time.Location
+	T          *i18n.Translator // nil means English
 }
 
 const (
@@ -31,8 +33,9 @@ const (
 // GlucoseChart draws a glucose curve as inline SVG: target band, activity span,
 // and out-of-range points. Colours come from CSS variables, so it follows the theme.
 func GlucoseChart(d ChartData) g.Node {
+	tr := orEnglish(d.T)
 	if len(d.Samples) == 0 {
-		return Div(append(comp("empty"), g.Text("No glucose readings stored for this activity."))...)
+		return Div(append(comp("empty"), g.Text(tr.T("chart.svg.empty")))...)
 	}
 	pts := append([]stats.Sample(nil), d.Samples...)
 	sort.Slice(pts, func(i, j int) bool { return pts[i].Time.Before(pts[j].Time) })
@@ -70,7 +73,7 @@ func GlucoseChart(d ChartData) g.Node {
 	nodes := []g.Node{
 		g.Attr("viewBox", fmt.Sprintf("0 0 %.0f %.0f", chW, chH)),
 		g.Attr("role", "img"),
-		g.Attr("aria-label", fmt.Sprintf("Glucose from %s to %s", pts[0].Time.In(d.Loc).Format("15:04"), pts[len(pts)-1].Time.In(d.Loc).Format("15:04"))),
+		g.Attr("aria-label", tr.T("chart.svg.aria", "from", tr.Time(pts[0].Time.In(d.Loc)), "to", tr.Time(pts[len(pts)-1].Time.In(d.Loc)))),
 		g.El("rect", Class("band"), g.Attr("x", f1(padL)), g.Attr("y", f1(y(d.Range.High))),
 			g.Attr("width", f1(chW-padL-padR)), g.Attr("height", f1(y(d.Range.Low)-y(d.Range.High)))),
 	}
@@ -87,12 +90,12 @@ func GlucoseChart(d ChartData) g.Node {
 		}
 		nodes = append(nodes,
 			g.El("line", Class(cls), g.Attr("x1", f1(padL)), g.Attr("x2", f1(chW-padR)), g.Attr("y1", f1(y(v))), g.Attr("y2", f1(y(v)))),
-			g.El("text", g.Attr("x", f1(padL-6)), g.Attr("y", f1(y(v)+4)), g.Attr("text-anchor", "end"), g.Text(render.Value(v, d.Unit))),
+			g.El("text", g.Attr("x", f1(padL-6)), g.Attr("y", f1(y(v)+4)), g.Attr("text-anchor", "end"), g.Text(valueT(tr, v, d.Unit))),
 		)
 	}
 	// Time labels every 15/30/60 minutes depending on the span.
 	for _, t := range timeTicks(t0, t1, d.Loc) {
-		nodes = append(nodes, g.El("text", g.Attr("x", f1(x(t))), g.Attr("y", f1(chH-8)), g.Attr("text-anchor", "middle"), g.Text(t.In(d.Loc).Format("15:04"))))
+		nodes = append(nodes, g.El("text", g.Attr("x", f1(x(t))), g.Attr("y", f1(chH-8)), g.Attr("text-anchor", "middle"), g.Text(tr.Time(t.In(d.Loc)))))
 	}
 
 	nodes = append(nodes, g.El("path", Class("line"), g.Attr("d", strings.TrimSpace(path.String()))))
@@ -112,10 +115,10 @@ func GlucoseChart(d ChartData) g.Node {
 	return Div(
 		g.El("svg", append(comp("chart"), nodes...)...),
 		Div(append(comp("legend"),
-			Span(g.Raw(`<i style="background:var(--band)"></i>`), g.Textf("Target %s–%s %s", render.Value(d.Range.Low, d.Unit), render.Value(d.Range.High, d.Unit), d.Unit)),
-			Span(g.Raw(`<i style="background:var(--span)"></i>`), g.Text("Activity")),
-			Span(g.Raw(`<i style="background:var(--below)"></i>`), g.Text("Below range")),
-			Span(g.Raw(`<i style="background:var(--above)"></i>`), g.Text("Above range")),
+			Span(g.Raw(`<i style="background:var(--band)"></i>`), g.Text(tr.T("chart.svg.target", "low", valueT(tr, d.Range.Low, d.Unit), "high", valueT(tr, d.Range.High, d.Unit), "unit", string(d.Unit)))),
+			Span(g.Raw(`<i style="background:var(--span)"></i>`), g.Text(tr.T("chart.activity"))),
+			Span(g.Raw(`<i style="background:var(--below)"></i>`), g.Text(tr.T("band.below"))),
+			Span(g.Raw(`<i style="background:var(--above)"></i>`), g.Text(tr.T("band.above"))),
 		)...),
 	)
 }

@@ -75,7 +75,7 @@ func (s *Server) dashData(ctx context.Context) (DashData, error) {
 	if err != nil {
 		return DashData{}, err
 	}
-	d := DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo()}
+	d := DashData{Acts: acts, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: s.now(), Session: s.sessionInfo(), T: trCtx(ctx)}
 	if s.LatestGlucose != nil {
 		// Short timeout: a slow or unreachable source must not hold up the
 		// whole page. A nil result just leaves the tile showing "-".
@@ -124,7 +124,7 @@ func (s *Server) activityData(ctx context.Context, id string) (*ActivityData, er
 		return nil, err
 	}
 
-	d := &ActivityData{Act: *act, Samples: samples, Cfg: cfg, Loc: s.loc(), Now: s.now()}
+	d := &ActivityData{Act: *act, Samples: samples, Cfg: cfg, Loc: s.loc(), Now: s.now(), T: trCtx(ctx)}
 	if s.Progress != nil {
 		d.Step = s.Progress.Step(id)
 	}
@@ -298,13 +298,13 @@ func (s *Server) streamLive(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		return sse.PatchElements(renderString(LiveDash(d)))
+		return sse.PatchElements(renderString(LiveDashT(s.tr(r), d)))
 	})
 }
 
 func (s *Server) streamLogs(w http.ResponseWriter, r *http.Request) {
 	s.stream(w, r, func(sse *datastar.ServerSentEventGenerator) error {
-		return sse.PatchElements(renderString(LogRows(s.recentLogs(), s.loc())))
+		return sse.PatchElements(renderString(LogRowsT(s.tr(r), s.recentLogs(), s.loc())))
 	})
 }
 
@@ -824,7 +824,7 @@ func (s *Server) actionStravaCookies(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	_ = sse.PatchSignals([]byte(`{"cookies":""}`))
-	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
+	_ = sse.PatchElements(renderString(StravaStatusCardT(s.tr(r), s.sessionInfo())))
 	s.toast(sse, "ok", s.tr(r).Tn("toast.cookies.stored", len(list)))
 	s.Bus.Publish()
 }
@@ -923,7 +923,7 @@ func (s *Server) actionStravaTest(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 
-	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
+	_ = sse.PatchElements(renderString(StravaStatusCardT(s.tr(r), s.sessionInfo())))
 	if err != nil {
 		s.toast(sse, "error", s.tr(r).T("err.strava.test_failed"))
 	} else {
@@ -950,8 +950,8 @@ func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.Tokens.List()
 	base := strings.TrimRight(s.baseURL(r), "/")
 	taskerURL := base + "/export/tasker.prf.xml?token=" + url.QueryEscape(token)
-	_ = sse.PatchElements(renderString(SecretReveal(v.TokenName, token, base+"/api/trigger", taskerURL, base+"/tokens")))
-	_ = sse.PatchElements(renderString(TokenList(list, s.loc())))
+	_ = sse.PatchElements(renderString(SecretRevealT(s.tr(r), v.TokenName, token, base+"/api/trigger", taskerURL, base+"/tokens")))
+	_ = sse.PatchElements(renderString(TokenListT(s.tr(r), list, s.loc())))
 	_ = sse.PatchSignals([]byte(`{"tokenName":""}`))
 }
 
@@ -962,7 +962,7 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	list, _ := s.Tokens.List()
-	_ = sse.PatchElements(renderString(TokenList(list, s.loc())))
+	_ = sse.PatchElements(renderString(TokenListT(s.tr(r), list, s.loc())))
 	s.toast(sse, "ok", s.tr(r).T("toast.token.revoked"))
 }
 
@@ -993,7 +993,7 @@ func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 
-	_ = sse.PatchElements(renderString(StravaStatusCard(s.sessionInfo())))
+	_ = sse.PatchElements(renderString(StravaStatusCardT(s.tr(r), s.sessionInfo())))
 	if err != nil {
 		slog.Error("strava automatic sign-in failed", "email", v.Email, "err", err)
 		s.toast(sse, "error", s.tr(r).T("err.strava.login_stopped", "error", strava.ExplainLoginError(err)))

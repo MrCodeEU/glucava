@@ -8,6 +8,7 @@ import (
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
 
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 )
 
@@ -165,6 +166,7 @@ type AGPInput struct {
 	Points    []AGPPoint
 	Low, High float64
 	Unit      render.Unit
+	T         *i18n.Translator // series names; nil means English
 }
 
 // AGPOption builds an ambulatory glucose profile: the median line over 25-75
@@ -173,6 +175,7 @@ type AGPInput struct {
 // "gv:rawaxis" tooltip formatter shows the real value.
 func AGPOption(in AGPInput) map[string]any {
 	u := in.Unit
+	tr := orEnglish(in.T)
 	base, lo, mid, hi, med := [][]any{}, [][]any{}, [][]any{}, [][]any{}, [][]any{}
 	top := 0.0
 	for _, p := range in.Points {
@@ -204,14 +207,14 @@ func AGPOption(in AGPInput) map[string]any {
 		"yAxis": glucoseAxis(u, highV, highV, top),
 		"series": []map[string]any{
 			{
-				"name": "5th percentile", "type": "line", "stack": "agp", "data": base, "symbol": "none", "smooth": 0.3,
+				"name": tr.T("chart.p5"), "type": "line", "stack": "agp", "data": base, "symbol": "none", "smooth": 0.3,
 				"lineStyle": map[string]any{"opacity": 0}, "emphasis": map[string]any{"disabled": true},
 			},
-			band("25th percentile", lo, colBand),
-			band("75th percentile", mid, colBandIn),
-			band("95th percentile", hi, colBand),
+			band(tr.T("chart.p25"), lo, colBand),
+			band(tr.T("chart.p75"), mid, colBandIn),
+			band(tr.T("chart.p95"), hi, colBand),
 			{
-				"name": "Median", "type": "line", "data": med, "symbol": "none", "smooth": 0.3, "z": 3,
+				"name": tr.T("chart.median"), "type": "line", "data": med, "symbol": "none", "smooth": 0.3, "z": 3,
 				"lineStyle": map[string]any{"width": 2.5, "color": colLine}, "itemStyle": map[string]any{"color": colLine},
 				"markArea": map[string]any{
 					"silent": true, "itemStyle": map[string]any{"color": colTarget},

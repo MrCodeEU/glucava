@@ -287,20 +287,6 @@ func SeverityBadgeT(tr *i18n.Translator, sev string) g.Node {
 	return Badge("info", tr.T("severity.info"))
 }
 
-// fmtDuration renders 3000s as "50 min" or 1h 12m.
-func fmtDuration(d time.Duration) string {
-	m := int(d.Round(time.Minute) / time.Minute)
-	if m < 60 {
-		return fmt.Sprintf("%d min", m)
-	}
-	return fmt.Sprintf("%dh %02dm", m/60, m%60)
-}
-
-// fmtWhen renders a time in loc, dropping the year for the current one.
-func fmtWhen(t time.Time, loc *time.Location, now time.Time) string {
-	return fmtWhenT(i18n.English(), t, loc, now)
-}
-
 // fmtWhenT is fmtWhen with the translator's weekday and month names and date order.
 func fmtWhenT(tr *i18n.Translator, t time.Time, loc *time.Location, now time.Time) string {
 	return tr.When(t, loc, now)

@@ -96,6 +96,9 @@ type DashData struct {
 	Loc     *time.Location
 	Now     time.Time
 	Session SessionInfo
+	// T translates the live parts (LiveDash is also patched over SSE, where
+	// there is no PageData); nil means English.
+	T *i18n.Translator
 
 	// Latest is the most recent glucose reading, if the source made one
 	// available quickly. Nil means unknown, not necessarily unavailable.
@@ -154,9 +157,6 @@ func LiveDashT(tr *i18n.Translator, d DashData) g.Node {
 	)
 }
 
-// activityTable is activityTableT in English, for callers without a request.
-func activityTable(d DashData) g.Node { return activityTableT(i18n.English(), d) }
-
 func activityTableT(tr *i18n.Translator, d DashData) g.Node {
 	if len(d.Acts) == 0 {
 		hint := tr.T("dash.empty.hint")
@@ -202,7 +202,7 @@ func activityRow(tr *i18n.Translator, a jobs.Activity, d DashData) g.Node {
 		Td(Div(Class("flex items-start gap-2"),
 			Span(Class("mt-0.5 text-ink-2"), g.Attr("title", orDash(a.Sport)), icon(sportIcon(a.Sport), "size-4")),
 			Div(A(Href(href), g.Text(name)), g.If(a.Sport != "", Span(Class("muted"), g.Text(" · "+a.Sport)))))),
-		Td(Class("hide-sm"), g.Text(fmtDuration(a.Duration))),
+		Td(Class("hide-sm"), g.Text(fmtDurationT(tr, a.Duration))),
 		Td(Class("hide-sm"), distanceCell(tr, a)),
 		Td(tirCell),
 		Td(Class("hide-sm num"), g.Text(minmax)),
@@ -258,6 +258,7 @@ type ActivityData struct {
 	Events []store.EventRow
 	Loc    *time.Location
 	Now    time.Time
+	T      *i18n.Translator // nil means English
 
 	Thr     analytics.Thresholds
 	Insight *analytics.ActivityInsight // before/during/after numbers; nil without readings
@@ -278,7 +279,7 @@ func ActivityPage(pd PageData, d ActivityData) g.Node {
 	}
 
 	return Page(pd,
-		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhenT(tr, a.Start, d.Loc, d.Now), fmtDuration(a.Duration), orDash(a.Sport)),
+		PageHead(title, fmt.Sprintf("%s · %s · %s", fmtWhenT(tr, a.Start, d.Loc, d.Now), fmtDurationT(tr, a.Duration), orDash(a.Sport)),
 			g.Group(activityNav(d)),
 			A(append(comp("button"), Href("/"), g.Text(tr.T("activity.head.back")))...),
 			A(append(comp("button"), Href("https://www.strava.com/activities/"+a.StravaID),
@@ -314,17 +315,13 @@ func orDash(s string) string {
 	return s
 }
 
-func eventList(evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
-	return eventListT(i18n.English(), evs, loc, now)
-}
-
 func eventListT(tr *i18n.Translator, evs []store.EventRow, loc *time.Location, now time.Time) g.Node {
 	if len(evs) == 0 {
 		return P(Class("muted"), g.Text(tr.T("activity.events.none")))
 	}
 	items := make([]g.Node, 0, len(evs))
 	for _, e := range evs {
-		items = append(items, P(SeverityBadgeT(tr, e.Severity), g.Text(" "+fmtWhenT(tr, e.Created, loc, now)+" · "+e.Message)))
+		items = append(items, P(SeverityBadgeT(tr, e.Severity), g.Text(" "+fmtWhenT(tr, e.Created, loc, now)+" · "+eventMessage(tr, loc, e))))
 	}
 	return g.Group(items)
 }
@@ -591,7 +588,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						),
 					),
 				),
-				overviewSettingsCard(c),
+				overviewSettingsCard(pd.translator(), c),
 				Card(H2(g.Text(tr.T("settings.desc.title"))),
 					P(Class("muted"), g.Text(tr.T("settings.desc.intro"))),
 					Field("descPreset", tr.T("settings.descPreset.label"), tr.T("settings.descPreset.help"),

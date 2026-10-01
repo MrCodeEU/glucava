@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/report"
 	"github.com/MrCodeEU/glucava/internal/store"
@@ -35,6 +36,7 @@ type reportKey struct {
 	Loc      string
 	Thr      analytics.Thresholds
 	Mode     string // suspected-artifact handling, which changes the numbers
+	Lang     string // the report is typeset in the requester's language
 	Ver      store.DataVersion
 }
 
@@ -98,7 +100,7 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := reportKey{Range: rng.Key, From: rng.From.Unix() / 300, To: rng.To.Unix() / 300, Compare: rng.Compare,
-		Unit: cfg.Unit, Loc: loc.String(), Thr: thr, Mode: cfg.ArtifactsMode(), Ver: ver}
+		Unit: cfg.Unit, Loc: loc.String(), Thr: thr, Mode: cfg.ArtifactsMode(), Lang: s.tr(r).Lang(), Ver: ver}
 
 	rs := s.reports()
 	if hit, ok := rs.cache.Get(key); ok {
@@ -113,7 +115,7 @@ func (s *Server) exportReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	in, err := s.reportInput(ctx, rng, cfg, thr, now)
+	in, err := s.reportInput(ctx, rng, cfg, thr, now, s.tr(r))
 	if err != nil {
 		s.serverError(w, err)
 		return
@@ -142,11 +144,11 @@ func (s *Server) servePDF(w http.ResponseWriter, name string, pdf []byte) {
 }
 
 // reportInput loads what report.Build needs, with the fast loaders.
-func (s *Server) reportInput(ctx context.Context, rng statsRange, cfg store.Config, thr analytics.Thresholds, now time.Time) (report.Input, error) {
+func (s *Server) reportInput(ctx context.Context, rng statsRange, cfg store.Config, thr analytics.Thresholds, now time.Time, tr *i18n.Translator) (report.Input, error) {
 	in := report.Input{
 		From: rng.From, To: rng.To, AllTime: rng.Key == "all",
 		Thr: thr, Unit: render.Unit(cfg.Unit), Loc: s.loc(), Now: now, Build: s.Build,
-		Compare: rng.Compare, PrevFrom: rng.PrevFrom, PrevTo: rng.PrevTo,
+		Compare: rng.Compare, PrevFrom: rng.PrevFrom, PrevTo: rng.PrevTo, T: tr,
 	}
 	var err error
 	if in.Samples, err = s.Store.LoadSamplesFast(ctx, rng.From, rng.To); err != nil {

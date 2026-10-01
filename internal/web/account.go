@@ -83,7 +83,7 @@ func (s *Server) actionAccount(w http.ResponseWriter, r *http.Request) {
 
 	sse := datastar.NewSSE(w, r)
 	_ = sse.PatchSignals([]byte(`{"accountCurrent":"","accountEmail":"","accountNew":"","accountConfirm":""}`))
-	_ = sse.PatchElements(renderString(AccountEmail(rec.Email())))
+	_ = sse.PatchElements(renderString(AccountEmailT(s.tr(r), rec.Email())))
 	switch {
 	case changeEmail && changePass:
 		s.toast(sse, "ok", s.tr(r).T("toast.account.both"))
