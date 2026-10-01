@@ -94,6 +94,7 @@ func main() {
 	flow := flag.Bool("flow", false, "click through the main actions instead of visiting pages")
 	matrix := flag.Bool("matrix", false, "every page at 1280 and 390 px, light and dark (ignores -mode and -width)")
 	ignore := flag.String("ignore", "", "regexp of console messages to tolerate, e.g. a script that is not deployed yet")
+	lang := flag.String("lang", "", "browser language, e.g. de (glucava follows it while Settings > Language is automatic)")
 	paths := flag.String("paths", defaultPaths, "comma-separated paths")
 	flag.Parse()
 
@@ -103,6 +104,9 @@ func main() {
 	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(os.Getenv("CHROME_PATH")), chromedp.Flag("no-sandbox", true), chromedp.WindowSize(*width, 900))
+	if *lang != "" {
+		opts = append(opts, chromedp.Flag("lang", *lang))
+	}
 	actx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
 	ctx, cancel := chromedp.NewContext(actx)
@@ -222,6 +226,13 @@ func main() {
 			slog.Error("navigate", "path", p, "err", err)
 			os.Exit(1)
 		}
+		// "/settings#tab=notify" opens that Settings tab before the shot.
+		if _, tab, ok := strings.Cut(p, "#tab="); ok {
+			if err := chromedp.Run(ctx, chromedp.Click(fmt.Sprintf(`button[data-on\:click="$settingsTab = \"%s\""]`, tab), chromedp.ByQuery), chromedp.Sleep(300*time.Millisecond)); err != nil {
+				slog.Error("open settings tab", "tab", tab, "err", err)
+				os.Exit(1)
+			}
+		}
 		shot(name)
 	}
 	list := strings.Split(*paths, ",")
@@ -322,7 +333,7 @@ func runFlow(ctx context.Context, base string, shot func(string), setMode chrome
 	// overviewOn.<id> and the reorder buttons for real).
 	var kpisOn, order string
 	must(chromedp.Run(ctx, chromedp.Navigate(base+"/settings"), setMode, chromedp.Sleep(800*time.Millisecond),
-		chromedp.Click(`//button[contains(., "Description and chart")]`, chromedp.BySearch), chromedp.Sleep(300*time.Millisecond),
+		chromedp.Click(`button[data-on\:click="$settingsTab = \"customize\""]`, chromedp.ByQuery), chromedp.Sleep(300*time.Millisecond),
 		chromedp.Click(`#overviewOn_kpis`, chromedp.ByQuery),
 		chromedp.Click(`#overview-move-tir-down`, chromedp.ByQuery),
 		chromedp.SetValue("#overviewOpt_heatmap_metric", "tir", chromedp.ByQuery),

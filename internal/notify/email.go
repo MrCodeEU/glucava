@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/pocketbase/pocketbase/tools/mailer"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
 )
 
 // Email sends each message as a multipart email (HTML card plus plain text) through the app's own SMTP
@@ -24,6 +26,9 @@ type Email struct {
 	To       string
 	// Wants reports whether this kind of message should be mailed. Nil sends all.
 	Wants func(msgType string) bool
+	// Tr gives the installation language for the fixed texts around the
+	// message (severity badge, buttons, footer). Nil means English.
+	Tr Translator
 }
 
 // Name implements Channel.
@@ -44,12 +49,13 @@ func (e *Email) Send(_ context.Context, m Message) error {
 	if err != nil {
 		return fmt.Errorf("notify: email: invalid recipient: %w", err)
 	}
+	tr := e.Tr.Get()
 	msg := &mailer.Message{
 		From:    e.From,
 		To:      []mail.Address{*to},
 		Subject: m.Title,
-		Text:    emailText(m),
-		HTML:    emailHTML(m),
+		Text:    emailText(tr, m),
+		HTML:    emailHTML(tr, m),
 	}
 	if len(m.Chart) > 0 {
 		msg.InlineAttachments = map[string]io.Reader{chartCID: bytes.NewReader(m.Chart)}
@@ -61,7 +67,7 @@ func (e *Email) Send(_ context.Context, m Message) error {
 const chartCID = "chart.png"
 
 // emailText is the plain-text part: the message plus the details the HTML part shows.
-func emailText(m Message) string {
+func emailText(tr *i18n.Translator, m Message) string {
 	var b strings.Builder
 	b.WriteString(m.Body)
 	if len(m.Facts) > 0 {
@@ -77,7 +83,7 @@ func emailText(m Message) string {
 		fmt.Fprintf(&b, "\n\nStrava: https://www.strava.com/activities/%s", m.StravaID)
 	}
 	if m.Repaired {
-		b.WriteString("\nThe selector was repaired automatically; nothing to do.")
+		b.WriteString("\n" + tr.T("email.repaired"))
 	}
 	if !m.Time.IsZero() {
 		fmt.Fprintf(&b, "\n\n%s", m.Time.Format("2006-01-02 15:04 MST"))
@@ -98,8 +104,19 @@ func severityColors(sev string) (accent, tint string) {
 	}
 }
 
+// severityLabel is the badge text for a severity.
+func severityLabel(tr *i18n.Translator, sev string) string {
+	switch sev {
+	case "error":
+		return tr.T("email.severity.error")
+	case "warning":
+		return tr.T("email.severity.warning")
+	}
+	return tr.T("email.severity.info")
+}
+
 // emailHTML renders the message as a small card. Every value is escaped.
-func emailHTML(m Message) string {
+func emailHTML(tr *i18n.Translator, m Message) string {
 	accent, tint := severityColors(m.Severity)
 	esc := html.EscapeString
 	sev := m.Severity
@@ -108,10 +125,11 @@ func emailHTML(m Message) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2933">`)
+	fmt.Fprintf(&b, `<!doctype html><html lang="%s"><head>`, esc(tr.Lang()))
+	b.WriteString(`<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head><body style="margin:0;padding:24px;background:#f4f5f7;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2933">`)
 	fmt.Fprintf(&b, `<div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:8px;border-top:4px solid %s;overflow:hidden">`, accent)
 	fmt.Fprintf(&b, `<table role="presentation" style="width:100%%;border-collapse:collapse"><tr><td style="width:72px;padding:20px 0 8px 24px;vertical-align:top"><div style="width:48px;height:48px;line-height:48px;text-align:center;font-size:26px;border-radius:24px;background:%s">%s</div></td>`, tint, esc(IconFor(m)))
-	fmt.Fprintf(&b, `<td style="padding:20px 24px 8px 0;vertical-align:top"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:%s;color:%s;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">%s</span>`, tint, accent, esc(sev))
+	fmt.Fprintf(&b, `<td style="padding:20px 24px 8px 0;vertical-align:top"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:%s;color:%s;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">%s</span>`, tint, accent, esc(severityLabel(tr, sev)))
 	fmt.Fprintf(&b, `<h1 style="margin:8px 0 0;font-size:20px;line-height:1.3">%s</h1></td></tr></table>`, esc(m.Title))
 	fmt.Fprintf(&b, `<div style="padding:8px 24px 16px;font-size:15px;line-height:1.5;white-space:pre-wrap">%s</div>`, esc(m.Body))
 	if len(m.Chart) > 0 {
@@ -125,7 +143,7 @@ func emailHTML(m Message) string {
 		b.WriteString(`</table>`)
 	}
 	if m.Repaired {
-		b.WriteString(`<div style="margin:0 24px 16px;padding:10px 12px;background:#e8f5e9;border-radius:6px;font-size:14px">The selector was repaired automatically; nothing to do.</div>`)
+		b.WriteString(`<div style="margin:0 24px 16px;padding:10px 12px;background:#e8f5e9;border-radius:6px;font-size:14px">` + esc(tr.T("email.repaired")) + `</div>`)
 	}
 	var buttons []string
 	if m.Link != "" {
@@ -137,7 +155,7 @@ func emailHTML(m Message) string {
 		if m.Link == "" {
 			style = "background:" + accent + ";color:#ffffff"
 		}
-		buttons = append(buttons, fmt.Sprintf(`<a href="https://www.strava.com/activities/%s" style="display:inline-block;margin:0 8px 8px 0;padding:8px 14px;%s;text-decoration:none;border-radius:6px;font-size:14px">Open activity %s on Strava</a>`, id, style, id))
+		buttons = append(buttons, fmt.Sprintf(`<a href="https://www.strava.com/activities/%s" style="display:inline-block;margin:0 8px 8px 0;padding:8px 14px;%s;text-decoration:none;border-radius:6px;font-size:14px">%s</a>`, id, style, esc(tr.T("email.open_strava", "id", m.StravaID))))
 	}
 	if len(buttons) > 0 {
 		fmt.Fprintf(&b, `<div style="padding:0 24px 12px">%s</div>`, strings.Join(buttons, ""))

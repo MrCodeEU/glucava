@@ -25,7 +25,7 @@
     )
   ],
 )
-#set text(font: "Inter", size: 9pt, fill: ink, lang: "en")
+#set text(font: "Inter", size: 9pt, fill: ink, lang: d.lang)
 #set par(leading: 0.55em)
 
 #let section(title, sub: none) = {
@@ -80,7 +80,7 @@
   ],
   text(size: 8pt, fill: muted)[
     #d.generated \
-    All glucose values in #d.unit
+    #d.unitNote
     #if d.compare != "" [ \ #d.compare]
   ],
 )
@@ -95,7 +95,7 @@
 #v(8pt)
 #grid(columns: (1fr, 1fr, 1fr), gutter: 7pt, ..d.kpis.map(tile))
 
-#section("Time in range", sub: "Share of all readings in each band")
+#section(d.labels.timeInRange, sub: d.labels.tirSub)
 #image("tir.svg", width: 100%)
 #v(2pt)
 #table(
@@ -107,42 +107,42 @@
     [#box(width: 7pt, height: 7pt, radius: 1.5pt, fill: rgb(b.color)) #h(3pt) #b.label],
     text(fill: muted)[#b.range],
     text(weight: "bold")[#b.pct],
-    text(fill: if b.met { good } else { bad }, size: 8pt)[#b.target #if b.met [(met)] else [(not met)]],
+    text(fill: if b.met { good } else { bad }, size: 8pt)[#b.target #if b.met [(#d.labels.met)] else [(#d.labels.notMet)]],
   )).flatten(),
 )
 
-#section("Daily profile (AGP)", sub: d.agpNote)
+#section(d.labels.agp, sub: d.agpNote)
 #image("agp.svg", width: 100%)
 
-#section("Day by day", sub: "Average glucose with the daily lowest and highest, and time in range per day")
+#section(d.labels.dayByDay, sub: d.labels.dayByDaySub)
 #image("trend.svg", width: 100%)
 
-#section("Time of day", sub: "Share of readings in each band by local time")
+#section(d.labels.timeOfDay, sub: d.labels.timeOfDaySub)
 #image("parts.svg", width: 100%)
 #v(2pt)
 #dtable(d.partsHead, d.parts, widths: (2fr, 1fr, 1fr, 1fr, 1fr))
 
-#section("Lows and highs", sub: "Runs of at least 15 minutes beyond a threshold")
+#section(d.labels.lowsHighs, sub: d.labels.lowsHighsSub)
 #dtable(d.episodesHead, d.episodes, widths: (2.4fr, 1fr, 1fr, 1fr, 1.2fr, 1.4fr))
 #if d.recent.len() > 0 [
   #v(6pt)
-  #text(size: 8.5pt, weight: "bold")[Most recent]
+  #text(size: 8.5pt, weight: "bold")[#d.labels.mostRecent]
   #v(2pt)
   #dtable(d.recentHead, d.recent, widths: (2.2fr, 1fr, 1fr, 1.4fr, 2.2fr), lefts: (0, 4))
 ]
 
 #if d.sports.len() > 0 [
-  #section("By activity type", sub: "Per-activity averages. Change is start to end; Drop is per 10 min; Lows is the share followed by a low within 3 h")
+  #section(d.labels.byType, sub: d.labels.byTypeSub)
   #dtable(d.sportsHead, d.sports, widths: (1.4fr, 0.8fr, 0.9fr, 0.8fr, 0.9fr, 0.9fr, 0.9fr, 1fr, 1.2fr, 1fr, 1.2fr))
 ]
 
 #if d.acts.len() > 0 [
-  #section("Activities", sub: d.actsNote)
+  #section(d.labels.activities, sub: d.actsNote)
   #dtable(d.actsHead, d.acts, widths: (1.7fr, 3fr, 1fr, 1fr, 1.4fr, 0.8fr), lefts: (0, 1))
 ]
 
 #if d.sources.len() > 0 [
-  #section("Glucose sources")
+  #section(d.labels.sources)
   #dtable(d.sourcesHead, d.sources, widths: (2fr, 1.5fr, 2fr))
 ]
 

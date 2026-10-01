@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/chartimg"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/notify"
 	"github.com/MrCodeEU/glucava/internal/render"
@@ -41,54 +42,67 @@ func sportIcon(sport string) string {
 	return "\U0001F3C5" // medal
 }
 
-func pct(v float64) string { return fmt.Sprintf("%.0f%%", v) }
+func pct(tr *i18n.Translator, v float64) string { return tr.T("email.pct", "v", tr.Num(v, 0)) }
 
-func dur(d time.Duration) string {
+// glucose formats a mg/dL value for unit, with the locale's decimal separator.
+func glucose(tr *i18n.Translator, v float64, unit render.Unit) string {
+	if unit == render.MmolL {
+		return tr.Num(v/stats.MmolFactor, 1)
+	}
+	return tr.Num(v, 0)
+}
+
+func dur(tr *i18n.Translator, d time.Duration) string {
 	d = d.Round(time.Minute)
 	if h := int(d.Hours()); h > 0 {
-		return fmt.Sprintf("%dh %02dm", h, int(d.Minutes())%60)
+		return tr.T("email.dur.hm", "h", fmt.Sprint(h), "m", fmt.Sprintf("%02d", int(d.Minutes())%60))
 	}
-	return fmt.Sprintf("%dm", int(d.Minutes()))
+	return tr.T("email.dur.min", "m", fmt.Sprint(int(d.Minutes())))
+}
+
+// day is a short date for a row label: "Mon 28 Sep" in English.
+func day(tr *i18n.Translator, t time.Time) string {
+	return tr.Weekday(t.Weekday(), false) + " " + tr.Date(t, false)
 }
 
 // ActivityMessage summarizes one processed activity. ok is false when the
 // activity has no glucose summary to report. A glucose chart is added when
 // samples are given; a chart that cannot be drawn is left out, never an error.
-func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples []stats.Sample, loc *time.Location) (notify.Message, bool) {
+func ActivityMessage(tr *i18n.Translator, a jobs.Activity, unit render.Unit, rng stats.Range, samples []stats.Sample, loc *time.Location) (notify.Message, bool) {
 	if a.Summary == nil {
 		return notify.Message{}, false
 	}
 	s := a.Summary
 	name := a.Name
 	if name == "" {
-		name = "Activity " + a.StravaID
+		name = tr.T("email.activity.fallback_name", "id", a.StravaID)
 	}
 	facts := []notify.Fact{
-		{Label: "Time in range", Value: pct(s.TIR)},
-		{Label: "Below range", Value: pct(s.Below)},
-		{Label: "Above range", Value: pct(s.Above)},
-		{Label: "Lowest", Value: render.Value(s.Min, unit) + " " + string(unit)},
-		{Label: "Highest", Value: render.Value(s.Max, unit) + " " + string(unit)},
-		{Label: "Average", Value: render.Value(s.Avg, unit) + " " + string(unit)},
-		{Label: "At start / at end", Value: render.Value(s.Start, unit) + " → " + render.Value(s.End, unit)},
-		{Label: "Duration", Value: dur(a.Duration)},
-		{Label: "Readings", Value: fmt.Sprint(s.Count)},
+		{Label: tr.T("email.fact.tir"), Value: pct(tr, s.TIR)},
+		{Label: tr.T("email.fact.below"), Value: pct(tr, s.Below)},
+		{Label: tr.T("email.fact.above"), Value: pct(tr, s.Above)},
+		{Label: tr.T("email.fact.lowest"), Value: glucose(tr, s.Min, unit) + " " + string(unit)},
+		{Label: tr.T("email.fact.highest"), Value: glucose(tr, s.Max, unit) + " " + string(unit)},
+		{Label: tr.T("email.fact.average"), Value: glucose(tr, s.Avg, unit) + " " + string(unit)},
+		{Label: tr.T("email.fact.startend"), Value: glucose(tr, s.Start, unit) + " → " + glucose(tr, s.End, unit)},
+		{Label: tr.T("email.fact.duration"), Value: dur(tr, a.Duration)},
+		{Label: tr.T("email.fact.readings"), Value: tr.Int(s.Count)},
 	}
 	if h, ok := stats.SummarizeHR(a.HeartRate, a.Start, a.End()); ok {
 		facts = append(facts,
-			notify.Fact{Label: "Heart rate, average / max", Value: fmt.Sprintf("%.0f / %.0f bpm", h.Avg, h.Max)})
+			notify.Fact{Label: tr.T("email.fact.hr"), Value: tr.T("email.fact.hr.value", "avg", tr.Num(h.Avg, 0), "max", tr.Num(h.Max, 0))})
 	}
-	body := name
+	when := tr.When(a.Start, loc, time.Now())
+	body := tr.T("email.activity.body", "name", name, "when", when)
 	if a.Sport != "" {
-		body += " (" + a.Sport + ")"
+		body = tr.T("email.activity.body.sport", "name", name, "sport", a.Sport, "when", when)
 	}
-	body += " on " + a.Start.In(loc).Format("Mon 2 Jan, 15:04") + " was annotated on Strava."
 	sev := "info"
 	if s.Below > 0 {
 		sev = "warning"
 	}
 	m := notify.Message{
-		Type: notify.TypeActivitySummary, Severity: sev, Title: "Activity summary: " + name,
+		Type: notify.TypeActivitySummary, Severity: sev, Title: tr.T("email.activity.title", "name", name),
 		Body: body, StravaID: a.StravaID, Facts: facts, Time: time.Now(), Icon: sportIcon(a.Sport),
 	}
 	if len(samples) > 0 {
@@ -96,7 +110,7 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples
 		if err != nil {
 			slog.Error("digest chart", "activity", a.StravaID, "err", err)
 		} else {
-			m.Chart, m.ChartAlt = png, "Glucose during the activity"
+			m.Chart, m.ChartAlt = png, tr.T("email.activity.chart_alt")
 		}
 	}
 	return m, true
@@ -106,13 +120,13 @@ func ActivityMessage(a jobs.Activity, unit render.Unit, rng stats.Range, samples
 // are the activities of the week before, for the comparison. A week without
 // processed activities gets a short note instead of numbers, so silence never
 // has to be read as "glucava is broken". ok is always true.
-func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Unit, loc *time.Location) (notify.Message, bool) {
+func WeeklyMessage(tr *i18n.Translator, cur, prev []jobs.Activity, from, to time.Time, unit render.Unit, loc *time.Location) (notify.Message, bool) {
 	cur = withSummary(cur)
-	title := fmt.Sprintf("Weekly summary, %s – %s", from.In(loc).Format("2 Jan"), to.Add(-time.Second).In(loc).Format("2 Jan"))
+	title := tr.T("email.weekly.title", "from", tr.Date(from.In(loc), false), "to", tr.Date(to.Add(-time.Second).In(loc), false))
 	if len(cur) == 0 {
 		return notify.Message{
 			Type: notify.TypeWeeklySummary, Severity: "info", Title: title, Icon: "\U0001F634", // sleeping face
-			Body: "No activity was processed last week. If you did train, check that glucava is still connected to Strava.",
+			Body: tr.T("email.weekly.empty"),
 			Time: time.Now(),
 		}, true
 	}
@@ -143,22 +157,26 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 		if n == "" {
 			n = a.StravaID
 		}
-		return fmt.Sprintf("%s (%s)", n, a.Start.In(loc).Format("Mon 2 Jan"))
+		return fmt.Sprintf("%s (%s)", n, day(tr, a.Start.In(loc)))
 	}
 	facts := []notify.Fact{
-		{Label: "Activities", Value: fmt.Sprint(len(cur))},
-		{Label: "Total time", Value: dur(total)},
-		{Label: "Average time in range", Value: pct(tir)},
+		{Label: tr.T("email.weekly.activities"), Value: tr.Int(len(cur))},
+		{Label: tr.T("email.weekly.total_time"), Value: dur(tr, total)},
+		{Label: tr.T("email.weekly.avg_tir"), Value: pct(tr, tir)},
 	}
 	if len(prev) > 0 {
 		d := tir - meanTIR(prev)
-		facts = append(facts, notify.Fact{Label: "Change vs the week before", Value: fmt.Sprintf("%+.0f points", d)})
+		sign := "+"
+		if d < 0 {
+			sign, d = "-", -d
+		}
+		facts = append(facts, notify.Fact{Label: tr.T("email.weekly.change"), Value: tr.T("email.weekly.points", "v", sign+tr.Num(d, 0))})
 	}
 	facts = append(facts,
-		notify.Fact{Label: "Best time in range", Value: pct(best.Summary.TIR) + " · " + label(best)},
-		notify.Fact{Label: "Lowest time in range", Value: pct(worst.Summary.TIR) + " · " + label(worst)},
-		notify.Fact{Label: "Lowest glucose", Value: render.Value(lowest.Summary.Min, unit) + " " + string(unit) + " · " + label(lowest)},
-		notify.Fact{Label: "Activities with a low", Value: fmt.Sprintf("%d of %d", hypo, len(cur))},
+		notify.Fact{Label: tr.T("email.weekly.best"), Value: pct(tr, best.Summary.TIR) + " · " + label(best)},
+		notify.Fact{Label: tr.T("email.weekly.worst"), Value: pct(tr, worst.Summary.TIR) + " · " + label(worst)},
+		notify.Fact{Label: tr.T("email.weekly.lowest"), Value: glucose(tr, lowest.Summary.Min, unit) + " " + string(unit) + " · " + label(lowest)},
+		notify.Fact{Label: tr.T("email.weekly.with_low"), Value: tr.T("email.weekly.of", "n", tr.Int(hypo), "total", tr.Int(len(cur)))},
 	)
 	sev := "info"
 	if hypo > 0 {
@@ -166,7 +184,7 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	}
 	var bars []chartimg.Bar
 	for _, a := range cur {
-		bars = append(bars, chartimg.Bar{Label: barLabel(a, loc), Below: a.Summary.Below, InRange: a.Summary.TIR, Above: a.Summary.Above})
+		bars = append(bars, chartimg.Bar{Label: barLabel(tr, a, loc), Below: a.Summary.Below, InRange: a.Summary.TIR, Above: a.Summary.Above})
 	}
 	chart, cerr := chartimg.Bars(bars)
 	if cerr != nil {
@@ -175,18 +193,19 @@ func WeeklyMessage(cur, prev []jobs.Activity, from, to time.Time, unit render.Un
 	return notify.Message{
 		Type: notify.TypeWeeklySummary, Severity: sev,
 		Title: title,
-		Body:  "Your glucose numbers for last week's activities.", Facts: facts, Time: time.Now(),
-		Chart: chart, ChartAlt: "Time in range per activity: green in range, red below, orange above",
+		Body:  tr.T("email.weekly.body"), Facts: facts, Time: time.Now(),
+		Chart: chart, ChartAlt: tr.T("email.weekly.chart_alt"),
 	}, true
 }
 
 // barLabel is the short row label of the weekly chart: the day and the name.
-func barLabel(a jobs.Activity, loc *time.Location) string {
+func barLabel(tr *i18n.Translator, a jobs.Activity, loc *time.Location) string {
 	n := a.Name
 	if n == "" {
 		n = a.StravaID
 	}
-	return a.Start.In(loc).Format("Mon 2") + ": " + n
+	st := a.Start.In(loc)
+	return tr.Weekday(st.Weekday(), false) + " " + fmt.Sprint(st.Day()) + ": " + n
 }
 
 func withSummary(in []jobs.Activity) []jobs.Activity {
@@ -237,6 +256,8 @@ type Weekly struct {
 	Send    func(ctx context.Context, m notify.Message) error
 	Now     func() time.Time
 	Every   time.Duration // check interval; default 15 minutes
+	// Tr gives the installation language at send time; nil means English.
+	Tr notify.Translator
 }
 
 func (w *Weekly) now() time.Time {
@@ -275,7 +296,7 @@ func (w *Weekly) Once(ctx context.Context) (bool, error) {
 	}
 	sort.Slice(cur, func(i, j int) bool { return cur[i].Start.Before(cur[j].Start) })
 
-	msg, ok := WeeklyMessage(cur, prev, from, monday, w.Unit(), loc)
+	msg, ok := WeeklyMessage(w.Tr.Get(), cur, prev, from, monday, w.Unit(), loc)
 	if err := w.Send(ctx, msg); err != nil {
 		return false, err
 	}

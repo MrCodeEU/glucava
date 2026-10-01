@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/tools/mailer"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
 )
 
 func TestEmailSendsToConfiguredRecipient(t *testing.T) {
@@ -97,7 +99,7 @@ func TestEmailHTMLEscapesAndKeepsTextFallback(t *testing.T) {
 }
 
 func TestEmailHTMLSeverityDefaultsToInfo(t *testing.T) {
-	if h := emailHTML(Message{Title: "t", Body: "b"}); !strings.Contains(h, ">info<") {
+	if h := emailHTML(i18n.English(), Message{Title: "t", Body: "b"}); !strings.Contains(h, ">info<") {
 		t.Errorf("empty severity should render as info: %s", h)
 	}
 }
@@ -172,7 +174,7 @@ func TestIconForEveryAlertType(t *testing.T) {
 }
 
 func TestEmailHTMLDeclaresUTF8(t *testing.T) {
-	if h := emailHTML(Message{Title: "t", Body: "b", Icon: "\U0001F3C3"}); !strings.Contains(h, `<meta charset="utf-8">`) {
+	if h := emailHTML(i18n.English(), Message{Title: "t", Body: "b", Icon: "\U0001F3C3"}); !strings.Contains(h, `<meta charset="utf-8">`) {
 		t.Error("the HTML must declare UTF-8 so emoji survive being opened outside a mail client")
 	}
 }

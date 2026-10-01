@@ -5,28 +5,29 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
 func TestKPIDelta(t *testing.T) {
-	d := kpiDelta(82, 78, 1, "pts", 1, 1)
+	d := kpiDelta(i18n.English(), 82, 78, 1, "pts", 1, 1)
 	if d.Dir != "up" || d.Tone != "good" || d.Text != "+4.0 pts vs previous" {
 		t.Errorf("TIR up = %+v", d)
 	}
-	d = kpiDelta(40, 30, -1, "%", 1, 1)
+	d = kpiDelta(i18n.English(), 40, 30, -1, "%", 1, 1)
 	if d.Dir != "up" || d.Tone != "bad" {
 		t.Errorf("CV up must be bad: %+v", d)
 	}
-	d = kpiDelta(120, 130, 0, "mg/dL", 1, 0)
+	d = kpiDelta(i18n.English(), 120, 130, 0, "mg/dL", 1, 0)
 	if d.Dir != "down" || d.Tone != "" || d.Text != "−10 mg/dL vs previous" {
 		t.Errorf("neutral avg down = %+v", d)
 	}
-	d = kpiDelta(150, 150.01, 1, "pts", 1, 1)
+	d = kpiDelta(i18n.English(), 150, 150.01, 1, "pts", 1, 1)
 	if d.Dir != "flat" || d.Tone != "" {
 		t.Errorf("flat = %+v", d)
 	}
 	// mmol/L scale: 18.016 mg/dL is one mmol/L.
-	d = kpiDelta(118.016, 100, 0, "mmol/L", 1/18.016, 1)
+	d = kpiDelta(i18n.English(), 118.016, 100, 0, "mmol/L", 1/18.016, 1)
 	if d.Text != "+1.0 mmol/L vs previous" {
 		t.Errorf("scaled = %+v", d)
 	}

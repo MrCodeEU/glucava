@@ -8,6 +8,8 @@ import (
 
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
 )
 
 // Styling model. The stylesheet is Tailwind (v4) compiled into
@@ -122,6 +124,12 @@ func Card(children ...g.Node) g.Node { return Div(append(comp("card"), children.
 // (see postConfirmThenGo's comment on why an injected <script> tag cannot be
 // used here instead).
 func ConfirmDialog(id, variant, label, title, body string, confirmAttrs ...g.Node) g.Node {
+	return ConfirmDialogT(i18n.English(), id, variant, label, title, body, confirmAttrs...)
+}
+
+// ConfirmDialogT is ConfirmDialog with the Cancel button in the translator's
+// language; label, title and body are already translated by the caller.
+func ConfirmDialogT(tr *i18n.Translator, id, variant, label, title, body string, confirmAttrs ...g.Node) g.Node {
 	openIt := fmt.Sprintf("document.getElementById(%q).showModal()", id)
 	closeIt := fmt.Sprintf("document.getElementById(%q).close()", id)
 	return g.Group([]g.Node{
@@ -131,7 +139,7 @@ func ConfirmDialog(id, variant, label, title, body string, confirmAttrs ...g.Nod
 				H3(g.Text(title)),
 				P(g.Text(body)),
 				Div(append(comp2("confirmdialog", "actions"),
-					Btn("", "Cancel", g.Attr("data-on:click", closeIt)),
+					Btn("", tr.T("common.cancel"), g.Attr("data-on:click", closeIt)),
 					Btn(variant, label, confirmAttrs...),
 				)...),
 			)...),
@@ -246,44 +254,42 @@ func PageHead(title, sub string, actions ...g.Node) g.Node {
 }
 
 // StatusBadge maps an activity status to a badge.
-func StatusBadge(status string) g.Node {
-	label := map[string]string{"done": "Done", "failed": "Failed", "pending": "Queued", "processing": "Working"}[status]
-	if label == "" {
-		label = status
+func StatusBadge(status string) g.Node { return StatusBadgeT(i18n.English(), status) }
+
+// statusKeys maps a job status to its translation key.
+var statusKeys = map[string]string{
+	"done":       i18n.Key("status.done"),
+	"failed":     i18n.Key("status.failed"),
+	"pending":    i18n.Key("status.pending"),
+	"processing": i18n.Key("status.processing"),
+}
+
+// StatusBadgeT is StatusBadge in the translator's language.
+func StatusBadgeT(tr *i18n.Translator, status string) g.Node {
+	label := status // unknown statuses show as they are
+	if k, ok := statusKeys[status]; ok {
+		label = tr.T(k) // i18n:dynamic (keys registered in statusKeys)
 	}
 	return Badge(status, label)
 }
 
 // SeverityBadge maps an event severity to a badge.
-func SeverityBadge(sev string) g.Node {
+func SeverityBadge(sev string) g.Node { return SeverityBadgeT(i18n.English(), sev) }
+
+// SeverityBadgeT is SeverityBadge in the translator's language.
+func SeverityBadgeT(tr *i18n.Translator, sev string) g.Node {
 	switch sev {
 	case "error":
-		return Badge("error", "Error")
+		return Badge("error", tr.T("severity.error"))
 	case "warning":
-		return Badge("warning", "Warning")
+		return Badge("warning", tr.T("severity.warning"))
 	}
-	return Badge("info", "Info")
+	return Badge("info", tr.T("severity.info"))
 }
 
-// fmtDuration renders 3000s as "50 min" or 1h 12m.
-func fmtDuration(d time.Duration) string {
-	m := int(d.Round(time.Minute) / time.Minute)
-	if m < 60 {
-		return fmt.Sprintf("%d min", m)
-	}
-	return fmt.Sprintf("%dh %02dm", m/60, m%60)
-}
-
-// fmtWhen renders a time in loc, dropping the year for the current one.
-func fmtWhen(t time.Time, loc *time.Location, now time.Time) string {
-	if t.IsZero() {
-		return "-"
-	}
-	t = t.In(loc)
-	if t.Year() == now.In(loc).Year() {
-		return t.Format("Mon 2 Jan, 15:04")
-	}
-	return t.Format("2 Jan 2006, 15:04")
+// fmtWhenT is fmtWhen with the translator's weekday and month names and date order.
+func fmtWhenT(tr *i18n.Translator, t time.Time, loc *time.Location, now time.Time) string {
+	return tr.When(t, loc, now)
 }
 
 // Delta is the change-versus-before line under a stat tile. Dir is "up",

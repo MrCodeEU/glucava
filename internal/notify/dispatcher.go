@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 )
 
 // OutboxEvent is a stored event that has not been delivered yet.
@@ -14,6 +16,8 @@ type OutboxEvent struct {
 	Type     string
 	Severity string
 	Message  string
+	MsgKey   string         // translation key of the message; "" for old rows
+	MsgArgs  map[string]any // its arguments, see internal/eventmsg
 	StravaID string
 	Repaired bool
 	Created  time.Time
@@ -38,7 +42,11 @@ type Dispatcher struct {
 	Cooldown time.Duration    // default 6 hours
 	MaxAge   time.Duration    // default 24 hours
 	Now      func() time.Time
-	Link     func(Message) (href, label string) // optional: adds a web UI link to each message
+	Link     func(Translator, Message) (href, label string) // optional: adds a web UI link to each message
+	// Tr gives the installation language; Loc the time zone for times inside
+	// event messages. Both are read at each flush and may be nil.
+	Tr  Translator
+	Loc func() *time.Location
 
 	mu   sync.Mutex
 	sent map[string]time.Time
@@ -81,12 +89,18 @@ func (d *Dispatcher) Flush(ctx context.Context) error {
 			continue // nothing configured yet; keep the event until a channel exists
 		}
 
+		tr := d.Tr.Get()
+		loc := time.Local
+		if d.Loc != nil {
+			loc = d.Loc()
+		}
 		msg := Message{
-			Type: e.Type, Severity: e.Severity, Title: Title(e.Type), Body: e.Message,
+			Type: e.Type, Severity: e.Severity, Title: Title(tr, e.Type),
+			Body:     eventmsg.Render(tr, loc, e.MsgKey, e.MsgArgs, e.Message),
 			StravaID: e.StravaID, Repaired: e.Repaired, Time: e.Created,
 		}
 		if d.Link != nil {
-			msg.Link, msg.LinkLabel = d.Link(msg)
+			msg.Link, msg.LinkLabel = d.Link(d.Tr, msg)
 		}
 		var errs []error
 		delivered := false

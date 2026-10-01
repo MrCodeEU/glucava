@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "name": "German (Austria)",
+    "native_name": "Deutsch (Österreich)",
+    "translators": ["glucava contributors"],
+    "fallback": "de"
+  },
+
+  "format.month.short.1": "Jän",
+  "format.month.long.1": "Jänner"
+}

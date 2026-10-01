@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Languages: Settings → Language (Automatic, English, Deutsch) translates the whole interface, notification and email texts, event messages on the Notifications page, chart labels and the PDF report; "Automatic" follows the browser. Dates, weekday and month names, durations and decimal separators follow the language (for example `5,8%` and `Do, 1. Okt`). The Strava description template is never translated; only the preset names and descriptions are. Translations are plain JSON files in `internal/i18n/locales/` that anyone can contribute without code changes: see `docs/TRANSLATING.md`, `make i18n-check` and `go run ./tools/i18n new <tag> <name> <native name>`.
+- Installable web app and Web Push notifications: enable per device under Settings → Notifications → Push notifications (HTTPS required; iOS needs Add to Home Screen first). Pushes the same events as email: failure alerts and, optionally, activity, weekly and monthly summaries. The service worker caches only static files, so no glucose data is stored on the device. New settings `push_alerts` and `push_summaries`.
+
+### Changed
+- Stored events carry a message key and arguments (migration 026), so the Notifications page and notifications show in the current language; older entries keep their English text.
+- Notification and email texts are written in the installation language, since they are sent without a browser; the PDF report uses the language of the person who downloads it.
+- "1 activities failed" now reads "1 activity failed".
+
 ## [0.7.3] - 2026-09-30
 
 ### Changed

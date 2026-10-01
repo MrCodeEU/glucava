@@ -8,6 +8,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 )
 
@@ -42,6 +43,8 @@ type Config struct {
 	MailActivity   bool   // email a summary after each processed activity
 	MailWeekly     bool   // email a weekly summary
 	MailHealth     bool   // email a monthly health report
+	PushAlerts     bool   // push failure alerts to subscribed devices
+	PushSummaries  bool   // push activity, weekly and health summaries
 	ChartImage     bool   // attach a glucose chart photo to the Strava activity
 	ChartTheme     string // "light" or "dark"
 	ChartSize      string // "standard" or "large"
@@ -82,6 +85,10 @@ type Config struct {
 	// ArtifactMode says what the Overview does with suspected CGM artifacts
 	// (ArtifactFlagged or ArtifactExclude); empty means flagged.
 	ArtifactMode string
+
+	// Language is the interface language: a locale tag from internal/i18n
+	// ("de"), or "auto"/empty to follow the browser's Accept-Language.
+	Language string
 }
 
 func (s *PB) settingsRecord() (*core.Record, error) {
@@ -125,6 +132,8 @@ func (s *PB) LoadConfig() (Config, error) {
 		OverviewLayout:       r.GetString("overview_layout"),
 		OverviewDefaultRange: r.GetString("overview_default_range"),
 		ArtifactMode:         r.GetString("artifact_mode"),
+		PushAlerts:           r.GetBool("push_alerts"), PushSummaries: r.GetBool("push_summaries"),
+		Language: r.GetString("language"),
 	}, nil
 }
 
@@ -181,6 +190,9 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("overview_layout", c.OverviewLayout)
 	r.Set("overview_default_range", c.OverviewDefaultRange)
 	r.Set("artifact_mode", c.ArtifactMode)
+	r.Set("push_alerts", c.PushAlerts)
+	r.Set("push_summaries", c.PushSummaries)
+	r.Set("language", c.Language)
 	return s.App.Save(r)
 }
 
@@ -247,6 +259,8 @@ type EventRow struct {
 	Type     string
 	Severity string
 	Message  string
+	MsgKey   string         // translation key of the message, "" for old rows
+	MsgArgs  map[string]any // its arguments (see internal/eventmsg)
 	StravaID string
 	Repaired bool
 	Notified bool
@@ -274,6 +288,7 @@ func (s *PB) ListEvents(_ context.Context, limit int) ([]EventRow, error) {
 	for i, r := range recs {
 		out[i] = EventRow{
 			ID: r.Id, Type: r.GetString("type"), Severity: r.GetString("severity"), Message: r.GetString("message"),
+			MsgKey: r.GetString("msg_key"), MsgArgs: eventmsg.Decode(r.GetString("msg_args")),
 			StravaID: r.GetString("strava_id"), Repaired: r.GetBool("repaired"), Notified: r.GetBool("notified"),
 			Created: r.GetDateTime("created").Time(),
 		}

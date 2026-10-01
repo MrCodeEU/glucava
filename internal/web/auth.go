@@ -60,18 +60,18 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	s.html(w, http.StatusOK, LoginPage(s.Build, "", ""))
+	s.html(w, http.StatusOK, LoginPage(s.tr(r), s.Build, "", ""))
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
-		http.Error(w, "cross-site request refused", http.StatusForbidden)
+		http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 		return
 	}
 	ip := s.Proxies.IP(r)
 	if s.tooManyLogins(ip) {
 		w.Header().Set("Retry-After", "60")
-		s.html(w, http.StatusTooManyRequests, LoginPage(s.Build, "Too many attempts. Wait a minute and try again.", r.PostFormValue("email")))
+		s.html(w, http.StatusTooManyRequests, LoginPage(s.tr(r), s.Build, s.tr(r).T("login.error.too_many"), r.PostFormValue("email")))
 		return
 	}
 
@@ -79,11 +79,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	rec, err := s.App.FindAuthRecordByEmail("users", email)
 	if err != nil || !rec.ValidatePassword(r.PostFormValue("password")) {
 		s.noteLoginFailure(ip)
-		s.html(w, http.StatusUnauthorized, LoginPage(s.Build, "Wrong email or password.", email))
+		s.html(w, http.StatusUnauthorized, LoginPage(s.tr(r), s.Build, s.tr(r).T("login.error.wrong"), email))
 		return
 	}
 	if err := s.startSession(w, r, rec); err != nil {
-		http.Error(w, "cannot create session", http.StatusInternalServerError)
+		http.Error(w, s.tr(r).T("err.http.session"), http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -91,7 +91,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
-		http.Error(w, "cross-site request refused", http.StatusForbidden)
+		http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 		return
 	}
 	// Rotating the token key makes the old token invalid everywhere, not just in this browser.

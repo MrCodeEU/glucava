@@ -7,6 +7,8 @@ import (
 
 	g "maragu.dev/gomponents"
 	. "maragu.dev/gomponents/html"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
 )
 
 var (
@@ -30,7 +32,7 @@ func TestNoDuplicateClass(t *testing.T) {
 			ConfirmDialog("d", "danger", "Delete", "Sure?", "body"),
 			Badge("done", "ok"), Notice("error", g.Text("x")), Toast("ok", "hi"),
 		),
-		"login": LoginPage("x", "bad", "a@example.test"),
+		"login": LoginPage(i18n.English(), "x", "bad", "a@example.test"),
 	}
 	for name, n := range nodes {
 		html := renderString(n)

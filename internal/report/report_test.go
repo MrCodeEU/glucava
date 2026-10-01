@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"math"
 	"os"
@@ -13,12 +14,17 @@ import (
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
 
-var vienna = mustLoc("Europe/Vienna")
+var (
+	vienna = mustLoc("Europe/Vienna")
+	en     = i18n.English()
+	de     = i18n.Default().For("de")
+)
 
 func mustLoc(name string) *time.Location {
 	l, err := time.LoadLocation(name)
@@ -172,10 +178,10 @@ func TestSVGsAreWellFormed(t *testing.T) {
 	}
 	// Degenerate inputs stay well-formed as well.
 	assertSVG(t, "empty tir", TIRBarSVG(analytics.TIR5{}))
-	assertSVG(t, "empty agp", AGPSVG(analytics.AGP{}, m.In.Thr, render.MgDL))
-	assertSVG(t, "no days", TrendSVG(nil, m.In.Thr, render.MgDL, vienna))
-	assertSVG(t, "one day", TrendSVG(m.Daily[:1], m.In.Thr, render.MmolL, vienna))
-	assertSVG(t, "empty parts", DayPartsSVG([4]analytics.DayPart{}))
+	assertSVG(t, "empty agp", AGPSVG(en, analytics.AGP{}, m.In.Thr, render.MgDL))
+	assertSVG(t, "no days", TrendSVG(en, nil, m.In.Thr, render.MgDL, vienna))
+	assertSVG(t, "one day", TrendSVG(en, m.Daily[:1], m.In.Thr, render.MmolL, vienna))
+	assertSVG(t, "empty parts", DayPartsSVG(en, [4]analytics.DayPart{}))
 }
 
 var badNumber = regexp.MustCompile(`NaN|Inf`)
@@ -204,17 +210,20 @@ func assertSVG(t *testing.T, name string, b []byte) {
 
 func TestTemplateTextStaysInsideTheFontSubset(t *testing.T) {
 	for _, compare := range []bool{false, true} {
-		in := fixture(compare)
-		in.Acts[0].Name = "Läufer 🏃 – Süd → Ost · 10 km… 朝ラン"
-		in.Sources[0].Name = "dexcom ✓"
-		files, err := Build(in).Files()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, name := range []string{"data.json", "agp.svg", "trend.svg", "parts.svg"} {
-			for _, r := range string(files[name]) {
-				if r != '\n' && !inSubset(r) {
-					t.Errorf("%s contains %q (U+%04X), which the embedded font subset lacks", name, r, r)
+		for _, tr := range []*i18n.Translator{en, de} {
+			in := fixture(compare)
+			in.T = tr
+			in.Acts[0].Name = "Läufer 🏃 – Süd → Ost · 10 km… 朝ラン"
+			in.Sources[0].Name = "dexcom ✓"
+			files, err := Build(in).Files()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"data.json", "agp.svg", "trend.svg", "parts.svg"} {
+				for _, r := range string(files[name]) {
+					if r != '\n' && !inSubset(r) {
+						t.Errorf("%s (%s) contains %q (U+%04X), which the embedded font subset lacks", name, tr.Tag(), r, r)
+					}
 				}
 			}
 		}
@@ -312,7 +321,11 @@ func TestRenderPages(t *testing.T) {
 		t.Skip("REPORT_PNG_DIR not set")
 	}
 	typst := typstOrSkip(t)
-	for name, in := range map[string]Input{"mgdl": fixture(true), "mmol": func() Input { i := fixture(false); i.Unit = render.MmolL; return i }()} {
+	de := fixture(true)
+	de.T = i18n.Default().For("de")
+	deMmol := fixture(false)
+	deMmol.Unit, deMmol.T = render.MmolL, i18n.Default().For("de")
+	for name, in := range map[string]Input{"mgdl": fixture(true), "mmol": func() Input { i := fixture(false); i.Unit = render.MmolL; return i }(), "de-mgdl": de, "de-mmol": deMmol} {
 		pages, err := Build(in).PNGs(context.Background(), typst, 110)
 		if err != nil {
 			t.Fatal(err)
@@ -322,5 +335,98 @@ func TestRenderPages(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestGermanTemplateData(t *testing.T) {
+	in := fixture(true)
+	in.T = de
+	d := Build(in).template()
+	if d.Lang != "de" || d.Title != "Glukosebericht" {
+		t.Errorf("lang/title = %q/%q", d.Lang, d.Title)
+	}
+	if d.Range != "31. Aug – 30. Sep 2026" {
+		t.Errorf("range = %q", d.Range)
+	}
+	if d.Kpis[0].Label != "Zeit im Zielbereich" || !strings.HasSuffix(d.Kpis[0].Delta, "ggü. Vorperiode") {
+		t.Errorf("kpi 0 = %+v", d.Kpis[0])
+	}
+	if !strings.Contains(d.Kpis[2].Value, ",") || strings.Contains(d.Kpis[2].Value, ".") {
+		t.Errorf("GMI %q should use a decimal comma", d.Kpis[2].Value)
+	}
+	if d.Labels["timeInRange"] != "Zeit im Zielbereich" || d.UnitNote != "Alle Glukosewerte in mg/dL" {
+		t.Errorf("labels = %v / %q", d.Labels, d.UnitNote)
+	}
+	in.Unit = render.MmolL
+	dm := Build(in).template()
+	if !strings.Contains(dm.Kpis[1].Value, ",") {
+		t.Errorf("mmol/L average %q should use a decimal comma", dm.Kpis[1].Value)
+	}
+	assertNoKeyLeak(t, "de data.json", mustJSON(t, d))
+	assertNoKeyLeak(t, "de mmol data.json", mustJSON(t, dm))
+}
+
+func TestEnglishIsTheDefaultTranslator(t *testing.T) {
+	a := Build(fixture(true)).template()
+	in := fixture(true)
+	in.T = en
+	b := Build(in).template()
+	if string(mustJSON(t, a)) != string(mustJSON(t, b)) {
+		t.Error("nil translator differs from English")
+	}
+	for _, r := range []string{"Glucose report", "Time in range", "Part of day", "vs previous"} {
+		if !strings.Contains(string(mustJSON(t, a)), r) {
+			t.Errorf("English data lacks %q", r)
+		}
+	}
+	assertNoKeyLeak(t, "en data.json", mustJSON(t, a))
+}
+
+func TestChartTextIsTranslated(t *testing.T) {
+	for _, tr := range []*i18n.Translator{en, de} {
+		in := fixture(false)
+		in.T = tr
+		files, err := Build(in).Files()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"agp.svg", "trend.svg", "parts.svg", "tir.svg"} {
+			assertNoKeyLeak(t, tr.Tag()+" "+name, files[name])
+		}
+		want := map[string]string{"en": "Night", "de": "Nacht"}[tr.Tag()]
+		if !bytes.Contains(files["parts.svg"], []byte(want)) {
+			t.Errorf("%s parts.svg lacks %q", tr.Tag(), want)
+		}
+		_ = DayPartsSVG(tr, [4]analytics.DayPart{})
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// assertNoKeyLeak fails when a translation key name shows up as text.
+func assertNoKeyLeak(t *testing.T, what string, b []byte) {
+	t.Helper()
+	if i := bytes.Index(b, []byte("report.")); i >= 0 {
+		t.Errorf("%s leaks a key name near %q", what, b[i:min(len(b), i+30)])
+	}
+}
+
+func TestGermanPDFSmoke(t *testing.T) {
+	typst := typstOrSkip(t)
+	in := fixture(true)
+	in.T = de
+	pdf, err := Build(in).PDF(context.Background(), typst)
+	if err != nil || !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Fatalf("german report: %v", err)
+	}
+	if n := len(pageCount.FindAll(pdf, -1)); n < 1 || n > 2 {
+		t.Errorf("%d pages, want 1-2", n)
 	}
 }

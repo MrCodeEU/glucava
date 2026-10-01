@@ -99,6 +99,10 @@ descriptions are normal prose, not caveman/terse notes, since other people
 read them. Attribution footers as instructed in the session (Claude commit
 trailer / PR footer) — don't invent your own.
 
+## Translations (i18n)
+
+**Never add a user-visible string without a key.** Text a user reads (page text, toasts, notification and email text, PDF report, chart labels, weekday and month names) goes through `internal/i18n`: `t(pd, "key")` in pages, `s.tr(r).T("key")` in handlers and SSE patches, `tr.When/Num/List` for dates, numbers and lists. Add the key to `internal/i18n/locales/en.json` and `de.json` (informal "du") in the same change. Keys must be string literals (tables use `i18n.Key`, the lookup line `// i18n:dynamic`). `make i18n-check` fails on missing or unused keys and placeholder mismatches; files listed in `convertedFiles` (`internal/web/i18n_lint_test.go`) may not gain hard-coded English. Keep nav labels short (phone tab bar). The Strava description template is user text and stays untranslated. See [docs/TRANSLATING.md](docs/TRANSLATING.md).
+
 ## Frontend (Tailwind)
 
 `internal/web/static/app.css` is generated: edit `input.css` or the class strings in `internal/web/*.go`, then run `make css` and commit the result (`make css-check` fails CI when it is stale). Class strings in Go must be whole literals; the scanner cannot see names built at run time. Never give one element both `comp()` and `Class()`. After UI changes run `make shot SHOTFLAGS=-matrix` against `make mock` and look at the PNGs.

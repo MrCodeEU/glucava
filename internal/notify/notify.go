@@ -4,6 +4,8 @@ package notify
 import (
 	"context"
 	"time"
+
+	"github.com/MrCodeEU/glucava/internal/i18n"
 )
 
 // Message is one notification.
@@ -33,21 +35,41 @@ type Channel interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// titles maps event types to short human titles.
-var titles = map[string]string{
-	"strava_failed":       "Strava update failed",
-	"selector_repaired":   "Strava selector repaired",
-	"session_expired":     "Strava session expired",
-	"glucose_unavailable": "Glucose data unavailable",
-	"canary_failed":       "Strava canary check failed",
-	"glucose_gap":         "No glucose readings",
-	"trigger_rejected":    "Trigger call rejected",
+// Translator returns the translator for texts that are made without a
+// request (alerts, summaries, the test message). The server passes one that
+// follows the installation language setting at call time, so a change applies
+// to the next message. A nil function, or one that returns nil, means English.
+// notify stays free of the store: it only ever sees this function.
+type Translator func() *i18n.Translator
+
+// Get returns the translator to use now; never nil.
+func (f Translator) Get() *i18n.Translator {
+	if f != nil {
+		if tr := f(); tr != nil {
+			return tr
+		}
+	}
+	return i18n.English()
 }
 
-// Title returns the title for an event type.
-func Title(eventType string) string {
-	if t, ok := titles[eventType]; ok {
-		return t
+// titles maps event types to the translation key of their short title.
+var titles = map[string]string{
+	"strava_failed":       i18n.Key("notify.title.strava_failed"),
+	"selector_repaired":   i18n.Key("notify.title.selector_repaired"),
+	"session_expired":     i18n.Key("notify.title.session_expired"),
+	"glucose_unavailable": i18n.Key("notify.title.glucose_unavailable"),
+	"canary_failed":       i18n.Key("notify.title.canary_failed"),
+	"glucose_gap":         i18n.Key("notify.title.glucose_gap"),
+	"activity_not_found":  i18n.Key("notify.title.activity_not_found"),
+	"trigger_rejected":    i18n.Key("notify.title.trigger_rejected"),
+	TypeTest:              i18n.Key("notify.title.test"),
+}
+
+// Title returns the title for an event type in the language of tr. A type
+// without a title shows its name.
+func Title(tr *i18n.Translator, eventType string) string {
+	if k, ok := titles[eventType]; ok {
+		return tr.T(k) // i18n:dynamic (keys registered in titles)
 	}
 	return eventType
 }

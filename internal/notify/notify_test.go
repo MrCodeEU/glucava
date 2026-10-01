@@ -217,7 +217,7 @@ func TestNoRedirectsFollowed(t *testing.T) {
 func TestDispatcherAddsLink(t *testing.T) {
 	ch := &fakeChannel{}
 	d, _, _ := newDispatcher([]OutboxEvent{ev("1", "strava_failed", "42")}, ch)
-	d.Link = func(m Message) (string, string) { return LinkFor("https://g.example/", m) }
+	d.Link = func(tr Translator, m Message) (string, string) { return LinkFor(tr.Get(), "https://g.example/", m) }
 	if err := d.Flush(context.Background()); err != nil {
 		t.Fatal(err)
 	}

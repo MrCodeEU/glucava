@@ -83,6 +83,7 @@ type Server struct {
 	}
 	failures map[string]*loginBucket
 
+	langc         langCache     // stored language setting, see i18n.go
 	overviewCache overviewCache // computed Overview models, see overviewmodel.go
 	reportSt      reportState   // PDF report concurrency and cache, see report.go
 }
@@ -107,7 +108,8 @@ func (s *Server) page(r *http.Request, title, active string) PageData {
 	if err != nil {
 		slog.Error("count recent errors", "err", err)
 	}
-	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n}
+	tr := s.tr(r)
+	return PageData{Title: title, Active: active, User: email, Build: s.Build, Demo: s.Demo, Alerts: n, T: tr, Lang: tr.Lang()}
 }
 
 // Handler returns the UI routes. Mount it on the paths in Paths.
@@ -121,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
+	s.pwaRoutes(mux)
 
 	page := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
 	page("GET /{$}", s.dashboard)
@@ -152,6 +155,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/artifact-mark", s.actionArtifactMark)
 	page("POST /actions/account", s.actionAccount)
 	page("POST /actions/notify/test", s.actionNotifyTest)
+	s.pushRoutes(page)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
 	page("POST /actions/strava/test", s.actionStravaTest)
 	page("POST /actions/strava/login", s.actionStravaLogin)
@@ -165,7 +169,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /export/activities.csv", s.exportActivities)
 	page("GET /export/report.pdf", s.exportReport)
 
-	return secure(mux)
+	return secure(s.withTranslator(mux))
 }
 
 // Routes lists the PocketBase route patterns that forward to Handler. PocketBase
@@ -173,6 +177,7 @@ func (s *Server) Handler() http.Handler {
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events", "/logs",
 	"/ui/charts", "/ui/charts/refresh", "/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/manifest.webmanifest", "/sw.js",
 }
 
 // maxBody caps most request bodies. The largest legitimate one otherwise is a
@@ -228,14 +233,14 @@ func (s *Server) auth(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.user(r); !ok {
 			if r.Header.Get("Datastar-Request") != "" {
-				http.Error(w, "signed out", http.StatusUnauthorized)
+				http.Error(w, s.tr(r).T("err.http.signed_out"), http.StatusUnauthorized)
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 		if r.Method == http.MethodPost && !sameOrigin(r) {
-			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			http.Error(w, s.tr(r).T("err.http.cross_site"), http.StatusForbidden)
 			return
 		}
 		next(w, r)

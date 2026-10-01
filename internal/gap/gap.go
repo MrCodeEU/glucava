@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MrCodeEU/glucava/internal/eventmsg"
 	"github.com/MrCodeEU/glucava/internal/jobs"
 )
 
@@ -64,6 +65,8 @@ func (m *Monitor) Once(ctx context.Context) (bool, error) {
 	err := m.Record(ctx, jobs.Event{
 		Type: jobs.EventGlucoseGap, Severity: "warning",
 		Message: fmt.Sprintf("no glucose reading for %s (the last one was at %s)", human(age), last.In(loc).Format("Mon 2 Jan, 15:04")),
+		MsgKey:  eventmsg.KeyGap,
+		MsgArgs: map[string]any{"age_min": int(age.Round(time.Minute).Minutes()), "last_at": last.UTC().Format(time.RFC3339)},
 	})
 	if err != nil {
 		return false, err // not marked as alerted: try again next time

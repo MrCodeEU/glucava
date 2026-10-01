@@ -38,3 +38,12 @@ done
 A character outside the subset renders as a missing glyph in the PDF. Add it to
 the `--unicodes` list and regenerate before using a new symbol in the template
 data.
+
+## Languages
+
+The subset already covers German: ä ö ü Ä Ö Ü ß and the non-breaking space are
+in Latin-1. `TestTemplateTextStaysInsideTheFontSubset` builds the report data
+in English and German and fails on any character outside the subset. A locale
+that needs more glyphs (the German low quote U+201E, a non-Latin script) must
+extend `--unicodes` above and `inSubset` in `../data.go`, then regenerate the
+two files.

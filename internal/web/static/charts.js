@@ -15,16 +15,19 @@
 (() => {
   const pad = (n) => String(n).padStart(2, '0');
   const num = (v) => (Array.isArray(v) ? v[v.length - 1] : v);
+  // Numbers follow the page's language (<html lang>): "5,6" in German.
+  const LANG = document.documentElement.lang || 'en';
+  const nf = (v, min, max) => new Intl.NumberFormat(LANG, { minimumFractionDigits: min, maximumFractionDigits: max }).format(v);
 
   // Value formatters, by name. hhmm takes minutes since midnight.
   const FMT = {
     mgdl: (v) => String(Math.round(v)),
-    mmol: (v) => Number(v).toFixed(1),
-    pct: (v) => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : Number(v).toFixed(1)) + '%',
+    mmol: (v) => nf(v, 1, 1),
+    pct: (v) => (Math.abs(v - Math.round(v)) < 0.05 ? nf(Math.round(v), 0, 0) : nf(v, 1, 1)) + '%',
     int: (v) => String(Math.round(v)),
     bpm: (v) => Math.round(v) + ' bpm',
     m: (v) => Math.round(v) + ' m',
-    num: (v) => String(Math.round(v * 100) / 100),
+    num: (v) => nf(v, 0, 2),
     hhmm: (v) => v >= 1440 ? '24:00' : pad(Math.floor(v / 60) % 24) + ':' + pad(Math.round(v % 60) % 60),
     min: (v) => {
       const m = Math.round(v);

@@ -3,10 +3,12 @@ package report
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/MrCodeEU/glucava/internal/analytics"
+	"github.com/MrCodeEU/glucava/internal/i18n"
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/stats"
 )
@@ -160,7 +162,7 @@ func (a yAxis) drawGrid(c *canvas, left, right float64) {
 
 // AGPSVG draws the ambulatory glucose profile: the median with the 25-75 and
 // 5-95 percentile bands over the time of day, and the target range shaded.
-func AGPSVG(agp analytics.AGP, thr analytics.Thresholds, unit render.Unit) []byte {
+func AGPSVG(tr *i18n.Translator, agp analytics.AGP, thr analytics.Thresholds, unit render.Unit) []byte {
 	const h, left, right, top, bottom = 172.0, 38.0, 10.0, 8.0, 24.0
 	c := newCanvas(chartWidth, h)
 	maxV := 0.0
@@ -205,7 +207,7 @@ func AGPSVG(agp analytics.AGP, thr analytics.Thresholds, unit render.Unit) []byt
 		runs = append(runs, cur)
 	}
 	if len(runs) == 0 {
-		c.text(chartWidth/2, h/2, "Not enough readings for a daily profile", "middle", colMuted)
+		c.text(chartWidth/2, h/2, tr.T("report.chart.noprofile"), "middle", colMuted)
 		return c.finish()
 	}
 	band := func(lo, hi func(analytics.AGPBin) float64, fill string) {
@@ -269,11 +271,11 @@ func TIRBarSVG(t analytics.TIR5) []byte {
 
 // TrendSVG draws the day-by-day picture: average glucose with the daily
 // min-max band on top, time in range as bars below.
-func TrendSVG(days []analytics.Day, thr analytics.Thresholds, unit render.Unit, loc *time.Location) []byte {
+func TrendSVG(tr *i18n.Translator, days []analytics.Day, thr analytics.Thresholds, unit render.Unit, loc *time.Location) []byte {
 	const h, left, right = 182.0, 38.0, 10.0
 	c := newCanvas(chartWidth, h)
 	if len(days) == 0 {
-		c.text(chartWidth/2, h/2, "No days with readings", "middle", colMuted)
+		c.text(chartWidth/2, h/2, tr.T("report.chart.nodays"), "middle", colMuted)
 		return c.finish()
 	}
 	pw := chartWidth - left - right
@@ -316,7 +318,7 @@ func TrendSVG(days []analytics.Day, thr analytics.Thresholds, unit render.Unit, 
 		c.line(left, y, chartWidth-right, y, colGrid, 0.6)
 		c.text(left-6, y+3.5, fmt.Sprintf("%.0f%%", p), "end", colMuted)
 	}
-	c.text(left, tTop-6, "Time in range", "start", colMuted, `font-size="10"`)
+	c.text(left, tTop-6, tr.T("report.label.timeInRange"), "start", colMuted, `font-size="10"`)
 	bw := math.Max(1.2, math.Min(14, pw/(span+1)*0.7))
 	for _, d := range days {
 		v := d.TIR.InRange
@@ -342,9 +344,9 @@ func TrendSVG(days []analytics.Day, thr analytics.Thresholds, unit render.Unit, 
 		if n > 1 {
 			t = first.Add(time.Duration(float64(last.Sub(first)) * float64(i) / float64(n-1)))
 		}
-		label := t.In(loc).Format("2 Jan")
+		label := tr.Date(t.In(loc), false)
 		if long {
-			label = t.In(loc).Format("Jan 2006")
+			label = tr.Month(t.In(loc).Month(), false) + " " + strconv.Itoa(t.In(loc).Year())
 		}
 		anchor := "middle"
 		switch {
@@ -361,17 +363,17 @@ func TrendSVG(days []analytics.Day, thr analytics.Thresholds, unit render.Unit, 
 }
 
 // DayPartsSVG draws one stacked five-band bar per part of the day.
-func DayPartsSVG(parts [4]analytics.DayPart) []byte {
+func DayPartsSVG(tr *i18n.Translator, parts [4]analytics.DayPart) []byte {
 	const rowH, gap, left, right = 17.0, 8.0, 118.0, 56.0
 	h := 4*rowH + 3*gap + 6
 	c := newCanvas(chartWidth, h)
 	bw := chartWidth - left - right
 	for i, p := range parts {
 		y := 3 + float64(i)*(rowH+gap)
-		c.text(left-8, y+rowH/2+4, fmt.Sprintf("%s %02d–%02d", p.Name, p.FromHour, p.ToHour%24), "end", colInk)
+		c.text(left-8, y+rowH/2+4, partLabel(tr, i, p), "end", colInk)
 		if p.Count == 0 {
 			c.rect(left, y, bw, rowH, "#eef1f4")
-			c.text(left+8, y+rowH/2+4, "no readings", "start", colMuted, `font-size="10"`)
+			c.text(left+8, y+rowH/2+4, tr.T("report.chart.noreadings"), "start", colMuted, `font-size="10"`)
 			continue
 		}
 		x := left
