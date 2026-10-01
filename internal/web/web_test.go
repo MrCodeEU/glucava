@@ -28,6 +28,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
+	"github.com/MrCodeEU/glucava/internal/testutil"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 	"github.com/MrCodeEU/glucava/internal/trigger"
 )
@@ -62,25 +63,23 @@ type env struct {
 	jobs *fakeJobs
 }
 
-func newEnv(t *testing.T) *env {
-	t.Helper()
-	app := core.NewBaseApp(core.BaseAppConfig{DataDir: t.TempDir()})
-	if err := app.Bootstrap(); err != nil {
-		t.Fatal(err)
+// webTemplate holds the migrated database with the test user already created,
+// since hashing the password is slow under -race.
+var webTemplate = testutil.NewTemplate(func(app core.App) error {
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		return err
 	}
-	if err := app.RunAllMigrations(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = app.ClearBootstrap() })
-
-	users, _ := app.FindCollectionByNameOrId("users")
 	u := core.NewRecord(users)
 	u.SetEmail(testEmail)
 	u.SetPassword(testPass)
 	u.SetVerified(true)
-	if err := app.Save(u); err != nil {
-		t.Fatal(err)
-	}
+	return app.Save(u)
+})
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	app := webTemplate.App(t)
 
 	cipher, err := secrets.NewCipher([]byte(strings.Repeat("k", 32)))
 	if err != nil {

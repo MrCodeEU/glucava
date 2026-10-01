@@ -15,20 +15,12 @@ import (
 	"github.com/MrCodeEU/glucava/internal/render"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
+	"github.com/MrCodeEU/glucava/internal/testutil"
 )
 
-func newApp(t *testing.T) core.App {
-	t.Helper()
-	app := core.NewBaseApp(core.BaseAppConfig{DataDir: t.TempDir()})
-	if err := app.Bootstrap(); err != nil {
-		t.Fatal(err)
-	}
-	if err := app.RunAllMigrations(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = app.ClearBootstrap() })
-	return app
-}
+var migrated = testutil.NewTemplate(nil)
+
+func newApp(t *testing.T) core.App { return migrated.App(t) }
 
 var t0 = time.Date(2026, 9, 20, 7, 0, 0, 0, time.UTC)
 
