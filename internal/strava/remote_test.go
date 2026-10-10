@@ -69,7 +69,7 @@ func TestRemoteAllowedPages(t *testing.T) {
 	s := &RemoteSession{w: NewWriter(Config{})}
 	for host, want := range map[string]bool{
 		"www.strava.com": true, "strava.com": true, "accounts.google.com": true, "appleid.apple.com": true,
-		"www.facebook.com": true, "accounts.google.at": true, "accounts.google.co.uk": true, "accounts.google.com.br": true, "google.evil.example": false, "evilgoogle.at": false, "evil.example": false, "strava.com.evil.example": false, "notgoogle.com": false,
+		"www.facebook.com": true, "accounts.youtube.com": true, "evilyoutube.com": false, "accounts.google.at": true, "accounts.google.co.uk": true, "accounts.google.com.br": true, "google.evil.example": false, "evilgoogle.at": false, "evil.example": false, "strava.com.evil.example": false, "notgoogle.com": false,
 	} {
 		if got := s.allowedPage(host); got != want {
 			t.Errorf("allowedPage(%q) = %v, want %v", host, got, want)

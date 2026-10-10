@@ -137,6 +137,7 @@ func remoteOptions() []chromedp.ExecAllocatorOption {
 // cannot be used to browse the web from the server.
 var ssoSites = []string{
 	"google.com", "gstatic.com", "recaptcha.net", "googleusercontent.com",
+	"youtube.com", // accounts.youtube.com: Google's sign-in hops through it to set the session
 	"apple.com", "facebook.com", "fbcdn.net",
 }
 
