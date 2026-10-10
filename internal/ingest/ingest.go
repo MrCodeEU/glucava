@@ -116,7 +116,7 @@ func (in *Ingestor) fetchAndStore(ctx context.Context, from, to time.Time) (int,
 	if len(got) == 0 {
 		return 0, nil
 	}
-	if err := in.Store.SaveSamples(ctx, in.SourceName, got); err != nil {
+	if err := in.Store.SaveSamples(ctx, glucose.NameOf(in.Source, in.SourceName), got); err != nil {
 		return 0, fmt.Errorf("ingest: store samples: %w", err)
 	}
 	metrics.IngestReadingsStoredTotal.Add(float64(len(got)))

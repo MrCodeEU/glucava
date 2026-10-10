@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -336,7 +337,7 @@ func TestLogoutClearsCookie(t *testing.T) {
 }
 
 const validSettings = `{"unit":"mmol/L","rangeLow":72,"rangeHigh":170,"preMin":15,"postMin":20,"pollMin":5,
-"dexcomRegion":"us","dexcomUsername":"me","dexcomPassword":"s3cret-dexcom","ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
+"glucoseSource":"dexcom","src":{"dexcom":{"region":"us","username":"me","password":"s3cret-dexcom"},"nightscout":{"url":"https://ns.example","token":"ns-tok","apisecret":""}},"ntfyURL":"https://ntfy.example/t","ntfyToken":"tk-secret",
 "webhookURL":"","webhookSecret":"","emailTo":"me@example.com",
 "smtpHost":"smtp.example.com","smtpPort":587,"smtpUsername":"u","smtpPassword":"s3cret-smtp","smtpTLS":false,"smtpSender":"g@example.com","smtpSenderName":"glucava",
 "publicURL":"https://glucava.example.com","mailAlerts":true,"mailActivity":true,"mailWeekly":true,"mailHealth":true,"gapAlertHours":6,"chartTheme":"dark","chartSize":"large","chartBand":true,"chartActivity":true,"chartDots":false,"chartLine":3}`
@@ -354,6 +355,12 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	if cfg.Unit != "mmol/L" || cfg.RangeLow != 72 || cfg.PollMin != 5 || cfg.DexcomRegion != "us" || cfg.NtfyURL != "https://ntfy.example/t" || cfg.EmailTo != "me@example.com" || cfg.SMTPHost != "smtp.example.com" || cfg.SMTPPort != 587 || cfg.SMTPSender != "g@example.com" ||
 		cfg.PublicURL != "https://glucava.example.com" || !cfg.MailAlerts || !cfg.MailActivity || !cfg.MailWeekly || !cfg.MailHealth || cfg.GapAlertHours != 6 {
 		t.Errorf("config = %+v", cfg)
+	}
+	if cfg.GlucoseSource != "dexcom" || cfg.Sources["nightscout.url"] != "https://ns.example" {
+		t.Errorf("source settings not saved: %q %v", cfg.GlucoseSource, cfg.Sources)
+	}
+	if v, ok, _ := e.srv.Vault.Get("source_nightscout_token"); !ok || v != "ns-tok" {
+		t.Errorf("nightscout token = %q, %v", v, ok)
 	}
 	if v, ok, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); !ok || v != "s3cret-dexcom" {
 		t.Errorf("dexcom password = %q, %v", v, ok)
@@ -382,7 +389,7 @@ func TestSettingsSaveAndSecretsStayOutOfHTML(t *testing.T) {
 	}
 
 	// An empty secret field keeps the stored value.
-	e.action("/actions/settings", strings.Replace(validSettings, `"dexcomPassword":"s3cret-dexcom"`, `"dexcomPassword":""`, 1), c, nil)
+	e.action("/actions/settings", strings.Replace(validSettings, `"password":"s3cret-dexcom"`, `"password":""`, 1), c, nil)
 	if v, _, _ := e.srv.Vault.Get(secrets.NameDexcomPassword); v != "s3cret-dexcom" {
 		t.Errorf("empty field overwrote the password: %q", v)
 	}
@@ -496,7 +503,7 @@ func TestSettingsValidation(t *testing.T) {
 		"range order":    strings.Replace(validSettings, `"rangeHigh":170`, `"rangeHigh":60`, 1),
 		"poll zero":      strings.Replace(validSettings, `"pollMin":5`, `"pollMin":0`, 1),
 		"pre huge":       strings.Replace(validSettings, `"preMin":15`, `"preMin":9999`, 1),
-		"region":         strings.Replace(validSettings, `"dexcomRegion":"us"`, `"dexcomRegion":"mars"`, 1),
+		"region":         strings.Replace(validSettings, `"region":"us"`, `"region":"mars"`, 1),
 		"ntfy scheme":    strings.Replace(validSettings, `https://ntfy.example/t`, `javascript:alert(1)`, 1),
 		"webhook file":   strings.Replace(validSettings, `"webhookURL":""`, `"webhookURL":"file:///etc/passwd"`, 1),
 		"email":          strings.Replace(validSettings, `"emailTo":"me@example.com"`, `"emailTo":"not-an-address"`, 1),
@@ -513,7 +520,7 @@ func TestSettingsValidation(t *testing.T) {
 		}
 	}
 	after, _ := e.srv.Store.LoadConfig()
-	if after != before {
+	if !reflect.DeepEqual(after, before) {
 		t.Errorf("config changed by rejected input: %+v", after)
 	}
 }
@@ -856,7 +863,7 @@ func TestRoutesCoverHandlerPatterns(t *testing.T) {
 		"/stream/live", "/stream/activity/{id}",
 		"/actions/poll", "/actions/reprocess/{id}", "/actions/chart/{id}", "/actions/process", "/actions/restore/{id}",
 		"/actions/delete/{id}", "/actions/settings", "/actions/account", "/actions/notify/test", "/actions/strava/cookies",
-		"/actions/strava/test", "/strava/remote/start", "/strava/remote/frames", "/strava/remote/input", "/strava/remote/stop", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
+		"/actions/strava/test", "/strava/remote/start", "/strava/remote/frames", "/strava/remote/input", "/strava/remote/stop", "/actions/glucose/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
 		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv", "/export/report.pdf",
 	}
 	for _, p := range patterns {
@@ -1072,7 +1079,7 @@ func TestExportNeedsLoginAndSetsHeaders(t *testing.T) {
 
 func TestRetentionValidation(t *testing.T) {
 	t.Parallel()
-	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, DexcomRegion: "ous", RetentionDays: -1, ChartTheme: "light", ChartSize: "standard", ChartLine: 2}
+	v := settingsSignals{Unit: "mg/dL", RangeLow: 70, RangeHigh: 180, PollMin: 10, RetentionDays: -1, ChartTheme: "light", ChartSize: "standard", ChartLine: 2}
 	if v.config().Validate() == "" {
 		t.Error("negative retention accepted")
 	}
@@ -1123,7 +1130,7 @@ func TestActionDexcomTestUnavailableByDefault(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	c := e.login(t)
-	w := e.action("/actions/dexcom/test", "{}", c, nil)
+	w := e.action("/actions/glucose/test", "{}", c, nil)
 	if !strings.Contains(w.Body.String(), "not available") {
 		t.Errorf("body = %s", w.Body.String())
 	}
@@ -1134,11 +1141,11 @@ func TestActionDexcomTest(t *testing.T) {
 	e := newEnv(t)
 	c := e.login(t)
 	e.srv.GlucoseTest = func(context.Context) error { return errors.New("bad login") }
-	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "bad login") {
+	if w := e.action("/actions/glucose/test", "{}", c, nil); !strings.Contains(w.Body.String(), "bad login") {
 		t.Errorf("body = %s", w.Body.String())
 	}
 	e.srv.GlucoseTest = func(context.Context) error { return nil }
-	if w := e.action("/actions/dexcom/test", "{}", c, nil); !strings.Contains(w.Body.String(), "accepted") {
+	if w := e.action("/actions/glucose/test", "{}", c, nil); !strings.Contains(w.Body.String(), "accepted") {
 		t.Errorf("body = %s", w.Body.String())
 	}
 }

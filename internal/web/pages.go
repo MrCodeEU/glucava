@@ -415,13 +415,15 @@ func StravaPage(pd PageData, s SessionInfo) g.Node {
 
 // SettingsData feeds the settings page.
 type SettingsData struct {
-	AccountEmail                                                       string
-	Cfg                                                                store.Config
-	HasDexcomPassword, HasNtfyToken, HasWebhookSecret, HasSMTPPassword bool
-	ImportFormats                                                      []string // importers.Names(); empty hides the import card
-	ImportOK, ImportErr                                                string   // one-shot flash after /actions/glucose/import redirects back
-	DescPreview                                                        string   // rendered preview of Cfg.DescriptionTemplate (or the default), before any edit
-	Push                                                               PushCardData
+	AccountEmail                                    string
+	Cfg                                             store.Config
+	HasNtfyToken, HasWebhookSecret, HasSMTPPassword bool
+	ActiveSource                                    string          // id of the glucose source in use
+	SourceSecrets                                   map[string]bool // "id.field" of each source secret that is stored
+	ImportFormats                                   []string        // importers.Names(); empty hides the import card
+	ImportOK, ImportErr                             string          // one-shot flash after /actions/glucose/import redirects back
+	DescPreview                                     string          // rendered preview of Cfg.DescriptionTemplate (or the default), before any edit
+	Push                                            PushCardData
 }
 
 // AccountEmail is AccountEmailT in English, for callers without a request.
@@ -432,27 +434,11 @@ func AccountEmailT(tr *i18n.Translator, email string) g.Node {
 	return P(ID("account-email"), g.Text(tr.T("settings.account.signedin", "email", "")), Strong(g.Text(email)))
 }
 
-// DexcomSecretStatus renders the part of the settings page that depends on
-// whether the Dexcom password is stored: the help text under the field, plus
-// the Test connection button. NtfySecretStatus and WebhookSecretStatus below
-// do the same for their own secrets. Each has a stable ID so actionSettings
-// can patch it in place after a save, without a full page reload. The plain
-// names render English; the T variants take the request's translator.
-func DexcomSecretStatus(has bool) g.Node { return DexcomSecretStatusT(i18n.English(), has) }
-
-func DexcomSecretStatusT(tr *i18n.Translator, has bool) g.Node {
-	help := tr.T("settings.secret.password.unset")
-	if has {
-		help = tr.T("settings.secret.password.set")
-	}
-	return Div(ID("dexcom-secret-status"),
-		Div(Class("help"), g.Text(help)),
-		g.If(has, Div(append(comp("actions"),
-			IndicatorBtn("", tr.T("settings.dexcom.test"), "/actions/dexcom/test", "dxtest"),
-			IndicatorBtn("", tr.T("settings.dexcom.resync"), "/actions/glucose/resync", "dxresync"))...)),
-	)
-}
-
+// NtfySecretStatus and WebhookSecretStatus below render the help text under a
+// secret field, depending on whether the secret is stored. Each has a stable ID
+// so actionSettings can patch it in place after a save, without a full page
+// reload. The plain names render English; the T variants take the request's
+// translator.
 func NtfySecretStatus(has bool) g.Node { return NtfySecretStatusT(i18n.English(), has) }
 
 func NtfySecretStatusT(tr *i18n.Translator, has bool) g.Node {
@@ -511,8 +497,8 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 	c := d.Cfg
 	sigMap := map[string]any{
 		"unit": c.Unit, "rangeLow": c.RangeLow, "rangeHigh": c.RangeHigh, "veryLow": c.VeryLow, "veryHigh": c.VeryHigh, "preMin": c.PreMin, "postMin": c.PostMin,
-		"pollMin": c.PollMin, "dexcomRegion": c.DexcomRegion, "dexcomUsername": c.DexcomUsername,
-		"dexcomPassword": "", "ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
+		"pollMin": c.PollMin, "glucoseSource": d.ActiveSource, "src": sourceSignals(c),
+		"ntfyURL": c.NtfyURL, "ntfyToken": "", "webhookURL": c.WebhookURL, "webhookSecret": "",
 		"emailTo":  c.EmailTo,
 		"smtpHost": c.SMTPHost, "smtpPort": c.SMTPPort, "smtpUsername": c.SMTPUsername, "smtpPassword": "",
 		"smtpTLS": c.SMTPTLS, "smtpSender": c.SMTPSender, "smtpSenderName": c.SMTPSenderName, "retentionDays": c.RetentionDays, "purgeConfirm": "",
@@ -556,14 +542,7 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						Field("pollMin", tr.T("settings.pollMin.label"), "", Input(ID("pollMin"), Type("number"), Min("1"), Max("1440"), bind("pollMin"))),
 						Field("postBuffer", tr.T("settings.postBuffer.label"), tr.T("settings.postBuffer.help"), Input(ID("postBuffer"), Type("number"), Min("0"), Max("180"), bind("postBuffer"))),
 					),
-					Card(H2(g.Text(tr.T("settings.dexcom.title"))),
-						P(Class("muted"), g.Text(tr.T("settings.dexcom.intro"))),
-						Field("dexcomRegion", tr.T("settings.dexcom.region.label"), "", Select(ID("dexcomRegion"), bind("dexcomRegion"),
-							Option(Value("ous"), g.Text(tr.T("settings.dexcom.region.ous"))), Option(Value("us"), g.Text(tr.T("settings.dexcom.region.us"))), Option(Value("jp"), g.Text(tr.T("settings.dexcom.region.jp"))))),
-						Field("dexcomUsername", tr.T("settings.dexcom.username.label"), "", Input(ID("dexcomUsername"), Type("text"), AutoComplete("off"), bind("dexcomUsername"))),
-						Field("dexcomPassword", tr.T("settings.dexcom.password.label"), "", Input(ID("dexcomPassword"), Type("password"), AutoComplete("new-password"), bind("dexcomPassword"))),
-						DexcomSecretStatusT(tr, d.HasDexcomPassword),
-					),
+					SourceCardT(tr, d),
 				),
 			),
 			tabSection("customize",

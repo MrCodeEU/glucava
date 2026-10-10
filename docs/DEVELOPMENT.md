@@ -19,9 +19,10 @@ Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. O
 
 | Path | Purpose |
 |---|---|
-| `cmd/glucava` | wiring, CLI commands (`token`, `strava`, `dexcom`, `user`, `secrets`, `config`, `glucose`, `data`), env tuning (`tuning.go`), source registry (`wire.go`) |
+| `cmd/glucava` | wiring, CLI commands (`token`, `strava`, `dexcom`, `user`, `secrets`, `config`, `glucose`, `data`), env tuning (`tuning.go`), glucose source wiring (`wire.go`) |
 | `internal/jobs` | pipeline (`Processor`), single-worker `Queue` with retry, interfaces (`Store`, `Writer`) |
-| `internal/glucose` | `Source` interface, Dexcom Share client, file importers (`importers/`) |
+| `internal/glucose` | `Source` interface and the source registry (`registry.go`); Dexcom Share, LibreLinkUp and Nightscout sources, one file each; file importers (`importers/`) |
+| `internal/sources` | follows the Settings choice and turns the stored values and secrets into the active `glucose.Source` |
 | `internal/canary` | daily dry run of the edit page |
 | `internal/ingest` | stores live readings continuously |
 | `internal/stats`, `internal/render` | TIR/min/max/avg, sparkline, description block and merge/strip |
@@ -60,7 +61,7 @@ Before step 3 saves anything, `Processor` checks that only glucava's own block c
 
 ## Unverified against the real services
 
-The Dexcom endpoints were written from memory and tested only against mocks (the Strava description write, activity listing, chart upload and remote sign-in are confirmed; see AGENTS.md). Verify them first with a real session: `glucava strava check`, `strava list --raw`, `dexcom set`. Selector candidates live in `internal/strava/writer.go` (`DefaultSelectors`).
+Dexcom Share, the Strava description write, activity listing, chart upload and remote sign-in are confirmed against real accounts; LibreLinkUp and Nightscout are not (see AGENTS.md). Verify with a real session: `glucava strava check`, `strava list --raw`, Settings → Test connection. Selector candidates live in `internal/strava/writer.go` (`DefaultSelectors`).
 
 ## Manual testing
 

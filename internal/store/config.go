@@ -83,8 +83,6 @@ func (c Config) Check() (Problem, bool) {
 		return problem(i18n.Key("validate.post_buffer")), false
 	case c.RetentionDays < 0 || c.RetentionDays > 3650:
 		return problem(i18n.Key("validate.retention")), false
-	case c.DexcomRegion != "us" && c.DexcomRegion != "ous" && c.DexcomRegion != "jp":
-		return problem(i18n.Key("validate.dexcom_region")), false
 	case !validOptionalURL(c.NtfyURL):
 		return problem(i18n.Key("validate.ntfy_url")), false
 	case !validOptionalURL(c.WebhookURL):
@@ -113,6 +111,9 @@ func (c Config) Check() (Problem, bool) {
 		return problem(i18n.Key("validate.artifact_mode")), false
 	case !validOverviewRange(c.OverviewDefaultRange):
 		return problem(i18n.Key("validate.overview_range"), "ranges", strings.Join(OverviewRanges, ", ")), false
+	}
+	if p, ok := c.checkSources(); !ok {
+		return p, false
 	}
 	if _, err := ParseOverviewLayout(c.OverviewLayout); err != nil {
 		return problem(i18n.Key("validate.overview_layout"), "error", err.Error()), false
@@ -271,19 +272,28 @@ var configKeys = map[string]configKey{
 	"language":               strKey(func(c *Config) *string { return &c.Language }),
 }
 
+// lookupKey finds a static setting or one generated from the glucose sources.
+func lookupKey(name string) (configKey, bool) {
+	if k, ok := configKeys[name]; ok {
+		return k, true
+	}
+	return sourceConfigKey(name)
+}
+
 // ConfigKeys returns the scriptable setting names, sorted.
 func ConfigKeys() []string {
 	out := make([]string, 0, len(configKeys))
 	for k := range configKeys {
 		out = append(out, k)
 	}
+	out = append(out, sourceConfigKeyNames()...)
 	sort.Strings(out)
 	return out
 }
 
 // Get returns the value of setting key as text.
 func (c Config) Get(key string) (string, error) {
-	k, ok := configKeys[key]
+	k, ok := lookupKey(key)
 	if !ok {
 		return "", fmt.Errorf("unknown setting %q (known: %s)", key, strings.Join(ConfigKeys(), ", "))
 	}
@@ -293,7 +303,7 @@ func (c Config) Get(key string) (string, error) {
 // Set changes setting key from text. It only parses; call Validate afterwards,
 // once all related keys (e.g. smtp_host and smtp_sender_address) are set.
 func (c *Config) Set(key, value string) error {
-	k, ok := configKeys[key]
+	k, ok := lookupKey(key)
 	if !ok {
 		return fmt.Errorf("unknown setting %q (known: %s)", key, strings.Join(ConfigKeys(), ", "))
 	}

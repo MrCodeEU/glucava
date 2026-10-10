@@ -1,20 +1,17 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"os"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/secrets"
-	"github.com/MrCodeEU/glucava/internal/stats"
+	"github.com/MrCodeEU/glucava/internal/sources"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
 )
@@ -58,82 +55,14 @@ func newStravaWriter(vault *secrets.Vault, tun tuning) *strava.Writer {
 	})
 }
 
-// defaultSource is the glucose source used when GLUCAVA_SOURCE is unset.
-const defaultSource = "dexcom"
-
-// liveSource is a glucose source and the key its readings are stored under.
-type liveSource struct {
-	name   string
-	source glucose.Source
-}
-
-// sourceBuilders maps GLUCAVA_SOURCE values to constructors. A new live source
-// (Nightscout, LibreLinkUp, ...) is one entry here plus its glucose.Source.
-var sourceBuilders = map[string]func(st *store.PB, vault *secrets.Vault) glucose.Source{
-	"dexcom": func(st *store.PB, vault *secrets.Vault) glucose.Source { return &dexcomSource{st: st, vault: vault} },
-}
-
-// newSource returns the live glucose source named name (default "dexcom").
-func newSource(name string, st *store.PB, vault *secrets.Vault) (liveSource, error) {
-	if name == "" {
-		name = defaultSource
-	}
-	build, ok := sourceBuilders[name]
-	if !ok {
-		known := make([]string, 0, len(sourceBuilders))
-		for k := range sourceBuilders {
-			known = append(known, k)
+// newSource returns the live glucose source, which follows the choice in
+// Settings. name is GLUCAVA_SOURCE: it applies while Settings names none, and an
+// unknown one stops the server at start.
+func newSource(name string, st *store.PB, vault *secrets.Vault) (*sources.Manager, error) {
+	if name != "" {
+		if _, ok := glucose.Lookup(name); !ok {
+			return nil, fmt.Errorf("GLUCAVA_SOURCE %q is not a known glucose source (known: %s)", name, strings.Join(glucose.IDs(), ", "))
 		}
-		sort.Strings(known)
-		return liveSource{}, fmt.Errorf("GLUCAVA_SOURCE %q is not a known glucose source (known: %s)", name, strings.Join(known, ", "))
 	}
-	return liveSource{name: name, source: build(st, vault)}, nil
-}
-
-// dexcomSource reads region, username and password on each call and rebuilds the
-// Share client when they change, so settings edits apply without a restart.
-type dexcomSource struct {
-	st    *store.PB
-	vault *secrets.Vault
-
-	mu  sync.Mutex
-	cur *glucose.DexcomShare
-	key [3]string // base URL, user, password the current source was built with
-}
-
-func (d *dexcomSource) Samples(ctx context.Context, from, to time.Time) ([]stats.Sample, error) {
-	c, err := d.client()
-	if err != nil {
-		return nil, err
-	}
-	return c.Samples(ctx, from, to)
-}
-
-func (d *dexcomSource) client() (*glucose.DexcomShare, error) {
-	region, user, err := d.st.DexcomSettings()
-	if err != nil {
-		return nil, err
-	}
-	pass, _, err := d.vault.Get(secrets.NameDexcomPassword)
-	if err != nil {
-		return nil, err
-	}
-	if user == "" || pass == "" {
-		return nil, fmt.Errorf("%w: Dexcom username and password are not set", glucose.ErrAuth)
-	}
-	base := map[string]string{"us": glucose.RegionUS, "jp": glucose.RegionJP}[region]
-	if base == "" {
-		base = glucose.RegionOUS
-	}
-	if u := os.Getenv("GLUCAVA_DEXCOM_URL"); u != "" { // set for tests
-		base = u
-	}
-
-	key := [3]string{base, user, pass}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.cur == nil || d.key != key {
-		d.cur, d.key = glucose.NewDexcomShare(base, user, pass), key
-	}
-	return d.cur, nil
+	return &sources.Manager{Store: st, Vault: vault, Fallback: name}, nil
 }

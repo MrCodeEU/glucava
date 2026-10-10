@@ -152,8 +152,8 @@ func main() {
 			if err != nil {
 				return err
 			}
-			sourceName = src.name
-			writer, source, lister, session = sw, src.source, sw, sw
+			sourceName = src.ActiveID()
+			writer, source, lister, session = sw, src, sw, sw
 			remoteStart = sw.StartRemote
 			findActivity = sw.FindActivity
 			inspector = sw
@@ -319,7 +319,7 @@ func main() {
 		ui := &web.Server{
 			App: app, Store: st, Vault: vault, Tokens: toks, Jobs: queue, Signal: signal, Bus: changes, Progress: progress,
 			Logs:    logHandler,
-			Proxies: proxies, Session: session, SourceName: sourceName, Build: buildID, Demo: demoMode,
+			Proxies: proxies, Session: session, SourceName: sourceName, DefaultSource: os.Getenv("GLUCAVA_SOURCE"), Build: buildID, Demo: demoMode,
 			SendTest: func(ctx context.Context) error {
 				return sendTest(ctx, channels(st, vault, demoMode), installTr(st).Get())
 			},

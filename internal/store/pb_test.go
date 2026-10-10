@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -278,7 +279,7 @@ func TestConfigNotifyAndSMTPRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := s.LoadConfig()
-	if got != c {
+	if !reflect.DeepEqual(got, c) {
 		t.Errorf("got %+v, want %+v", got, c)
 	}
 }
@@ -294,7 +295,7 @@ func TestConfigRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := s.LoadConfig()
-	if got != c {
+	if !reflect.DeepEqual(got, c) {
 		t.Errorf("got %+v, want %+v", got, c)
 	}
 	set, _ := s.Settings(context.Background())

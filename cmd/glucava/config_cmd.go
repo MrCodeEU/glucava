@@ -12,15 +12,17 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/spf13/cobra"
 
+	"github.com/MrCodeEU/glucava/internal/glucose"
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/store"
 )
 
 // scriptableSecrets are the vault entries "secrets set" may write. Strava
 // cookies have their own command (strava cookies import).
-var scriptableSecrets = []string{
-	secrets.NameDexcomPassword, secrets.NameNtfyToken, secrets.NameWebhookSecret, secrets.NameSMTPPassword,
-}
+// The secrets of the glucose sources come from their descriptors.
+var scriptableSecrets = append([]string{
+	secrets.NameNtfyToken, secrets.NameWebhookSecret, secrets.NameSMTPPassword,
+}, glucose.SecretNames()...)
 
 // configCommand adds "glucava config list|get|set|apply": every setting the
 // web UI edits, through the same validation, for scripted setups.
