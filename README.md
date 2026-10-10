@@ -58,7 +58,7 @@ docker run -d --name glucava -p 127.0.0.1:8090:8090 -v glucava:/data \
 
 Put a TLS reverse proxy in front. Then:
 
-1. Sign in, open **Settings**, enter Dexcom Share credentials (or `glucava dexcom set <user> --region us|ous|jp`). Enable Share in the Dexcom app. "Test connection" checks the login.
+1. Sign in, open **Settings → Glucose source**, pick your source and fill in its fields. **Dexcom Share** (enable Share in the Dexcom app; or `glucava dexcom set <user> --region us|ous|jp`) is the one that has been used in daily life. **FreeStyle Libre** (through a LibreLinkUp follower account) and **Nightscout** are included but not yet tested against a real account; the card says so. "Test connection" checks the login. The same settings are scriptable: `glucava config set glucose_source=nightscout source_nightscout_url=https://...` and `glucava secrets set source_nightscout_token`.
 2. Open **Strava** and click **Open sign-in browser**. A browser running on the Glucava server appears on the page; sign in to Strava in it as usual (email and password, Google, Apple or Facebook, verification codes). Glucava never sees your password: when you reach your dashboard it keeps only the session cookies, encrypted, and closes the browser. Passkeys do not work in it; choose password or another option. Alternatively paste a strava.com cookie export (or `glucava strava cookies import file.json`).
 3. Run `glucava strava check` to verify the session and edit-page selectors without saving.
 
@@ -95,7 +95,7 @@ Put a TLS reverse proxy in front. Then:
 | `GLUCAVA_SMTP_PORT` (default `587`), `GLUCAVA_SMTP_USERNAME`, `GLUCAVA_SMTP_PASSWORD`, `GLUCAVA_SMTP_TLS=1`, `GLUCAVA_SMTP_SENDER_NAME` (default `glucava`), `GLUCAVA_SMTP_TO` | rest of the seed; `TO` is the recipient. The password goes into the encrypted vault, and is stored later too if you add it after the first start |
 | `GLUCAVA_SECRET_KEY` | encryption key for stored secrets (default: `<data dir>/secret.key`) |
 | `GLUCAVA_TRUSTED_PROXIES` | comma-separated IPs/CIDRs of your reverse proxy. Only then are `X-Forwarded-For`/`-Proto` believed (per-client rate limits, Secure cookie). Unset = direct peer only |
-| `GLUCAVA_SOURCE` | live glucose source (default and currently only: `dexcom`); an unknown name stops the server at start |
+| `GLUCAVA_SOURCE` | live glucose source (`dexcom`, `librelinkup`, `nightscout`) used while Settings → Glucose source names none; an unknown name stops the server at start. The Settings choice wins once saved |
 | `GLUCAVA_CANARY_INTERVAL` | how often the edit-page canary runs, e.g. `12h`; `off` disables it (default `24h`) |
 | `GLUCAVA_POLL_LOOKBACK` | how old an activity may be and still be picked up by polling (default `24h`) |
 | `GLUCAVA_RETRY_BACKOFF` | waits before each retry of a failed job, comma-separated (default `1m,3m,10m`) |
@@ -213,15 +213,28 @@ Run `make hooks` once to enable the git hooks (pre-commit: gofmt, vet, lint; pre
 
 **Frontend build (Tailwind).** The UI is styled with Tailwind v4. `make css` downloads the pinned standalone CLI (checksum-verified, into the gitignored `.bin/`) and rebuilds the committed `internal/web/static/app.css` from `internal/web/static/input.css` plus the class strings in `internal/web/*.go`. `go build`, `go run` and the Docker build never need Tailwind; you only run `make css` after changing `input.css` or a class string, and commit the result. CI runs `make css-check`, which fails if `app.css` is stale. Class strings in Go must be whole literals (see the comment in `internal/web/components.go`). `make shot SHOTFLAGS=-matrix` (with `make mock` running) screenshots every page at 1280 and 390 px in light and dark, and fails on browser console errors or CSP violations.
 
-**Adding a glucose source.** Dexcom Share (`internal/glucose/dexcom.go`) is the only built-in source, but the pipeline (background ingestion, activity processing, live dashboard reading) only depends on the small `glucose.Source` interface:
+**Adding a live glucose source.** Sources are modular: a source is one file in `internal/glucose` that describes itself and registers in `init()`. The Settings card (dropdown plus the source's fields), validation, `glucava config` keys, secret storage, the "Test connection" button and switching without a restart are all generated from that description, so nothing else changes. Copy `nightscout.go` as a starting point:
 
 ```go
+func init() {
+    Register(Descriptor{
+        ID: "mysource", LabelKey: i18n.Key("source.mysource.label"), Unverified: true,
+        Fields: []Field{
+            {Key: "url", Kind: KindURL, LabelKey: i18n.Key("source.mysource.url.label"), Required: true},
+            {Key: "token", Kind: KindPassword, LabelKey: i18n.Key("source.mysource.token.label")}, // encrypted vault, write-only
+        },
+        Build: func(v Values) (Source, error) { return &MySource{URL: v.Get("url"), Token: v.Get("token")}, nil },
+    })
+}
+
+// Source is the whole contract: readings in mg/dL with from <= Time <= to, oldest first.
+// Return ErrTooOld for a window the service no longer keeps, ErrAuth for rejected credentials.
 type Source interface {
     Samples(ctx context.Context, from, to time.Time) ([]stats.Sample, error)
 }
 ```
 
-A Libre, Tandem or Medtronic **live API** source is a new type implementing that one method, plus one entry in `sourceBuilders` (`cmd/glucava/wire.go`); users then select it with `GLUCAVA_SOURCE`. No changes needed elsewhere.
+Add the translation keys to `internal/i18n/locales/en.json` and `de.json` and a test with an `httptest` server (see `sources_test.go`). Readings are stored under the source's id. Non-secret fields become `source_<id>_<key>` in `glucava config`, secrets `source_<id>_<key>` in `glucava secrets set`.
 
 **Adding a file importer** (a one-shot export, not a live API) is a separate, smaller interface in `internal/glucose/importers`:
 

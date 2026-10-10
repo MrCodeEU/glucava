@@ -335,12 +335,3 @@ func (s *PB) MarkNotified(_ context.Context, id string) error {
 	s.changed()
 	return nil
 }
-
-// DexcomSettings returns the Dexcom region key ("us", "ous", "jp") and username.
-func (s *PB) DexcomSettings() (region, username string, err error) {
-	recs, err := s.App.FindRecordsByFilter("settings", "", "created", 1, 0)
-	if err != nil || len(recs) == 0 {
-		return "", "", err
-	}
-	return recs[0].GetString("dexcom_region"), recs[0].GetString("dexcom_username"), nil
-}

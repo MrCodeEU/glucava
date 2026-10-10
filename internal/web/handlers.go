@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -229,7 +230,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	email, _ := s.user(r)
 	s.html(w, http.StatusOK, SettingsPage(s.page(r, s.tr(r).T("nav.settings"), "settings"), SettingsData{
-		AccountEmail: email, Cfg: cfg, HasDexcomPassword: has(secrets.NameDexcomPassword),
+		AccountEmail: email, Cfg: cfg, ActiveSource: s.activeSource(cfg), SourceSecrets: s.sourceSecrets(),
 		HasNtfyToken: has(secrets.NameNtfyToken), HasWebhookSecret: has(secrets.NameWebhookSecret), HasSMTPPassword: has(secrets.NameSMTPPassword),
 		ImportFormats: importers.Names(), ImportOK: q.Get("importOK"), ImportErr: q.Get("importErr"),
 		DescPreview: s.previewDescriptionText(r.Context(), cfg.DescriptionTemplate, cfg),
@@ -610,54 +611,53 @@ func (s *Server) actionArtifactMark(w http.ResponseWriter, r *http.Request) {
 }
 
 type settingsSignals struct {
-	Unit            string  `json:"unit"`
-	RangeLow        float64 `json:"rangeLow"`
-	RangeHigh       float64 `json:"rangeHigh"`
-	VeryLow         float64 `json:"veryLow"`
-	VeryHigh        float64 `json:"veryHigh"`
-	PreMin          int     `json:"preMin"`
-	PostMin         int     `json:"postMin"`
-	PollMin         int     `json:"pollMin"`
-	DexcomRegion    string  `json:"dexcomRegion"`
-	DexcomUsername  string  `json:"dexcomUsername"`
-	DexcomPassword  string  `json:"dexcomPassword"`
-	NtfyURL         string  `json:"ntfyURL"`
-	NtfyToken       string  `json:"ntfyToken"`
-	WebhookURL      string  `json:"webhookURL"`
-	WebhookSecret   string  `json:"webhookSecret"`
-	EmailTo         string  `json:"emailTo"`
-	SMTPHost        string  `json:"smtpHost"`
-	SMTPPort        int     `json:"smtpPort"`
-	SMTPUsername    string  `json:"smtpUsername"`
-	SMTPPassword    string  `json:"smtpPassword"`
-	SMTPTLS         bool    `json:"smtpTLS"`
-	SMTPSender      string  `json:"smtpSender"`
-	SMTPSenderName  string  `json:"smtpSenderName"`
-	RetentionDays   int     `json:"retentionDays"`
-	PublicURL       string  `json:"publicURL"`
-	MailAlerts      bool    `json:"mailAlerts"`
-	MailActivity    bool    `json:"mailActivity"`
-	MailWeekly      bool    `json:"mailWeekly"`
-	MailHealth      bool    `json:"mailHealth"`
-	GapAlertHours   int     `json:"gapAlertHours"`
-	ChartImage      bool    `json:"chartImage"`
-	ChartTheme      string  `json:"chartTheme"`
-	ChartSize       string  `json:"chartSize"`
-	ChartBand       bool    `json:"chartBand"`
-	ChartActivity   bool    `json:"chartActivity"`
-	ChartDots       bool    `json:"chartDots"`
-	ChartLine       int     `json:"chartLine"`
-	ChartHR         bool    `json:"chartHR"`
-	ChartElevation  bool    `json:"chartElevation"`
-	ChartPanelOrder string  `json:"chartPanelOrder"`
-	ChartPre        int     `json:"chartPre"`
-	ChartAvgLine    bool    `json:"chartAvgLine"`
-	ChartRangeLines bool    `json:"chartRangeLines"`
-	ChartMinMax     bool    `json:"chartMinMax"`
-	ChartHideStats  bool    `json:"chartHideStats"`
-	HRRead          bool    `json:"hrRead"`
-	PostBuffer      int     `json:"postBuffer"`
-	DescTemplate    string  `json:"descTemplate"`
+	Unit            string                       `json:"unit"`
+	RangeLow        float64                      `json:"rangeLow"`
+	RangeHigh       float64                      `json:"rangeHigh"`
+	VeryLow         float64                      `json:"veryLow"`
+	VeryHigh        float64                      `json:"veryHigh"`
+	PreMin          int                          `json:"preMin"`
+	PostMin         int                          `json:"postMin"`
+	PollMin         int                          `json:"pollMin"`
+	GlucoseSource   string                       `json:"glucoseSource"`
+	Src             map[string]map[string]string `json:"src"` // source id → field → value
+	NtfyURL         string                       `json:"ntfyURL"`
+	NtfyToken       string                       `json:"ntfyToken"`
+	WebhookURL      string                       `json:"webhookURL"`
+	WebhookSecret   string                       `json:"webhookSecret"`
+	EmailTo         string                       `json:"emailTo"`
+	SMTPHost        string                       `json:"smtpHost"`
+	SMTPPort        int                          `json:"smtpPort"`
+	SMTPUsername    string                       `json:"smtpUsername"`
+	SMTPPassword    string                       `json:"smtpPassword"`
+	SMTPTLS         bool                         `json:"smtpTLS"`
+	SMTPSender      string                       `json:"smtpSender"`
+	SMTPSenderName  string                       `json:"smtpSenderName"`
+	RetentionDays   int                          `json:"retentionDays"`
+	PublicURL       string                       `json:"publicURL"`
+	MailAlerts      bool                         `json:"mailAlerts"`
+	MailActivity    bool                         `json:"mailActivity"`
+	MailWeekly      bool                         `json:"mailWeekly"`
+	MailHealth      bool                         `json:"mailHealth"`
+	GapAlertHours   int                          `json:"gapAlertHours"`
+	ChartImage      bool                         `json:"chartImage"`
+	ChartTheme      string                       `json:"chartTheme"`
+	ChartSize       string                       `json:"chartSize"`
+	ChartBand       bool                         `json:"chartBand"`
+	ChartActivity   bool                         `json:"chartActivity"`
+	ChartDots       bool                         `json:"chartDots"`
+	ChartLine       int                          `json:"chartLine"`
+	ChartHR         bool                         `json:"chartHR"`
+	ChartElevation  bool                         `json:"chartElevation"`
+	ChartPanelOrder string                       `json:"chartPanelOrder"`
+	ChartPre        int                          `json:"chartPre"`
+	ChartAvgLine    bool                         `json:"chartAvgLine"`
+	ChartRangeLines bool                         `json:"chartRangeLines"`
+	ChartMinMax     bool                         `json:"chartMinMax"`
+	ChartHideStats  bool                         `json:"chartHideStats"`
+	HRRead          bool                         `json:"hrRead"`
+	PostBuffer      int                          `json:"postBuffer"`
+	DescTemplate    string                       `json:"descTemplate"`
 
 	// The Overview layout: card order (comma-separated ids), enabled flag per
 	// card id, and one string per card option keyed "<card>_<option>" (see
@@ -675,9 +675,9 @@ type settingsSignals struct {
 
 // config converts the form values to the stored settings shape.
 func (v settingsSignals) config() store.Config {
-	return store.Config{
+	c := store.Config{
 		Unit: v.Unit, RangeLow: v.RangeLow, RangeHigh: v.RangeHigh, VeryLow: v.VeryLow, VeryHigh: v.VeryHigh, PreMin: v.PreMin, PostMin: v.PostMin,
-		PollMin: v.PollMin, DexcomRegion: v.DexcomRegion, DexcomUsername: v.DexcomUsername,
+		PollMin: v.PollMin,
 		NtfyURL: v.NtfyURL, WebhookURL: v.WebhookURL, EmailTo: v.EmailTo, RetentionDays: v.RetentionDays,
 		SMTPHost: v.SMTPHost, SMTPPort: v.SMTPPort, SMTPUsername: v.SMTPUsername, SMTPTLS: v.SMTPTLS,
 		SMTPSender: v.SMTPSender, SMTPSenderName: v.SMTPSenderName,
@@ -692,6 +692,8 @@ func (v settingsSignals) config() store.Config {
 		PushAlerts: v.PushAlerts, PushSummaries: v.PushSummaries,
 		Language: v.Language,
 	}
+	applySourceSignals(&c, v)
+	return c
 }
 
 // check reports the first problem with the form, for translation.
@@ -718,7 +720,7 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 	cfg.Unit, cfg.RangeLow, cfg.RangeHigh = v.Unit, v.RangeLow, v.RangeHigh
 	cfg.VeryLow, cfg.VeryHigh = v.VeryLow, v.VeryHigh
 	cfg.PreMin, cfg.PostMin, cfg.PollMin = v.PreMin, v.PostMin, v.PollMin
-	cfg.DexcomRegion, cfg.DexcomUsername = v.DexcomRegion, v.DexcomUsername
+	applySourceSignals(&cfg, v)
 	cfg.NtfyURL, cfg.WebhookURL, cfg.EmailTo = v.NtfyURL, v.WebhookURL, v.EmailTo
 	cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPTLS = v.SMTPHost, v.SMTPPort, v.SMTPUsername, v.SMTPTLS
 	cfg.SMTPSender, cfg.SMTPSenderName = v.SMTPSender, v.SMTPSenderName
@@ -755,10 +757,9 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Secrets are write-only: an empty field keeps the stored value.
 	for name, val := range map[string]string{
-		secrets.NameDexcomPassword: v.DexcomPassword,
-		secrets.NameNtfyToken:      v.NtfyToken,
-		secrets.NameWebhookSecret:  v.WebhookSecret,
-		secrets.NameSMTPPassword:   v.SMTPPassword,
+		secrets.NameNtfyToken:     v.NtfyToken,
+		secrets.NameWebhookSecret: v.WebhookSecret,
+		secrets.NameSMTPPassword:  v.SMTPPassword,
 	} {
 		if val == "" {
 			continue
@@ -768,9 +769,18 @@ func (s *Server) actionSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_ = sse.PatchSignals([]byte(`{"dexcomPassword":"","ntfyToken":"","webhookSecret":"","smtpPassword":""}`))
+	cleared, err := s.storeSourceSecrets(v)
+	if err != nil {
+		s.toast(sse, "error", s.tr(r).T("err.settings.secret", "error", err.Error()))
+		return
+	}
+	patch, _ := json.Marshal(map[string]any{"src": cleared, "ntfyToken": "", "webhookSecret": "", "smtpPassword": ""})
+	_ = sse.PatchSignals(patch)
 	has := func(name string) bool { _, ok, _ := s.Vault.Get(name); return ok }
-	_ = sse.PatchElements(renderString(DexcomSecretStatus(has(secrets.NameDexcomPassword))))
+	for key, ok := range s.sourceSecrets() {
+		id, field, _ := strings.Cut(key, ".")
+		_ = sse.PatchElements(renderString(SourceSecretStatusT(s.tr(r), id, field, ok)))
+	}
 	_ = sse.PatchElements(renderString(NtfySecretStatus(has(secrets.NameNtfyToken))))
 	_ = sse.PatchElements(renderString(WebhookSecretStatus(has(secrets.NameWebhookSecret))))
 	_ = sse.PatchElements(renderString(SMTPSecretStatus(has(secrets.NameSMTPPassword))))
@@ -966,21 +976,21 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	s.toast(sse, "ok", s.tr(r).T("toast.token.revoked"))
 }
 
-func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
+func (s *Server) actionGlucoseTest(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.GlucoseTest == nil {
-		s.toast(sse, "error", s.tr(r).T("err.dexcom.unavailable"))
+		s.toast(sse, "error", s.tr(r).T("err.source.unavailable"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.GlucoseTest(ctx); err != nil {
-		slog.Error("dexcom test connection", "err", err)
-		s.toast(sse, "error", s.tr(r).T("err.dexcom.failed", "error", err.Error()))
+		slog.Error("glucose source test", "err", err)
+		s.toast(sse, "error", s.tr(r).T("err.source.failed", "error", err.Error()))
 		return
 	}
-	slog.Info("dexcom test connection accepted")
-	s.toast(sse, "ok", s.tr(r).T("toast.dexcom.ok"))
+	slog.Info("glucose source test accepted")
+	s.toast(sse, "ok", s.tr(r).T("toast.source.ok"))
 }
 
 // actionGlucoseResync forces one ingest fetch with a widened window (up to
