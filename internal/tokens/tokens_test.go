@@ -85,3 +85,50 @@ func TestTokensAreUnique(t *testing.T) {
 		t.Fatal("tokens collide")
 	}
 }
+
+func TestScopes(t *testing.T) {
+	m, app := newManager(t)
+
+	legacy, _ := m.Create("legacy") // no scopes asked for
+	backupOnly, err := m.Create("cron", ScopeBackup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name  string
+		token string
+		scope Scope
+		want  bool
+	}{
+		{"default token fires the trigger", legacy, ScopeTrigger, true},
+		{"default token reads metrics", legacy, ScopeMetrics, true},
+		{"default token cannot back up", legacy, ScopeBackup, false},
+		{"backup token backs up", backupOnly, ScopeBackup, true},
+		{"backup token cannot fire the trigger", backupOnly, ScopeTrigger, false},
+		{"backup token cannot read metrics", backupOnly, ScopeMetrics, false},
+	} {
+		if got, err := m.VerifyScope(c.token, c.scope); err != nil || got != c.want {
+			t.Errorf("%s: got %v, %v", c.name, got, err)
+		}
+	}
+	if ok, _ := m.Verify(backupOnly); ok {
+		t.Error("Verify (trigger) accepted a backup token")
+	}
+
+	// A record with an unreadable scope list grants nothing.
+	rec, _ := app.FindFirstRecordByData("api_tokens", "name", "cron")
+	rec.Set("scopes", "garbage")
+	if err := app.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := m.VerifyScope(backupOnly, ScopeBackup); ok {
+		t.Error("garbage scopes still grant backup")
+	}
+
+	if _, err := ParseScopes("trigger,nope"); err == nil {
+		t.Error("unknown scope accepted")
+	}
+	if got, _ := ParseScopes(""); len(got) != 2 {
+		t.Errorf("empty list = %v, want the defaults", got)
+	}
+}

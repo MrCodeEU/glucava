@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -857,7 +858,7 @@ func TestRoutesCoverHandlerPatterns(t *testing.T) {
 		"/actions/poll", "/actions/reprocess/{id}", "/actions/chart/{id}", "/actions/process", "/actions/restore/{id}",
 		"/actions/delete/{id}", "/actions/settings", "/actions/account", "/actions/notify/test", "/actions/strava/cookies",
 		"/actions/strava/test", "/strava/remote/start", "/strava/remote/frames", "/strava/remote/input", "/strava/remote/stop", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
-		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv", "/export/report.pdf",
+		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv", "/export/report.pdf", "/export/backup.zip",
 	}
 	for _, p := range patterns {
 		if !coveredByRoutes(p) {
@@ -1360,5 +1361,39 @@ func TestRemoteBrowserRoutesWithoutSession(t *testing.T) {
 	// Signed-out and cross-site requests never reach the browser.
 	if w := e.action("/strava/remote/start", "", nil, nil); w.Code == http.StatusNoContent || w.Code == http.StatusNotFound {
 		t.Errorf("start without login = %d", w.Code)
+	}
+}
+
+func TestBackupDownloadAuth(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	if w := e.get(t, "/export/backup.zip", nil); w.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous backup = %d, want 401", w.Code)
+	}
+	c := e.login(t)
+	w := e.get(t, "/export/backup.zip", c)
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/zip" ||
+		!strings.Contains(w.Header().Get("Content-Disposition"), "attachment") || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("session backup: code=%d headers=%v", w.Code, w.Header())
+	}
+	if !bytes.HasPrefix(w.Body.Bytes(), []byte("PK")) {
+		t.Error("body is not a zip")
+	}
+
+	byToken := func(token string) int {
+		r := httptest.NewRequest(http.MethodGet, "/export/backup.zip", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		return e.do(r).Code
+	}
+	cron, _ := e.srv.Tokens.Create("cron", tokens.ScopeBackup)
+	phone, _ := e.srv.Tokens.Create("phone") // trigger and metrics only
+	if code := byToken(cron); code != http.StatusOK {
+		t.Errorf("backup token = %d, want 200", code)
+	}
+	if code := byToken(phone); code != http.StatusUnauthorized {
+		t.Errorf("trigger token = %d, want 401: a phone token must not read the data", code)
+	}
+	if code := byToken("gst_nope"); code != http.StatusUnauthorized {
+		t.Errorf("unknown token = %d, want 401", code)
 	}
 }

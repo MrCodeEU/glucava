@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+- Backups: **Settings → Your data → Download backup (zip)**, `glucava backup [file|-]` (safe while the server runs) and `GET /export/backup.zip` with a Bearer token. The zip holds a consistent copy of the database with secrets still encrypted, and leaves the encryption key out unless `glucava backup --include-key` is used. `glucava restore <zip> --dir <data dir>` restores it with the server stopped.
+- Token scopes: a token can be for the push trigger and metrics (the default, as before) or for backups only. Create one on the Triggers page or with `glucava token create <name> --scope backup`. Existing tokens keep trigger and metrics access and cannot download backups.
+
 ## [0.9.2] - 2026-10-10
 
 ### Fixed

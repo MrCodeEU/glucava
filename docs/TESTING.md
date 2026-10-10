@@ -38,6 +38,13 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 - [ ] Try to navigate somewhere that is not Strava or a sign-in provider (for example a link on a help page): the load is refused.
 - [ ] The logs show only that a browser was opened, closed and that cookies were stored; no typed text, URLs with tokens or cookie values.
 
+## Backup and restore
+
+- [ ] Settings → Your data → **Download backup (zip)** gives a zip with `data.db` and `glucava-backup.json` and no `secret.key`.
+- [ ] `glucava backup x.zip --dev=false --dir /data` works while the server runs and the server keeps answering.
+- [ ] Triggers page → "Backups only" token: `curl -f -H "Authorization: Bearer <token>" -o b.zip https://host/export/backup.zip` works; the same token on `/api/trigger` gives 401, and a normal trigger token on `/export/backup.zip` gives 401.
+- [ ] With the server stopped, `glucava restore b.zip --dir <empty dir>` plus the original key: `glucava config list` and `glucava secrets status` show your settings and secrets.
+
 ## Failure handling
 
 - [ ] Break the Strava session (import a cookie file with a wrong session cookie): a `session_expired` notification arrives once, not on every poll.

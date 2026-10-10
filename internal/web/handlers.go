@@ -27,6 +27,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
 	"github.com/MrCodeEU/glucava/internal/strava"
+	"github.com/MrCodeEU/glucava/internal/tokens"
 )
 
 var digits = regexp.MustCompile(`^\d+$`)
@@ -934,7 +935,8 @@ func (s *Server) actionStravaTest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 	var v struct {
-		TokenName string `json:"tokenName"`
+		TokenName  string `json:"tokenName"`
+		TokenScope string `json:"tokenScope"`
 	}
 	readErr := datastar.ReadSignals(r, &v)
 	sse := datastar.NewSSE(w, r)
@@ -942,7 +944,12 @@ func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 		s.toast(sse, "error", s.tr(r).T("err.form"))
 		return
 	}
-	token, err := s.Tokens.Create(v.TokenName)
+	scopes, err := tokens.ParseScopes(v.TokenScope)
+	if err != nil {
+		s.toast(sse, "error", s.tr(r).T("err.form"))
+		return
+	}
+	token, err := s.Tokens.Create(v.TokenName, scopes...)
 	if err != nil {
 		s.toast(sse, "error", err.Error())
 		return
@@ -950,7 +957,11 @@ func (s *Server) actionTokenCreate(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.Tokens.List()
 	base := strings.TrimRight(s.baseURL(r), "/")
 	taskerURL := base + "/export/tasker.prf.xml?token=" + url.QueryEscape(token)
-	_ = sse.PatchElements(renderString(SecretRevealT(s.tr(r), v.TokenName, token, base+"/api/trigger", taskerURL, base+"/tokens")))
+	if len(scopes) == 1 && scopes[0] == tokens.ScopeBackup {
+		_ = sse.PatchElements(renderString(SecretRevealBackupT(s.tr(r), v.TokenName, token, base+"/api/trigger")))
+	} else {
+		_ = sse.PatchElements(renderString(SecretRevealT(s.tr(r), v.TokenName, token, base+"/api/trigger", taskerURL, base+"/tokens")))
+	}
 	_ = sse.PatchElements(renderString(TokenListT(s.tr(r), list, s.loc())))
 	_ = sse.PatchSignals([]byte(`{"tokenName":""}`))
 }
