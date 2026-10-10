@@ -21,6 +21,7 @@ import (
 	"github.com/MrCodeEU/glucava/internal/secrets"
 	"github.com/MrCodeEU/glucava/internal/stats"
 	"github.com/MrCodeEU/glucava/internal/store"
+	"github.com/MrCodeEU/glucava/internal/strava"
 	"github.com/MrCodeEU/glucava/internal/tokens"
 	"github.com/MrCodeEU/glucava/internal/trigger"
 )
@@ -60,22 +61,23 @@ type Server struct {
 	// Nil trusts none, so limits and cookies use the direct peer.
 	Proxies *clientip.Resolver
 
-	Session       SessionChecker                                                     // optional
-	StravaLogin   func(ctx context.Context, email, password string) error            // optional; experimental
-	GlucoseTest   func(ctx context.Context) error                                    // optional
-	Resync        func(ctx context.Context) (int, error)                             // widens the ingest window to catch up on a gap; optional
-	Poll          func(ctx context.Context) (int, error)                             // runs a Strava check inline; optional
-	LatestGlucose func(ctx context.Context) (*stats.Sample, error)                   // optional
-	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error) // looks up an activity the poller never queued; optional
-	Restore       func(ctx context.Context, a *jobs.Activity) error                  // puts the original description back on Strava; optional, used by delete
-	SendTest      func(ctx context.Context) error                                    // sends a test notification; optional
-	SourceName    string                                                             // key of stored glucose samples, e.g. "dexcom"
+	Session       SessionChecker                                                              // optional
+	RemoteStart   func(ctx context.Context, ttl time.Duration) (*strava.RemoteSession, error) // optional; the remote sign-in browser
+	GlucoseTest   func(ctx context.Context) error                                             // optional
+	Resync        func(ctx context.Context) (int, error)                                      // widens the ingest window to catch up on a gap; optional
+	Poll          func(ctx context.Context) (int, error)                                      // runs a Strava check inline; optional
+	LatestGlucose func(ctx context.Context) (*stats.Sample, error)                            // optional
+	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error)          // looks up an activity the poller never queued; optional
+	Restore       func(ctx context.Context, a *jobs.Activity) error                           // puts the original description back on Strava; optional, used by delete
+	SendTest      func(ctx context.Context) error                                             // sends a test notification; optional
+	SourceName    string                                                                      // key of stored glucose samples, e.g. "dexcom"
 	Build         string
 	Demo          bool
 	Loc           *time.Location // display zone; default time.Local
 	Now           func() time.Time
 
 	mu        sync.Mutex
+	remote    *strava.RemoteSession // the open sign-in browser, if any; guarded by mu
 	lastCheck struct {
 		at  time.Time
 		ok  bool
@@ -158,7 +160,10 @@ func (s *Server) Handler() http.Handler {
 	s.pushRoutes(page)
 	page("POST /actions/strava/cookies", s.actionStravaCookies)
 	page("POST /actions/strava/test", s.actionStravaTest)
-	page("POST /actions/strava/login", s.actionStravaLogin)
+	page("POST /strava/remote/start", s.remoteStart)
+	page("GET /strava/remote/frames", s.remoteFrames)
+	page("POST /strava/remote/input", s.remoteInput)
+	page("POST /strava/remote/stop", s.remoteStop)
 	page("POST /actions/dexcom/test", s.actionDexcomTest)
 	page("POST /actions/glucose/resync", s.actionGlucoseResync)
 	page("POST /actions/tokens/create", s.actionTokenCreate)
@@ -176,7 +181,7 @@ func (s *Server) Handler() http.Handler {
 // keeps /api, /_ and /health for itself, so the UI claims only its own paths.
 var Routes = []string{
 	"/{$}", "/login", "/logout", "/activity/{id}", "/strava", "/stats", "/settings", "/tokens", "/events", "/logs",
-	"/ui/charts", "/ui/charts/refresh", "/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/export/{path...}", "/static/{path...}",
+	"/ui/charts", "/ui/charts/refresh", "/chart/{path...}", "/preview/description.txt", "/stream/{path...}", "/actions/{path...}", "/strava/remote/{path...}", "/export/{path...}", "/static/{path...}",
 	"/manifest.webmanifest", "/sw.js",
 }
 

@@ -90,6 +90,7 @@ func head(title, build string) g.Node {
 		// when a Datastar patch inserts a chart later.
 		Script(Defer(), Src("/static/echarts.min.js"+v)),
 		Script(Defer(), Src("/static/charts.js"+v)),
+		Script(Defer(), Src("/static/remotebrowser.js"+v)),
 	)
 }
 

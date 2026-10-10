@@ -59,7 +59,7 @@ docker run -d --name glucava -p 127.0.0.1:8090:8090 -v glucava:/data \
 Put a TLS reverse proxy in front. Then:
 
 1. Sign in, open **Settings**, enter Dexcom Share credentials (or `glucava dexcom set <user> --region us|ous|jp`). Enable Share in the Dexcom app. "Test connection" checks the login.
-2. Open **Strava**. Paste your strava.com cookie export (or `glucava strava cookies import file.json`); this is the supported path. "Sign in automatically" is an **experimental** alternative that fills Strava's login form for you and stores the resulting cookies; it gives up at the first CAPTCHA, verification code or wrong-password message rather than guess, and never stores the password. It has not been verified against the real Strava login page.
+2. Open **Strava** and click **Open sign-in browser**. A browser running on the Glucava server appears on the page; sign in to Strava in it as usual (email and password, Google, Apple or Facebook, verification codes). Glucava never sees your password: when you reach your dashboard it keeps only the session cookies, encrypted, and closes the browser. Passkeys do not work in it; choose password or another option. Alternatively paste a strava.com cookie export (or `glucava strava cookies import file.json`).
 3. Run `glucava strava check` to verify the session and edit-page selectors without saving.
 
 ## Usage
@@ -233,7 +233,7 @@ type Importer interface {
 
 Register it by name in an `init()` func (see `libre.go`) and it is immediately available to `glucava glucose import --format <name>`; no other wiring needed.
 
-Either kind of contributed source, for hardware or an account type the maintainer doesn't have, is welcome but untested by CI; say so plainly in the code and docs, the same way the experimental Strava auto-login and the Libre importer are marked.
+Either kind of contributed source, for hardware or an account type the maintainer doesn't have, is welcome but untested by CI; say so plainly in the code and docs, the same way the Libre importer is marked.
 
 ## Contributing, security, license
 

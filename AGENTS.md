@@ -38,10 +38,6 @@ decide the approach together with the maintainer first).
 
 ## Unverified against the real services — do not assume these are correct
 
-- `internal/strava/writer.go`: `DefaultLoginSelectors` (email/password/submit)
-  are guesses (the description textarea and edit URL are confirmed). `Login`'s challenge/wrong-password
-  detection (`challengeMarkers` in the same file) is untested against a real
-  login page.
 - `internal/glucose/dexcom.go`: endpoints and payloads are from memory of
   `pydexcom`, not a live account.
 - Email delivery (`internal/notify/email.go`; verified once against Gmail, the HTML look by eye), the weekly scheduler in a real week, the
@@ -61,10 +57,13 @@ worse than not having the list.
   line, an `Event.Message`, or an HTTP error body. `internal/notify/ntfy.go`
   strips the URL from `url.Error` for this reason — follow that pattern for
   any new outbound client.
-- **`internal/strava.Writer.Login` must never persist a password.** Only
-  the resulting session cookies are saved, exactly like cookie import. If
-  you add credential storage for it, that's a deliberate product change,
-  not a refactor — ask first.
+- **The remote sign-in browser (`internal/strava/remote.go`) is a live
+  browser on the server, driven by whoever holds a UI session.** Never log or
+  persist its frames, key events or typed text, and never store anything but
+  the Strava cookies it captures. Page loads are limited to Strava and its
+  SSO providers (`ssoSites`); widening that list is a security decision.
+  There is deliberately no stored-credential login: if you add one, that's a
+  product change, ask first.
 - **Activity ids are untrusted input** wherever they reach a URL, a SQL
   filter, or inline JS. Match `^\d+$` first (see `digits` in
   `internal/web/handlers.go`) and route inline JS string values through
