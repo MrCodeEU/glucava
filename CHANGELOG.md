@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-10
+
+### Fixed
+- Remote sign-in browser: Google's sign-in also navigates to `accounts.youtube.com` at the top level to set the session, which the navigation lock refused. `youtube.com` is allowed as a sign-in host now.
+
 ## [0.9.1] - 2026-10-10
 
 ### Fixed
