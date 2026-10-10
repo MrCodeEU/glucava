@@ -173,6 +173,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /export/samples.csv", s.exportSamples)
 	page("GET /export/activities.csv", s.exportActivities)
 	page("GET /export/report.pdf", s.exportReport)
+	mux.HandleFunc("GET /export/backup.zip", s.exportBackup) // session or backup-scoped token, see exportBackup
 
 	return secure(s.withTranslator(mux))
 }

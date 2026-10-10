@@ -64,6 +64,10 @@ worse than not having the list.
   SSO providers (`ssoSites`); widening that list is a security decision.
   There is deliberately no stored-credential login: if you add one, that's a
   product change, ask first.
+- **API tokens are scoped** (`internal/tokens`: trigger, metrics, backup). An
+  endpoint verifies with `VerifyScope`; never accept a token without checking
+  the scope it needs, and never add `backup` to `DefaultScopes`. The HTTP
+  backup never contains `secret.key`; only the shell command can add it.
 - **Activity ids are untrusted input** wherever they reach a URL, a SQL
   filter, or inline JS. Match `^\d+$` first (see `digits` in
   `internal/web/handlers.go`) and route inline JS string values through

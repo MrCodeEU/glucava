@@ -52,6 +52,10 @@ func main() {
 		runHealthcheck()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "restore" {
+		runRestore()
+		return
+	}
 	app := pocketbase.New()
 	changes := &bus.Bus{}
 
@@ -71,7 +75,7 @@ func main() {
 	// A failed command is not a usage error; skip the flag dump before the message.
 	app.RootCmd.SilenceUsage = true
 	app.RootCmd.Version = buildID
-	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st), glucoseCommand(app, st), configCommand(app, st))
+	app.RootCmd.AddCommand(tokenCommand(app, toks), stravaCommand(app), dexcomCommand(app), backupCommand(app), userCommand(app), secretsCommand(app), dataCommand(app, st), glucoseCommand(app, st), configCommand(app, st))
 
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if demoMode {
@@ -281,7 +285,7 @@ func main() {
 			}
 			return stats.Summarize(samples, rng)
 		})
-		e.Router.GET("/metrics", apis.WrapStdHandler(metrics.RequireToken(toks.Verify, metrics.Handler())))
+		e.Router.GET("/metrics", apis.WrapStdHandler(metrics.RequireToken(func(t string) (bool, error) { return toks.VerifyScope(t, tokens.ScopeMetrics) }, metrics.Handler())))
 
 		h := &trigger.Handler{
 			Tokens: toks, Signal: signal, Events: st,
@@ -532,18 +536,25 @@ func tokenCommand(app core.App, m *tokens.Manager) *cobra.Command {
 		// Migrations otherwise run only on "serve", so a fresh data dir has no tables yet.
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return app.RunAppMigrations() },
 	}
-	cmd.AddCommand(
-		&cobra.Command{
-			Use: "create <name>", Short: "Create a token and print it once", Args: cobra.ExactArgs(1),
-			RunE: func(_ *cobra.Command, args []string) error {
-				tok, err := m.Create(args[0])
-				if err != nil {
-					return err
-				}
-				fmt.Println(tok)
-				return nil
-			},
+	var scope string
+	create := &cobra.Command{
+		Use: "create <name>", Short: "Create a token and print it once", Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			scopes, err := tokens.ParseScopes(scope)
+			if err != nil {
+				return err
+			}
+			tok, err := m.Create(args[0], scopes...)
+			if err != nil {
+				return err
+			}
+			fmt.Println(tok)
+			return nil
 		},
+	}
+	create.Flags().StringVar(&scope, "scope", "", "comma-separated: trigger, metrics, backup (default trigger,metrics)")
+	cmd.AddCommand(
+		create,
 		&cobra.Command{
 			Use: "list", Short: "List tokens", Args: cobra.NoArgs,
 			RunE: func(_ *cobra.Command, _ []string) error {
@@ -559,7 +570,7 @@ func tokenCommand(app core.App, m *tokens.Manager) *cobra.Command {
 					if !t.LastUsed.IsZero() {
 						used = t.LastUsed.Format(time.RFC3339)
 					}
-					fmt.Printf("%s\t%s\tlast used: %s\n", t.Name, state, used)
+					fmt.Printf("%s\t%s\t%s\tlast used: %s\n", t.Name, state, strings.Join(scopeNames(t.Scopes), ","), used)
 				}
 				return nil
 			},
@@ -589,4 +600,12 @@ func blockPocketBase(e *core.RequestEvent) error {
 		return e.NotFoundError("", nil)
 	}
 	return e.Next()
+}
+
+func scopeNames(scopes []tokens.Scope) []string {
+	out := make([]string, len(scopes))
+	for i, sc := range scopes {
+		out[i] = string(sc)
+	}
+	return out
 }

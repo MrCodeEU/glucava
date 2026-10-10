@@ -197,8 +197,13 @@ scrape_configs:
 
 All state is in the data dir (`/data` in Docker): the SQLite database (settings, activities, readings, events, encrypted secrets) and, unless you set `GLUCAVA_SECRET_KEY`, `secret.key`.
 
-- **Back up** with the server stopped, or from a filesystem snapshot: copy the data dir. Keep the encryption key somewhere else (`GLUCAVA_SECRET_KEY` in your secret store, or `secret.key` copied separately). Data without the key cannot be decrypted, and the key without the data is useless, which is the point.
-- **Restore:** put the data dir back, provide the same key, start the same or a newer version. Migrations run on start.
+- **Back up** while the server runs, with any of these:
+  - **Settings → Your data → Download backup (zip)**.
+  - `glucava backup /backups/glucava.zip --dev=false --dir /data` (`-` writes to stdout; in Docker: `docker exec glucava glucava backup - --dev=false --dir /data > glucava.zip`).
+  - From a script on another machine, with a token that may only download backups (Triggers page → "Backups only", or `glucava token create cron --scope backup`): `curl -f -H "Authorization: Bearer gst_..." -o glucava.zip https://host/export/backup.zip`. Trigger and metrics tokens cannot do this, so a leaked phone token never exposes your data.
+
+  The zip holds a consistent copy of the database (it is taken with SQLite's `VACUUM INTO`, so the running server is not stopped), with your secrets still encrypted. It does **not** hold the encryption key. Keep the key (`GLUCAVA_SECRET_KEY` in your secret store, or `secret.key` copied separately); data without the key cannot be decrypted, and the key without the data is useless, which is the point. `glucava backup --include-key` adds `secret.key` for one self-contained file you then have to guard like a password. Copying the data dir with the server stopped, or a filesystem snapshot, works too.
+- **Restore** with the server stopped: `glucava restore glucava.zip --dir /data` (add `--force` to replace an existing database; the old one is kept as `data.db.before-restore`). Provide the same key, then start the same or a newer version. Migrations run on start. In Docker run it as a one-off: `docker run --rm -v glucava:/data ghcr.io/mrcodeeu/glucava:X.Y.Z restore /data/glucava.zip --dir /data` with the zip copied into the volume first.
 - **Upgrades** only move forward: migrations have no down steps. To go back to an older version, restore a backup taken before the upgrade.
 - **Lost key:** stored secrets are unrecoverable. Start with a new key, then enter them again (`glucava secrets set ...`, `glucava strava cookies import`). Settings and history are not affected.
 - **Rehearse it** once: restore a copy into a temp dir and run `glucava config list --dev=false --dir <copy>` and `glucava secrets status --dev=false --dir <copy>` with the key.

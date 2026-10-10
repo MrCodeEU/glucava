@@ -691,7 +691,9 @@ func SettingsPage(pd PageData, d SettingsData) g.Node {
 						A(append(comp("button"), Href("/export/samples.csv"), g.Attr("download", ""), g.Text(tr.T("settings.data.samples")))...),
 						A(append(comp("button"), Href("/export/activities.csv"), g.Attr("download", ""), g.Text(tr.T("settings.data.activities")))...),
 						A(append(comp("button"), Href("/export/report.pdf?range=30d"), g.Attr("download", ""), g.Text(tr.T("settings.data.report")))...),
+						A(append(comp("button"), Href("/export/backup.zip"), g.Attr("download", ""), g.Text(tr.T("settings.data.backup")))...),
 					)...),
+					P(Class("muted"), g.Text(tr.T("settings.data.backup_help"))),
 					Field("purgeConfirm", tr.T("settings.purge.label"), tr.T("settings.purge.help"),
 						Input(ID("purgeConfirm"), Type("text"), AutoComplete("off"), bind("purgeConfirm"))),
 					Btn("danger", tr.T("settings.purge.label"), post("/actions/data/purge"), g.Attr("data-attr:disabled", "$purgeConfirm !== 'DELETE'")),
@@ -728,11 +730,27 @@ func TokenListT(tr *i18n.Translator, list []tokens.Info, loc *time.Location) g.N
 		if t.Revoked {
 			state, action = Badge("", tr.T("tokens.state.revoked")), Span()
 		}
-		rows = append(rows, Tr(Td(g.Text(t.Name)), Td(state), Td(g.Text(used)), Td(action)))
+		rows = append(rows, Tr(Td(g.Text(t.Name)), Td(g.Text(scopeLabels(tr, t.Scopes))), Td(state), Td(g.Text(used)), Td(action)))
 	}
 	return Card(ID("token-list"), H2(g.Text(tr.T("tokens.list.title"))),
 		Div(append(comp("tablewrap"), Table(append(comp("table"),
-			THead(Tr(Th(g.Text(tr.T("tokens.col.name"))), Th(g.Text(tr.T("tokens.col.state"))), Th(g.Text(tr.T("tokens.col.lastused"))), Th())), TBody(g.Group(rows)))...))...))
+			THead(Tr(Th(g.Text(tr.T("tokens.col.name"))), Th(g.Text(tr.T("tokens.col.scopes"))), Th(g.Text(tr.T("tokens.col.state"))), Th(g.Text(tr.T("tokens.col.lastused"))), Th())), TBody(g.Group(rows)))...))...))
+}
+
+// scopeLabels names what a token may be used for, e.g. "trigger, metrics".
+func scopeLabels(tr *i18n.Translator, scopes []tokens.Scope) string {
+	names := make([]string, len(scopes))
+	for i, sc := range scopes {
+		switch sc {
+		case tokens.ScopeTrigger:
+			names[i] = tr.T("tokens.scope.trigger")
+		case tokens.ScopeMetrics:
+			names[i] = tr.T("tokens.scope.metrics")
+		case tokens.ScopeBackup:
+			names[i] = tr.T("tokens.scope.backup_short")
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func revokeButton(tr *i18n.Translator, name string) g.Node {
@@ -786,16 +804,30 @@ func SecretRevealT(tr *i18n.Translator, name, token, endpoint, taskerURL, pageUR
 	)...))
 }
 
+// SecretRevealBackupT shows a new backup-only token once, with a ready curl call.
+func SecretRevealBackupT(tr *i18n.Translator, name, token, endpoint string) g.Node {
+	header := "Bearer " + token
+	return Div(ID("token-reveal"), Div(append(comp("secretbox"),
+		P(Strong(g.Text(tr.T("tokens.reveal.created", "name", name)))),
+		CopyRow(tr, tr.T("tokens.reveal.token"), token),
+		CopyRow(tr, tr.T("tokens.reveal.url"), strings.TrimSuffix(endpoint, "/api/trigger")+"/export/backup.zip"),
+		CopyRow(tr, tr.T("tokens.reveal.test"), fmt.Sprintf("curl -f -H 'Authorization: %s' -o glucava-backup.zip %s", header, strings.TrimSuffix(endpoint, "/api/trigger")+"/export/backup.zip")),
+		P(Class("muted"), g.Text(tr.T("tokens.reveal.backup_hint"))),
+	)...))
+}
+
 // TokensPage manages the push-trigger tokens and explains how to use them.
 func TokensPage(pd PageData, list []tokens.Info, baseURL string, loc *time.Location) g.Node {
 	tr := pd.translator()
 	endpoint := strings.TrimRight(baseURL, "/") + "/api/trigger"
 	return Page(pd,
 		PageHead(tr.T("tokens.title"), tr.T("tokens.sub")),
-		Card(g.Attr("data-signals", `{"tokenName":""}`),
+		Card(g.Attr("data-signals", `{"tokenName":"","tokenScope":"trigger,metrics"}`),
 			H2(g.Text(tr.T("tokens.new.title"))),
 			Div(append(comp("fieldrow"),
 				Field("tokenName", tr.T("tokens.name.label"), tr.T("tokens.name.help"), Input(ID("tokenName"), Type("text"), Placeholder(tr.T("tokens.name.placeholder")), g.Attr("data-bind", "tokenName"))),
+				Field("tokenScope", tr.T("tokens.scope.label"), "", Select(ID("tokenScope"), g.Attr("data-bind", "tokenScope"),
+					Option(Value("trigger,metrics"), g.Text(tr.T("tokens.scope.default"))), Option(Value("backup"), g.Text(tr.T("tokens.scope.backup"))))),
 			)...),
 			Btn("primary", tr.T("tokens.create"), post("/actions/tokens/create")),
 			Div(ID("token-reveal")),
