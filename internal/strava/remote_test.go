@@ -77,8 +77,8 @@ func TestRemoteAllowedPages(t *testing.T) {
 	}
 }
 
-// Top-level navigation to a host outside the allowlist is refused; a frame
-// from such a host (Google's sign-in embeds some) still loads.
+// Neither a top-level navigation nor a frame may reach a host outside the
+// allowlists; here that host is a local name, which is also refused as private.
 func TestRemoteNavigationLock(t *testing.T) {
 	path := chromeOrSkip(t)
 	var mu sync.Mutex
@@ -114,10 +114,30 @@ func TestRemoteNavigationLock(t *testing.T) {
 	time.Sleep(3 * time.Second)
 	mu.Lock()
 	defer mu.Unlock()
-	if !hits["/frame"] {
-		t.Error("frame from another host did not load")
+	if hits["/frame"] {
+		t.Error("frame from a disallowed host loaded")
 	}
 	if hits["/top"] {
 		t.Error("top-level navigation to a disallowed host was not refused")
+	}
+}
+
+func TestRemoteFrameAndPrivateHosts(t *testing.T) {
+	s := &RemoteSession{w: NewWriter(Config{})}
+	for host, want := range map[string]bool{
+		"accounts.youtube.com": true, "accounts.google.at": true, "challenges.cloudflare.com": true,
+		"evil.example": false, "169.254.169.254": false,
+	} {
+		if got := s.allowedFrame(host); got != want {
+			t.Errorf("allowedFrame(%q) = %v, want %v", host, got, want)
+		}
+	}
+	for host, want := range map[string]bool{
+		"127.0.0.1": true, "10.0.0.5": true, "192.168.1.1": true, "169.254.169.254": true, "::1": true,
+		"localhost": true, "nas.local": true, "www.strava.com": false, "8.8.8.8": false,
+	} {
+		if got := s.privateHost(host); got != want {
+			t.Errorf("privateHost(%q) = %v, want %v", host, got, want)
+		}
 	}
 }

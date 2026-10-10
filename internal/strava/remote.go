@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -213,14 +214,55 @@ func (s *RemoteSession) setup() error {
 	return nil
 }
 
-// gate lets a page load through or refuses a top-level navigation. Only the URL host is looked at;
-// nothing from the request is logged.
+// frameSites are hosts that sign-in pages may embed as frames on top of the
+// page allowlist: Google's cookie-sync frames and the usual captcha providers.
+var frameSites = []string{"youtube.com", "hcaptcha.com", "cloudflare.com", "arkoselabs.com"}
+
+// allowedFrame reports whether a sub-frame may load from host.
+func (s *RemoteSession) allowedFrame(host string) bool {
+	if s.allowedPage(host) {
+		return true
+	}
+	for _, site := range frameSites {
+		if host == site || strings.HasSuffix(host, "."+site) {
+			return true
+		}
+	}
+	return false
+}
+
+// privateHost reports whether host is a loopback, private or link-local
+// address or a local name. The server's own network is never reachable
+// from the remote browser, except the configured Strava base (tests).
+func (s *RemoteSession) privateHost(host string) bool {
+	if base, err := url.Parse(s.w.cfg.BaseURL); err == nil && host == base.Hostname() {
+		return false
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified())
+}
+
+// gate lets a page load through or refuses it: top-level navigations must be
+// on the page allowlist, frames on the page or frame allowlist, and nothing
+// may reach a private address. It fails closed if the main frame is unknown.
+// Only the URL host is looked at; nothing from the request is logged.
 func (s *RemoteSession) gate(rp *fetch.EventRequestPaused) {
 	u, err := url.Parse(rp.Request.URL)
-	// Only top-level navigations are held to the allowlist. Sign-in pages
-	// embed frames from other hosts (accounts.youtube.com, captcha) that the
-	// user cannot browse in.
-	allow := err == nil && (rp.FrameID != s.mainFrame || u.Scheme == "about" || u.Scheme == "data" || s.allowedPage(u.Hostname()))
+	allow := err == nil && s.mainFrame != ""
+	if allow && u.Scheme != "about" && u.Scheme != "data" {
+		host := u.Hostname()
+		switch {
+		case s.privateHost(host):
+			allow = false
+		case rp.FrameID == s.mainFrame:
+			allow = s.allowedPage(host)
+		default:
+			allow = s.allowedFrame(host)
+		}
+	}
 	_ = chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		if allow {
 			return fetch.ContinueRequest(rp.RequestID).Do(ctx)

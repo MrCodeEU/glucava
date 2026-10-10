@@ -7,7 +7,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [0.9.1] - 2026-10-10
 
 ### Fixed
-- Remote sign-in browser: Google's sign-in redirects to the country domain (for example `accounts.google.at`), which the navigation lock refused with "blocked by Chromium". Google's country domains are allowed now, and the lock applies to top-level navigations only, so frames that sign-in pages embed (captcha, `accounts.youtube.com`) still load.
+- Remote sign-in browser: Google's sign-in redirects to the country domain (for example `accounts.google.at`), which the navigation lock refused with "blocked by Chromium". Google's country domains are allowed now, and the lock applies to top-level navigations only, so frames that sign-in pages embed (captcha, `accounts.youtube.com`) still load. Frames may only load from Strava, its sign-in providers and a short list of captcha hosts, and the remote browser can no longer reach loopback, private or link-local addresses.
 
 ## [0.9.0] - 2026-10-10
 
