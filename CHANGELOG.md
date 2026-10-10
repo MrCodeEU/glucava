@@ -4,6 +4,17 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-10
+
+### Added
+- Remote sign-in browser: Strava page → **Open sign-in browser** shows a browser running on the Glucava server. Sign in to Strava in it the way you do anywhere else (email and password, Google, Apple, Facebook, verification codes); when you reach your dashboard Glucava keeps only the session cookies, encrypted, and closes it. Password and keystrokes are never stored or logged. Page loads are limited to Strava and its sign-in providers, one browser at a time, closed after 8 minutes. Passkeys are not available in it.
+
+### Security
+- Built with Go 1.27.2 (container base image updated too), which fixes standard library vulnerabilities in net/http, crypto/tls, html/template and net/textproto.
+
+### Removed
+- "Sign in automatically (experimental)", which filled Strava's login form with a password you typed into Glucava. The remote sign-in browser replaces it. Cookie import stays.
+
 ## [0.8.0] - 2026-10-01
 
 ### Added

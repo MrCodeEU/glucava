@@ -133,7 +133,7 @@ func main() {
 			lister       poll.Lister
 			session      web.SessionChecker
 			sourceName   string
-			stravaLogin  func(ctx context.Context, email, password string) error
+			remoteStart  func(ctx context.Context, ttl time.Duration) (*strava.RemoteSession, error)
 			findActivity func(ctx context.Context, stravaID string) (*jobs.Activity, error)
 			inspector    canary.Inspector
 		)
@@ -154,7 +154,7 @@ func main() {
 			}
 			sourceName = src.name
 			writer, source, lister, session = sw, src.source, sw, sw
-			stravaLogin = sw.Login
+			remoteStart = sw.StartRemote
 			findActivity = sw.FindActivity
 			inspector = sw
 		}
@@ -323,7 +323,7 @@ func main() {
 			SendTest: func(ctx context.Context) error {
 				return sendTest(ctx, channels(st, vault, demoMode), installTr(st).Get())
 			},
-			StravaLogin: stravaLogin,
+			RemoteStart: remoteStart,
 			GlucoseTest: func(ctx context.Context) error {
 				_, err := source.Samples(ctx, time.Now().Add(-10*time.Minute), time.Now())
 				if errors.Is(err, glucose.ErrTooOld) {

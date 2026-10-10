@@ -29,6 +29,15 @@ confirms something listed as "unverified" in `AGENTS.md`, delete that line.
 - [ ] `curl -X POST -H "Authorization: Bearer gst_..." https://<host>/api/trigger` returns 202; a wrong token returns 401 and produces a `trigger_rejected` event.
 - [ ] Your phone automation (see [triggers.md](triggers.md)) fires and the activity is processed sooner than the poll interval.
 
+## Remote sign-in browser
+
+- [ ] Strava page → **Open sign-in browser**: the Strava login appears, clicks, typing and paste work, and the page shows a hint once frames arrive.
+- [ ] Sign in with email and password, and with Google; passkey options are not offered or fall back to a password. After the dashboard loads the browser closes by itself, the Strava page shows the new cookies and `glucava strava check` passes.
+- [ ] Open it while a poll or write is running: it waits up to 30 seconds, then reports that Strava is in use. A second tab gets the same message while one browser is open.
+- [ ] Press **Close**, or leave it open for 8 minutes: the browser goes away, no cookies change, and no `glucava-chrome-*` directory stays in the temp dir.
+- [ ] Try to navigate somewhere that is not Strava or a sign-in provider (for example a link on a help page): the load is refused.
+- [ ] The logs show only that a browser was opened, closed and that cookies were stored; no typed text, URLs with tokens or cookie values.
+
 ## Failure handling
 
 - [ ] Break the Strava session (import a cookie file with a wrong session cookie): a `session_expired` notification arrives once, not on every poll.

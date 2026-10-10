@@ -856,7 +856,7 @@ func TestRoutesCoverHandlerPatterns(t *testing.T) {
 		"/stream/live", "/stream/activity/{id}",
 		"/actions/poll", "/actions/reprocess/{id}", "/actions/chart/{id}", "/actions/process", "/actions/restore/{id}",
 		"/actions/delete/{id}", "/actions/settings", "/actions/account", "/actions/notify/test", "/actions/strava/cookies",
-		"/actions/strava/test", "/actions/strava/login", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
+		"/actions/strava/test", "/strava/remote/start", "/strava/remote/frames", "/strava/remote/input", "/strava/remote/stop", "/actions/dexcom/test", "/actions/tokens/create", "/actions/tokens/revoke/{name}",
 		"/actions/data/purge", importRoute, "/export/samples.csv", "/export/activities.csv", "/export/report.pdf",
 	}
 	for _, p := range patterns {
@@ -1174,37 +1174,6 @@ func TestActionGlucoseResync(t *testing.T) {
 	}
 }
 
-func TestActionStravaLoginValidatesAndReportsBlocked(t *testing.T) {
-	t.Parallel()
-	e := newEnv(t)
-	c := e.login(t)
-
-	if w := e.action("/actions/strava/login", `{"loginEmail":"","loginPassword":""}`, c, nil); !strings.Contains(w.Body.String(), "Enter an email") {
-		t.Errorf("empty form: %s", w.Body.String())
-	}
-	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"x"}`, c, nil); !strings.Contains(w.Body.String(), "not available") {
-		t.Errorf("no StravaLogin wired: %s", w.Body.String())
-	}
-
-	var gotEmail, gotPassword string
-	e.srv.StravaLogin = func(_ context.Context, email, password string) error {
-		gotEmail, gotPassword = email, password
-		return &strava.LoginError{Reason: strava.BlockedChallenge, Detail: "needs a code"}
-	}
-	w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil)
-	if !strings.Contains(w.Body.String(), "needs a code") {
-		t.Errorf("body = %s", w.Body.String())
-	}
-	if gotEmail != "a@example.test" || gotPassword != "hunter2" {
-		t.Errorf("got %q %q", gotEmail, gotPassword)
-	}
-
-	e.srv.StravaLogin = func(context.Context, string, string) error { return nil }
-	if w := e.action("/actions/strava/login", `{"loginEmail":"a@example.test","loginPassword":"hunter2"}`, c, nil); !strings.Contains(w.Body.String(), "Signed in") {
-		t.Errorf("success body = %s", w.Body.String())
-	}
-}
-
 // The AGPL (section 13) requires offering the source to network users, so
 // the link must be on the sign-in page and on the signed-in pages.
 func TestSourceLinkOnEveryPage(t *testing.T) {
@@ -1368,5 +1337,28 @@ func TestSettingsSaveVeryLowHighThresholds(t *testing.T) {
 	}
 	if cfg2, _ := e.srv.Store.LoadConfig(); cfg2.VeryLow != 60 || cfg2.VeryHigh != 230 {
 		t.Errorf("rejected save changed thresholds: %v/%v", cfg2.VeryLow, cfg2.VeryHigh)
+	}
+}
+
+func TestRemoteBrowserRoutesWithoutSession(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c := e.login(t)
+
+	if w := e.action("/strava/remote/start", "", c, nil); w.Code != http.StatusNotFound {
+		t.Errorf("start with no RemoteStart wired = %d, want 404", w.Code)
+	}
+	if w := e.action("/strava/remote/input", `{"type":"move"}`, c, nil); w.Code != http.StatusNotFound {
+		t.Errorf("input with no session = %d, want 404", w.Code)
+	}
+	if w := e.get(t, "/strava/remote/frames", c); w.Code != http.StatusNotFound {
+		t.Errorf("frames with no session = %d, want 404", w.Code)
+	}
+	if w := e.action("/strava/remote/stop", "", c, nil); w.Code != http.StatusNoContent {
+		t.Errorf("stop with no session = %d, want 204", w.Code)
+	}
+	// Signed-out and cross-site requests never reach the browser.
+	if w := e.action("/strava/remote/start", "", nil, nil); w.Code == http.StatusNoContent || w.Code == http.StatusNotFound {
+		t.Errorf("start without login = %d", w.Code)
 	}
 }

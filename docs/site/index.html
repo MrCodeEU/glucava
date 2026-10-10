@@ -154,7 +154,7 @@ docker run -d --name glucava -p 127.0.0.1:8090:8090 -v glucava:/data \
   -e GLUCAVA_ADMIN_EMAIL=you@example.com \
   -e GLUCAVA_ADMIN_PASSWORD='long-random-password' \
   -e GLUCAVA_SECRET_KEY="$(openssl rand -base64 32)" glucava</pre>
-    <p>Then sign in, add your Dexcom Share credentials and your Strava cookies, and run <code>glucava strava check</code>. Try it first without any account: <code>make mock</code> starts a demo with made-up data.</p>
+    <p>Then sign in, add your Dexcom Share credentials and sign in to Strava in the built-in browser (or paste cookies), and run <code>glucava strava check</code>. Try it first without any account: <code>make mock</code> starts a demo with made-up data.</p>
   </section>
 
   <section id="limits">

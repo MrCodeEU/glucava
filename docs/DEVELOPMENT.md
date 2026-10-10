@@ -25,7 +25,7 @@ Set `CHROME_PATH` to run the browser tests; without a Chrome they are skipped. O
 | `internal/canary` | daily dry run of the edit page |
 | `internal/ingest` | stores live readings continuously |
 | `internal/stats`, `internal/render` | TIR/min/max/avg, sparkline, description block and merge/strip |
-| `internal/strava` | chromedp writer, cookie handling, activity listing, dry run |
+| `internal/strava` | chromedp writer, cookie handling, remote sign-in browser, activity listing, dry run |
 | `internal/poll` | finds new activities from the web session |
 | `internal/trigger`, `internal/tokens` | `POST /api/trigger` and `gst_` bearer tokens |
 | `internal/digest` | per-activity, weekly and monthly health messages and their schedulers |
@@ -60,7 +60,7 @@ Before step 3 saves anything, `Processor` checks that only glucava's own block c
 
 ## Unverified against the real services
 
-The Strava login selectors and the Dexcom endpoints were written from memory and tested only against mocks (the description write and activity listing are confirmed; see AGENTS.md). Verify them first with a real session: `glucava strava check`, `strava list --raw`, `dexcom set`. Selector candidates live in `internal/strava/writer.go` (`DefaultSelectors`).
+The Dexcom endpoints were written from memory and tested only against mocks (the Strava description write, activity listing, chart upload and remote sign-in are confirmed; see AGENTS.md). Verify them first with a real session: `glucava strava check`, `strava list --raw`, `dexcom set`. Selector candidates live in `internal/strava/writer.go` (`DefaultSelectors`).
 
 ## Manual testing
 

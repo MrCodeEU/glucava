@@ -966,43 +966,6 @@ func (s *Server) actionTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	s.toast(sse, "ok", s.tr(r).T("toast.token.revoked"))
 }
 
-func (s *Server) actionStravaLogin(w http.ResponseWriter, r *http.Request) {
-	var v struct {
-		Email    string `json:"loginEmail"`
-		Password string `json:"loginPassword"`
-	}
-	readErr := datastar.ReadSignals(r, &v)
-	sse := datastar.NewSSE(w, r)
-	if readErr != nil || v.Email == "" || v.Password == "" {
-		s.toast(sse, "error", s.tr(r).T("err.strava.login_fields"))
-		return
-	}
-	if s.StravaLogin == nil {
-		s.toast(sse, "error", s.tr(r).T("err.strava.login_unavailable"))
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-	defer cancel()
-	err := s.StravaLogin(ctx, v.Email, v.Password)
-	v.Password = "" // best effort; the value also never leaves this function on our end
-
-	s.mu.Lock()
-	s.lastCheck.at, s.lastCheck.ok, s.lastCheck.err = s.now(), err == nil, ""
-	if err != nil {
-		s.lastCheck.err = strava.ExplainLoginError(err)
-	}
-	s.mu.Unlock()
-
-	_ = sse.PatchElements(renderString(StravaStatusCardT(s.tr(r), s.sessionInfo())))
-	if err != nil {
-		slog.Error("strava automatic sign-in failed", "email", v.Email, "err", err)
-		s.toast(sse, "error", s.tr(r).T("err.strava.login_stopped", "error", strava.ExplainLoginError(err)))
-		return
-	}
-	slog.Info("strava automatic sign-in succeeded", "email", v.Email)
-	s.toast(sse, "ok", s.tr(r).T("toast.strava.login_ok"))
-}
-
 func (s *Server) actionDexcomTest(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if s.GlucoseTest == nil {

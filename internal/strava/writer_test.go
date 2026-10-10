@@ -31,7 +31,6 @@ type mock struct {
 	photoPosts  int
 	rotate      bool // send a new session cookie on GET
 
-	loginMode string // "", "challenge" or "wrong": how /login/submit behaves
 }
 
 func (m *mock) handler() http.Handler {
@@ -45,27 +44,6 @@ func (m *mock) handler() http.Handler {
 		fmt.Fprint(w, `<h1>Log in</h1><form method="post" action="/login/submit">
 			<input name="email"><input name="password" type="password">
 			<button id="login-button" type="submit">Log in</button></form>`)
-	})
-	mux.HandleFunc("/login/submit", func(w http.ResponseWriter, r *http.Request) {
-		m.mu.Lock()
-		mode := m.loginMode
-		m.mu.Unlock()
-		_ = r.ParseForm()
-		switch mode {
-		case "challenge":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, `<p>We sent a verification code to your phone. Enter the code to continue.</p>`)
-		case "wrong":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, `<p>The email or password you entered is incorrect.</p>`)
-		default:
-			if r.Form.Get("email") == "" || r.Form.Get("password") == "" {
-				http.Error(w, "missing credentials", http.StatusBadRequest)
-				return
-			}
-			http.SetCookie(w, &http.Cookie{Name: "_strava4_session", Value: "ok", Path: "/"})
-			http.Redirect(w, r, "/dashboard", http.StatusFound)
-		}
 	})
 	mux.HandleFunc("/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		if !loggedIn(r) {
@@ -391,44 +369,6 @@ func TestBrowserProfileIsRemoved(t *testing.T) {
 	left, _ := filepath.Glob(filepath.Join(tmp, "glucava-chrome-*"))
 	if len(left) != 0 {
 		t.Errorf("browser profile left behind: %v", left)
-	}
-}
-
-func TestLoginSuccess(t *testing.T) {
-	m := &mock{}
-	var saved []Cookie
-	w := newWriter(t, m, nil, func(c []Cookie) error { saved = c; return nil })
-	if err := w.Login(context.Background(), "me@example.test", "hunter2"); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, c := range saved {
-		if c.Name == "_strava4_session" && c.Value == "ok" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("session cookie not saved: %+v", saved)
-	}
-}
-
-func TestLoginStopsOnChallenge(t *testing.T) {
-	m := &mock{loginMode: "challenge"}
-	w := newWriter(t, m, nil, func([]Cookie) error { t.Fatal("cookies saved on a blocked login"); return nil })
-	err := w.Login(context.Background(), "me@example.test", "hunter2")
-	var le *LoginError
-	if !errors.As(err, &le) || le.Reason != BlockedChallenge {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestLoginStopsOnWrongCredentials(t *testing.T) {
-	m := &mock{loginMode: "wrong"}
-	w := newWriter(t, m, nil, func([]Cookie) error { t.Fatal("cookies saved on a blocked login"); return nil })
-	err := w.Login(context.Background(), "me@example.test", "wrong")
-	var le *LoginError
-	if !errors.As(err, &le) || le.Reason != BlockedCredentials {
-		t.Fatalf("err = %v", err)
 	}
 }
 
