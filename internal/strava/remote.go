@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/input"
@@ -26,7 +28,7 @@ const (
 )
 
 // remoteLockWait is how long StartRemote waits for a running poll or write.
-const remoteLockWait = 30 * time.Second
+var remoteLockWait = 30 * time.Second
 
 // ErrRemoteBusy is returned when a remote browser is already open.
 var ErrRemoteBusy = errors.New("strava: a remote browser session is already open")
@@ -58,9 +60,10 @@ type RemoteSession struct {
 	cancel context.CancelFunc
 	close  func()
 
-	frames chan []byte
-	done   chan struct{}
-	once   sync.Once
+	mainFrame cdp.FrameID // the top-level frame; set before the first navigation
+	frames    chan []byte
+	done      chan struct{}
+	once      sync.Once
 
 	mu      sync.Mutex
 	cookies []Cookie
@@ -136,10 +139,18 @@ var ssoSites = []string{
 	"apple.com", "facebook.com", "fbcdn.net",
 }
 
+// googleSite matches Google's sign-in hosts on any of its country domains
+// (accounts.google.at, accounts.google.co.uk, accounts.google.com.br, ...):
+// Google redirects to the one for the user's country.
+var googleSite = regexp.MustCompile(`^([a-z0-9-]+\.)*google\.(com|[a-z]{2}|(co|com)\.[a-z]{2})$`)
+
 // allowedPage reports whether the remote browser may load a page from host.
 func (s *RemoteSession) allowedPage(host string) bool {
 	base, err := url.Parse(s.w.cfg.BaseURL)
 	if err == nil && sameSite(host, base.Hostname()) {
+		return true
+	}
+	if googleSite.MatchString(host) {
 		return true
 	}
 	for _, site := range ssoSites {
@@ -179,6 +190,13 @@ func (s *RemoteSession) setup() error {
 	})
 	err := chromedp.Run(s.ctx,
 		s.maskAutomation(),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			tree, err := page.GetFrameTree().Do(ctx)
+			if err == nil {
+				s.mainFrame = tree.Frame.ID
+			}
+			return err
+		}),
 		fetch.Enable().WithPatterns([]*fetch.RequestPattern{{ResourceType: network.ResourceTypeDocument}}),
 		emulation.SetDeviceMetricsOverride(RemoteWidth, RemoteHeight, 1, false),
 		chromedp.Navigate(s.w.cfg.BaseURL+"/login"),
@@ -195,11 +213,14 @@ func (s *RemoteSession) setup() error {
 	return nil
 }
 
-// gate lets a page load through or refuses it. Only the URL host is looked at;
+// gate lets a page load through or refuses a top-level navigation. Only the URL host is looked at;
 // nothing from the request is logged.
 func (s *RemoteSession) gate(rp *fetch.EventRequestPaused) {
 	u, err := url.Parse(rp.Request.URL)
-	allow := err == nil && (u.Scheme == "about" || u.Scheme == "data" || s.allowedPage(u.Hostname()))
+	// Only top-level navigations are held to the allowlist. Sign-in pages
+	// embed frames from other hosts (accounts.youtube.com, captcha) that the
+	// user cannot browse in.
+	allow := err == nil && (rp.FrameID != s.mainFrame || u.Scheme == "about" || u.Scheme == "data" || s.allowedPage(u.Hostname()))
 	_ = chromedp.Run(s.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		if allow {
 			return fetch.ContinueRequest(rp.RequestID).Do(ctx)

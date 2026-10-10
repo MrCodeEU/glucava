@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -27,6 +29,8 @@ func TestRemoteSessionSignIn(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
+	remoteLockWait = 200 * time.Millisecond
+	t.Cleanup(func() { remoteLockWait = 30 * time.Second })
 	w := NewWriter(Config{BaseURL: srv.URL, ChromePath: path, NoSandbox: true})
 	s, err := w.StartRemote(context.Background(), time.Minute)
 	if err != nil {
@@ -65,10 +69,55 @@ func TestRemoteAllowedPages(t *testing.T) {
 	s := &RemoteSession{w: NewWriter(Config{})}
 	for host, want := range map[string]bool{
 		"www.strava.com": true, "strava.com": true, "accounts.google.com": true, "appleid.apple.com": true,
-		"www.facebook.com": true, "evil.example": false, "strava.com.evil.example": false, "notgoogle.com": false,
+		"www.facebook.com": true, "accounts.google.at": true, "accounts.google.co.uk": true, "accounts.google.com.br": true, "google.evil.example": false, "evilgoogle.at": false, "evil.example": false, "strava.com.evil.example": false, "notgoogle.com": false,
 	} {
 		if got := s.allowedPage(host); got != want {
 			t.Errorf("allowedPage(%q) = %v, want %v", host, got, want)
 		}
+	}
+}
+
+// Top-level navigation to a host outside the allowlist is refused; a frame
+// from such a host (Google's sign-in embeds some) still loads.
+func TestRemoteNavigationLock(t *testing.T) {
+	path := chromeOrSkip(t)
+	var mu sync.Mutex
+	hits := map[string]bool{}
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path] = true
+		mu.Unlock()
+		fmt.Fprint(w, "other")
+	}))
+	defer other.Close()
+	otherURL := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `<body style="margin:0"><iframe src="%s/frame" width="10" height="10"></iframe>
+<a href="%s/top" style="position:absolute;left:100px;top:100px;width:300px;height:100px;display:block">go</a></body>`, otherURL, otherURL)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	w := NewWriter(Config{BaseURL: srv.URL, ChromePath: path, NoSandbox: true})
+	s, err := w.StartRemote(context.Background(), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, typ := range []string{"down", "up"} {
+		if err := s.Dispatch(RemoteInput{Type: typ, X: 200, Y: 150, Button: "left"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(3 * time.Second)
+	mu.Lock()
+	defer mu.Unlock()
+	if !hits["/frame"] {
+		t.Error("frame from another host did not load")
+	}
+	if hits["/top"] {
+		t.Error("top-level navigation to a disallowed host was not refused")
 	}
 }
