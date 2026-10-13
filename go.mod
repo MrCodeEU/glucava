@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/starfederation/datastar-go v1.2.2
 	golang.org/x/image v0.46.0
-	maragu.dev/gomponents v1.3.0
+	maragu.dev/gomponents v1.4.0
 )
 
 require (
