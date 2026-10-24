@@ -475,3 +475,18 @@ func TestBarPresetShowsWindowOnlyWhenDifferent(t *testing.T) {
 		t.Fatalf("differing window: %q %v", diff, err)
 	}
 }
+
+func TestMergeMultiLineBlock(t *testing.T) {
+	block := sentinel + "🩸 TIR 90%\nIncl. before/after: 80%\n▁▂▃" + endSentinel
+	first := Merge("my notes", block)
+	if !PreservesText("my notes", first) {
+		t.Fatalf("first merge not safe: %q", first)
+	}
+	again := Merge(first, block)
+	if !PreservesText(first, again) || again != first {
+		t.Fatalf("remerge not idempotent: %q", again)
+	}
+	if got := Strip(first); got != "my notes" {
+		t.Fatalf("Strip = %q", got)
+	}
+}

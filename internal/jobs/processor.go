@@ -147,6 +147,9 @@ func (p *Processor) Process(ctx context.Context, a *Activity) error {
 				return existing
 			}
 		}
+		if a.Overwrite {
+			return block
+		}
 		merged := p.mergeFunc()(existing, block)
 		// Last line of defence: the user's own text must survive byte for
 		// byte. If it would not, leave the description as it is.

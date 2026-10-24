@@ -420,6 +420,44 @@ func (s *Server) actionChartAgain(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// actionOverwrite reprocesses an activity whose description Glucava refused to
+// merge (jobs.ErrUnsafeMerge) and replaces the whole text with its block.
+// Only offered for that failure; the earlier text stays restorable.
+func (s *Server) actionOverwrite(w http.ResponseWriter, r *http.Request) {
+	sse := datastar.NewSSE(w, r)
+	if !digits.MatchString(r.PathValue("id")) {
+		s.toast(sse, "error", s.tr(r).T("err.activity.id"))
+		return
+	}
+	act, err := s.Store.Activity(r.Context(), r.PathValue("id"))
+	if err != nil || act == nil {
+		s.toast(sse, "error", s.tr(r).T("err.activity.gone"))
+		return
+	}
+	if !unsafeMergeFailure(act) {
+		s.toast(sse, "error", s.tr(r).T("err.overwrite.not_blocked"))
+		return
+	}
+	act.Status, act.Error, act.Overwrite = jobs.StatusPending, "", true
+	if err := s.Store.SaveActivity(r.Context(), act); err != nil {
+		s.toast(sse, "error", s.tr(r).T("err.activity.update", "error", err.Error()))
+		return
+	}
+	if queued, err := s.Jobs.Enqueue(jobs.Job{Activity: *act, Force: true}); err != nil {
+		s.toast(sse, "error", s.tr(r).T("err.activity.queue", "error", err.Error()))
+	} else if !queued {
+		s.toast(sse, "", s.tr(r).T("toast.activity.already_queued"))
+	} else {
+		s.toast(sse, "ok", s.tr(r).T("toast.overwrite.queued"))
+	}
+}
+
+// unsafeMergeFailure reports whether a failed because the pre-write check
+// refused the merge.
+func unsafeMergeFailure(a *jobs.Activity) bool {
+	return a.Status == jobs.StatusFailed && strings.Contains(a.Error, jobs.ErrUnsafeMerge.Error())
+}
+
 func (s *Server) actionReprocess(w http.ResponseWriter, r *http.Request) {
 	sse := datastar.NewSSE(w, r)
 	if !digits.MatchString(r.PathValue("id")) {
