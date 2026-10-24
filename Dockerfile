@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldfl
 # downloaded for the target architecture and checked against a pinned sha256;
 # bumping the version means updating all three ARGs (the hashes are of the
 # release tarballs on github.com/typst/typst/releases).
-FROM --platform=$BUILDPLATFORM debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5 AS typst
+FROM --platform=$BUILDPLATFORM debian:stable-slim@sha256:a717a33469731894e77e912ea7d714e27c2dc38ee6554fd1a3102e92999cfc66 AS typst
 ARG TYPST_VERSION=0.15.1
 ARG TYPST_SHA256_AMD64=a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c
 ARG TYPST_SHA256_ARM64=5aa8d74a3d906e60ea12a66ac2f37f8eef1b14cbad7182a745e393a10c23dcee
@@ -36,7 +36,7 @@ RUN apt-get update \
  && install -m 0755 "/tmp/typst-${triple}/typst" /typst \
  && rm -rf /tmp/typst*
 
-FROM debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5
+FROM debian:stable-slim@sha256:a717a33469731894e77e912ea7d714e27c2dc38ee6554fd1a3102e92999cfc66
 RUN apt-get update \
  && apt-get install -y --no-install-recommends chromium ca-certificates fonts-noto-color-emoji tini \
  && rm -rf /var/lib/apt/lists/* \
