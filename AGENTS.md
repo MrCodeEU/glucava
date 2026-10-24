@@ -26,7 +26,8 @@ supply-chain pinning.
 
 Writing the description on a real Strava account (edit page, description
 textarea, save, reload check) and listing activities via
-`/athlete/training_activities` have been exercised by hand and work. Everything
+`/athlete/training_activities` have been exercised by hand and work, as has the remote sign-in browser (real
+Google SSO with MFA, on a deployed server, 0.9.2). Everything
 else in the next section is still unverified. A large manual test round is next
 (`docs/TESTING.md` is the checklist); feedback comes back in rounds and each
 round becomes its own PR.
