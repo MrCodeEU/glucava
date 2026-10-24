@@ -35,6 +35,7 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 ## [0.9.0] - 2026-10-10
 
 ### Added
+- Modular glucose sources. **Settings → Glucose source** now has a dropdown, and each source's fields, validation, secrets and `glucava config` keys are generated from a short description in `internal/glucose` (see the README for how to add one). `GLUCAVA_SOURCE` still works as the default until a source is saved in Settings; the choice applies without a restart, and readings are stored under the active source's name. Two sources are new: **FreeStyle Libre** through LibreLinkUp (follower account, about the last 12 hours) and **Nightscout** (any server, with an access token or API secret). Neither has been tested against a real account yet, and the Settings card says so. Dexcom Share is unchanged and keeps its stored settings and password.
 - Remote sign-in browser: Strava page → **Open sign-in browser** shows a browser running on the Glucava server. Sign in to Strava in it the way you do anywhere else (email and password, Google, Apple, Facebook, verification codes); when you reach your dashboard Glucava keeps only the session cookies, encrypted, and closes it. Password and keystrokes are never stored or logged. Page loads are limited to Strava and its sign-in providers, one browser at a time, closed after 8 minutes. Passkeys are not available in it.
 
 ### Security

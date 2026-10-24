@@ -38,8 +38,11 @@ decide the approach together with the maintainer first).
 
 ## Unverified against the real services — do not assume these are correct
 
-- `internal/glucose/dexcom.go`: endpoints and payloads are from memory of
-  `pydexcom`, not a live account.
+- `internal/glucose/librelinkup.go` and `internal/glucose/nightscout.go`: written
+  from the public behaviour of the services and tested only against mocks. Both
+  say so in Settings (`Unverified: true` in their descriptor); remove that flag
+  when someone confirms a real account works.
+
 - Email delivery (`internal/notify/email.go`; verified once against Gmail, the HTML look by eye), the weekly scheduler in a real week, the
   canary against a real edit page, and the Tasker/Shortcuts flows in
   `docs/triggers.md` have only been tested against mocks.

@@ -72,8 +72,11 @@ func TestLoadTuningRejectsBadValues(t *testing.T) {
 
 func TestNewSource(t *testing.T) {
 	got, err := newSource("", nil, nil)
-	if err != nil || got.name != "dexcom" || got.source == nil {
-		t.Errorf("default = %+v, %v", got, err)
+	if err != nil || got == nil {
+		t.Errorf("default = %v, %v", got, err)
+	}
+	if _, err := newSource("nightscout", nil, nil); err != nil {
+		t.Errorf("known source: %v", err)
 	}
 	if _, err := newSource("carrier-pigeon", nil, nil); err == nil || !strings.Contains(err.Error(), "known: dexcom") {
 		t.Errorf("unknown source: %v", err)

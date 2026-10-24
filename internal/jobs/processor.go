@@ -235,7 +235,7 @@ func (p *Processor) samples(ctx context.Context, from, to time.Time) ([]stats.Sa
 	switch {
 	case err == nil:
 		if len(got) > 0 {
-			if serr := p.Store.SaveSamples(ctx, p.SourceName, got); serr != nil {
+			if serr := p.Store.SaveSamples(ctx, glucose.NameOf(p.Source, p.SourceName), got); serr != nil {
 				return nil, fmt.Errorf("store samples: %w", serr)
 			}
 		}

@@ -70,6 +70,7 @@ type Server struct {
 	FindActivity  func(ctx context.Context, stravaID string) (*jobs.Activity, error)          // looks up an activity the poller never queued; optional
 	Restore       func(ctx context.Context, a *jobs.Activity) error                           // puts the original description back on Strava; optional, used by delete
 	SendTest      func(ctx context.Context) error                                             // sends a test notification; optional
+	DefaultSource string                                                                      // glucose source id used while Settings names none (GLUCAVA_SOURCE)
 	SourceName    string                                                                      // key of stored glucose samples, e.g. "dexcom"
 	Build         string
 	Demo          bool
@@ -165,7 +166,7 @@ func (s *Server) Handler() http.Handler {
 	page("GET /strava/remote/frames", s.remoteFrames)
 	page("POST /strava/remote/input", s.remoteInput)
 	page("POST /strava/remote/stop", s.remoteStop)
-	page("POST /actions/dexcom/test", s.actionDexcomTest)
+	page("POST /actions/glucose/test", s.actionGlucoseTest)
 	page("POST /actions/glucose/resync", s.actionGlucoseResync)
 	page("POST /actions/tokens/create", s.actionTokenCreate)
 	page("POST /actions/tokens/revoke/{name}", s.actionTokenRevoke)

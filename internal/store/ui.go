@@ -27,6 +27,11 @@ type Config struct {
 	PollMin        int
 	DexcomRegion   string // "us", "ous" or "jp"
 	DexcomUsername string
+	// GlucoseSource is the id of the live glucose source ("dexcom", ...); empty
+	// means GLUCAVA_SOURCE, then Dexcom (see the sources package). Sources holds
+	// the non-secret settings of the sources, keyed "id.field".
+	GlucoseSource  string
+	Sources        map[string]string
 	NtfyURL        string
 	WebhookURL     string
 	EmailTo        string // recipient for the email notify channel; empty disables it
@@ -113,6 +118,7 @@ func (s *PB) LoadConfig() (Config, error) {
 		VeryLow: r.GetFloat("very_low"), VeryHigh: r.GetFloat("very_high"),
 		PreMin: r.GetInt("pre_minutes"), PostMin: r.GetInt("post_minutes"), PollMin: r.GetInt("poll_interval_minutes"),
 		DexcomRegion: r.GetString("dexcom_region"), DexcomUsername: r.GetString("dexcom_username"),
+		GlucoseSource: r.GetString("glucose_source"), Sources: parseSourceConfig(r.GetString("source_config")),
 		NtfyURL: r.GetString("ntfy_url"), WebhookURL: r.GetString("webhook_url"), EmailTo: r.GetString("email_to"),
 		SMTPHost: r.GetString("smtp_host"), SMTPPort: r.GetInt("smtp_port"), SMTPUsername: r.GetString("smtp_username"),
 		SMTPTLS: r.GetBool("smtp_tls"), SMTPSender: r.GetString("smtp_sender_address"), SMTPSenderName: r.GetString("smtp_sender_name"),
@@ -153,6 +159,8 @@ func (s *PB) SaveConfig(c Config) error {
 	r.Set("poll_interval_minutes", c.PollMin)
 	r.Set("dexcom_region", c.DexcomRegion)
 	r.Set("dexcom_username", c.DexcomUsername)
+	r.Set("glucose_source", c.GlucoseSource)
+	r.Set("source_config", sourceConfigJSON(c.Sources))
 	r.Set("ntfy_url", c.NtfyURL)
 	r.Set("webhook_url", c.WebhookURL)
 	r.Set("email_to", c.EmailTo)
