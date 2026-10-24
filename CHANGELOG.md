@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-10-24
+
+### Security
+- Built with Go 1.27.3, which fixes GO-2026-6809 (compromised intermediate certificates are distrusted in `crypto/x509`; reachable through the importer's zip check). `golang.org/x/net` is 0.60.0 (CVE-2026-78669).
+- Image rebuilt on current Debian 13 security updates: Chromium 154.0.8037.92 -> 156.0.8078.47. A vulnerability scan (Trivy) reports 414 High/Critical findings against the 0.9.2 image, 338 of them in `chromium`, and 67 against this one. None of those 67 has a fix available yet: they are Debian base libraries (`libxml2`, `util-linux`, ...).
+
+### Changed
+- Debian base image digest refreshed. Dependencies: PocketBase 0.40.5, `golang.org/x/image` 0.47.0, `prometheus/client_golang` 1.25.0, `gomponents` 1.4.0.
+- CI: CodeQL `init` and `analyze` are bumped together (grouped in Dependabot), `upload-artifact` v7 and `download-artifact` v8, and a flaky retry test no longer depends on a fixed 20 ms probe.
+
 ## [0.9.2] - 2026-10-10
 
 ### Fixed
