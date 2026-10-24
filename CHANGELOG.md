@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-24
+
+### Fixed
+- A description template that renders three or more lines (for example the before/after preset) made every activity fail with "refused to write: merge would change text outside the glucava block", including the delayed chart upload. A Glucava block now ends at its end marker however many lines it spans.
+
+### Added
+- Activities that failed with that error get an "Overwrite description" button on their page. After a confirmation it replaces the whole description with the Glucava block, as a way out when the markers in the existing text are damaged. The earlier text stays restorable through "Restore original".
+
 ## [0.9.3] - 2026-10-24
 
 ### Security
