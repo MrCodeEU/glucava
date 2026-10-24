@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	page("POST /actions/poll", s.actionPoll)
 	page("POST /actions/reprocess/{id}", s.actionReprocess)
 	page("POST /actions/chart/{id}", s.actionChartAgain)
+	page("POST /actions/overwrite/{id}", s.actionOverwrite)
 	page("POST /actions/process", s.actionProcessActivity)
 	page("POST /actions/restore/{id}", s.actionRestore)
 	page("POST /actions/delete/{id}", s.actionDeleteActivity)

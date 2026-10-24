@@ -75,7 +75,9 @@ worse than not having the list.
 - **Never bypass the pre-write check.** `Processor.Process` refuses to write
   unless `render.PreservesText(existing, merged)` holds (only glucava's own
   block may change). It exists because a merge bug once duplicated blocks on
-  a real activity. Restore is the one deliberate exception.
+  a real activity. Restore and the manual "Overwrite description" button
+  (`Activity.Overwrite`, offered only after `ErrUnsafeMerge`) are the two
+  deliberate exceptions.
 - **One rule set for settings.** A new setting needs: a migration, a
   `store.Config` field, an entry in `configKeys` and `Validate` in
   `internal/store/config.go` (this also makes it scriptable), and the form.

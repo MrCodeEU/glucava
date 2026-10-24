@@ -131,16 +131,45 @@ func removeBlocks(lines []string) ([]string, int) {
 			continue
 		}
 		found++
-		switch {
-		case strings.Contains(lines[i], endSentinel):
-			// one line; already bounded.
-		case i+1 < len(lines) && strings.Contains(lines[i+1], endSentinel):
-			i++
-		case i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]):
+		if end := blockEnd(lines, i); end >= 0 {
+			i = end
+			continue
+		}
+		// No endSentinel to go by: a legacy block, or a damaged one.
+		if !strings.Contains(lines[i], endSentinel) && i+1 < len(lines) && stats.LooksLikeSparkline(lines[i+1]) {
 			i++ // legacy block, no endSentinel anywhere: fall back to the old guess
 		}
 	}
 	return out, found
+}
+
+// blockEnd returns the index of the line that closes the block starting at
+// lines[start] — the first line holding endSentinel — or -1 if it has none.
+// A template may render any number of lines (the "Incl. before/after" preset
+// already makes three), so the end cannot be assumed to be one or two lines
+// away. Only a block with the invisible start sentinel is scanned this way,
+// and the scan stops at the next block start: a damaged block missing its
+// end can never swallow the user's text beyond it.
+func blockEnd(lines []string, start int) int {
+	if strings.Contains(lines[start], endSentinel) {
+		return start
+	}
+	if !strings.HasPrefix(lines[start], blockMarker) {
+		// legacy block: only ever two lines, handled by the caller
+		if start+1 < len(lines) && strings.Contains(lines[start+1], endSentinel) {
+			return start + 1
+		}
+		return -1
+	}
+	for j := start + 1; j < len(lines); j++ {
+		if hasBlockPrefix(lines[j]) {
+			return -1
+		}
+		if strings.Contains(lines[j], endSentinel) {
+			return j
+		}
+	}
+	return -1
 }
 
 // normalizeNewlines rewrites CRLF and lone CR line endings to LF. It must

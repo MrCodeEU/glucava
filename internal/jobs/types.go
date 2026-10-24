@@ -81,6 +81,12 @@ type Activity struct {
 	// was attached before, for when the first photo never showed up on Strava.
 	RetryChart bool
 
+	// Overwrite (not stored) makes this run replace the whole description with
+	// the Glucava block, skipping the PreservesText check. It is the manual
+	// way out when ErrUnsafeMerge keeps refusing because the markers in the
+	// existing text are damaged; the earlier text stays in Original.
+	Overwrite bool
+
 	// HeartRate is the activity's heart rate, thinned, once fetched. Never cleared.
 	HeartRate []chartimg.HRPoint
 

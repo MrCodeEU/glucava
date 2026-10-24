@@ -464,6 +464,30 @@ func TestUnsafeMergeIsRefused(t *testing.T) {
 	}
 }
 
+// Overwrite is the manual way past a refused merge: the whole description
+// becomes the block, and the text it replaced stays in Original.
+func TestOverwriteReplacesRefusedDescription(t *testing.T) {
+	t.Parallel()
+	w := &fakeWriter{desc: "My run"}
+	st := newStore()
+	p := &Processor{Store: st, Source: &fakeSource{samples: readings()}, SourceName: "dexcom", Writer: w,
+		merge: func(_, block string) string { return block }}
+	a := activity()
+	if err := p.Process(context.Background(), &a); !errors.Is(err, ErrUnsafeMerge) {
+		t.Fatalf("err = %v, want ErrUnsafeMerge", err)
+	}
+	a.Overwrite = true
+	if err := p.Process(context.Background(), &a); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(w.desc, "My run") || !strings.Contains(w.desc, "TIR") {
+		t.Errorf("description = %q, want only the block", w.desc)
+	}
+	if got := st.acts["42"]; got.Original == nil || *got.Original != "My run" {
+		t.Errorf("original not kept: %+v", got.Original)
+	}
+}
+
 func TestOnDoneCalledOnceForFirstRunOnly(t *testing.T) {
 	t.Parallel()
 	w := &fakeWriter{desc: "My run"}
