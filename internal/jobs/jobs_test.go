@@ -581,16 +581,26 @@ func TestRetryExplainsItselfWhileWaiting(t *testing.T) {
 	t.Parallel()
 	w := &fakeWriter{errs: []error{errors.New("chrome hiccup")}}
 	q, st := setup(&fakeSource{samples: readings()}, w)
-	var seen string
-	q.Backoff = []time.Duration{50 * time.Millisecond}
+	// A long backoff and a poll instead of a fixed 20 ms probe: under the
+	// parallel -race suite the probe could fire before attempt 1 had failed
+	// (flaky), and the retry only has to be observed, not raced.
+	q.Backoff = []time.Duration{500 * time.Millisecond}
+	seenCh := make(chan string, 1)
 	go func() {
-		time.Sleep(20 * time.Millisecond)
-		st.mu.Lock()
-		seen = st.acts["42"].Error
-		st.mu.Unlock()
+		var seen string
+		for deadline := time.Now().Add(400 * time.Millisecond); time.Now().Before(deadline); {
+			st.mu.Lock()
+			seen = st.acts["42"].Error
+			st.mu.Unlock()
+			if strings.Contains(seen, "Attempt 1 failed") {
+				break
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+		seenCh <- seen
 	}()
 	runOne(t, q, Job{Activity: activity()})
-	if !strings.Contains(seen, "Attempt 1 failed") || !strings.Contains(seen, "chrome hiccup") {
+	if seen := <-seenCh; !strings.Contains(seen, "Attempt 1 failed") || !strings.Contains(seen, "chrome hiccup") {
 		t.Errorf("while waiting, activity error = %q", seen)
 	}
 	if a := st.acts["42"]; a.Status != StatusDone || a.Error != "" {
