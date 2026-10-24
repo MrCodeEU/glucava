@@ -3,7 +3,7 @@
 # assembling: Go cross-compiles natively via GOOS/GOARCH, so the arm64
 # binary is built without QEMU emulating the whole compile, which used to
 # make the multi-platform image build take ~15 minutes.
-FROM --platform=$BUILDPLATFORM golang:1.27@sha256:e432b43af23a9328d56a7c499be0476810aa344acbcf65fc7c455d4ff5a40602 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27@sha256:8aa2821993207ae840ce09e4223217efcd14e01f71525db734faf4232bd59999 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
