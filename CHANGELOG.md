@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-25
+
+### Changed
+- When the description read back from Strava differs from what was written, the log now says how: lengths, line counts, marker counts, the code points around the first difference, and whether the page still shows the text from before the save. The text itself is never logged. This is for tracking down activities that fail the read-back check on every first attempt.
+
 ## [0.9.4] - 2026-10-24
 
 ### Fixed
