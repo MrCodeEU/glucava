@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-25
+
+### Fixed
+- Reprocessing an activity that already had a description stacked one more block on every attempt: Strava saved the new text with the whole old text still behind it, so each read-back failed and the text grew. The description field is now replaced the way a paste over a selection would be (select everything, insert through the browser's input path), with setting the value from script as the fallback. If the field does not hold exactly the new text afterwards, nothing is saved.
+
 ## [0.9.6] - 2026-10-25
 
 ### Fixed
