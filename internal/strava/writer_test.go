@@ -537,3 +537,10 @@ func TestRedirectedAway(t *testing.T) {
 		}
 	}
 }
+
+func TestDescribeMismatchHidesText(t *testing.T) {
+	got := describeMismatch("secret words\n\xe2\x80\x8b\xe2\x81\xa0x", "secret words\nx")
+	if strings.Contains(got, "secret") || !strings.Contains(got, "sentinels") {
+		t.Fatalf("diag = %q", got)
+	}
+}

@@ -213,6 +213,7 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 			return err
 		}
 		if normalize(got) != normalize(want) {
+			slog.Warn("description read back differs from what was written", "activity", stravaID, "before_save_equals_read_back", normalize(existing) == normalize(got), "diff", describeMismatch(want, got))
 			return errors.New("strava: verification failed: saved description differs from the intended text")
 		}
 		return w.exportCookies(ctx)
@@ -797,6 +798,36 @@ func isLoginURL(loc string) bool {
 	}
 	p := u.Path
 	return strings.HasPrefix(p, "/login") || strings.HasPrefix(p, "/session")
+}
+
+// describeMismatch says how got differs from want without logging the text
+// itself (a description is the user's own words): lengths in runes, line
+// counts, how often the invisible block markers occur, and the code points
+// around the first difference.
+func describeMismatch(want, got string) string {
+	w, g := []rune(normalize(want)), []rune(normalize(got))
+	i := 0
+	for i < len(w) && i < len(g) && w[i] == g[i] {
+		i++
+	}
+	cps := func(r []rune) string {
+		lo, hi := max(i-4, 0), min(i+8, len(r))
+		parts := make([]string, 0, hi-lo)
+		for _, c := range r[lo:hi] {
+			if c < 0x80 && c > 0x20 {
+				parts = append(parts, "ascii")
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("U+%04X", c))
+		}
+		return strings.Join(parts, " ")
+	}
+	count := func(s, sub string) int { return strings.Count(s, sub) }
+	return fmt.Sprintf("runes want=%d got=%d, lines want=%d got=%d, first difference at rune %d; "+
+		"want start/end sentinels %d/%d, got %d/%d; want[%s] got[%s]",
+		len(w), len(g), strings.Count(normalize(want), "\n")+1, strings.Count(normalize(got), "\n")+1, i,
+		count(want, "\u200b\u2060"), count(want, "\u2062\u2064"), count(got, "\u200b\u2060"), count(got, "\u2062\u2064"),
+		cps(w), cps(g))
 }
 
 func normalize(s string) string {
