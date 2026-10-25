@@ -544,3 +544,11 @@ func TestDescribeMismatchHidesText(t *testing.T) {
 		t.Fatalf("diag = %q", got)
 	}
 }
+
+func TestNormalizeIgnoresBreakAfterEndMarker(t *testing.T) {
+	a := "x\xe2\x81\xa2\xe2\x81\xa4\n\xe2\x80\x8b\xe2\x81\xa0y"
+	b := "x\xe2\x81\xa2\xe2\x81\xa4\xe2\x80\x8b\xe2\x81\xa0y"
+	if normalize(a) != normalize(b) {
+		t.Fatal("break after end marker changes the comparison")
+	}
+}

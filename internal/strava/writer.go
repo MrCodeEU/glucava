@@ -831,6 +831,9 @@ func describeMismatch(want, got string) string {
 }
 
 func normalize(s string) string {
+	// A line break right after a block's end marker is not told apart: Strava
+	// has been seen dropping it when the next block starts there.
+	s = strings.ReplaceAll(s, "\xe2\x81\xa2\xe2\x81\xa4\n", "\xe2\x81\xa2\xe2\x81\xa4")
 	return strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
 }
 

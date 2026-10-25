@@ -490,3 +490,21 @@ func TestMergeMultiLineBlock(t *testing.T) {
 		t.Fatalf("Strip = %q", got)
 	}
 }
+
+// Strava drops the line break between one block's end marker and the next
+// block's start marker. Blocks glued like that must still be found and
+// replaced, not stacked.
+func TestMergeRepairsLostLineBreakAfterBlock(t *testing.T) {
+	block := sentinel + "🩸 TIR 90%\nIncl. before/after: 80%\n▁▂▃" + endSentinel
+	glued := block + block // no "\n" between: the shape Strava stored
+	got := Merge(glued, block)
+	if got != block+"\n" && got != block {
+		t.Fatalf("glued blocks not replaced: %q", got)
+	}
+	if again := Merge(got, block); again != got {
+		t.Fatalf("not idempotent: %q vs %q", again, got)
+	}
+	if s := Strip("notes\n\n" + glued); s != "notes" {
+		t.Fatalf("Strip = %q", s)
+	}
+}

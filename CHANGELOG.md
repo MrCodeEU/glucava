@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-25
+
+### Fixed
+- Strava has been seen dropping the line break between one Glucava block's end marker and the next block's start marker. The second block then no longer started a line, was not recognised, and every reprocess stacked another block on top. A lost line break after a block's end marker is now put back before blocks are looked for, so glued blocks are replaced instead of stacked, and the read-back check no longer counts that line break as a difference.
+
 ## [0.9.5] - 2026-10-25
 
 ### Changed
