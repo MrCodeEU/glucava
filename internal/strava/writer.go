@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
@@ -195,7 +196,7 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 		}
 
 		w.pause()
-		if _, err := evalString(ctx, setValueJS(sel, want)); err != nil {
+		if err := w.replaceText(ctx, sel, want); err != nil {
 			return err
 		}
 		w.pause()
@@ -213,11 +214,54 @@ func (w *Writer) UpdateDescription(ctx context.Context, stravaID string, merge f
 			return err
 		}
 		if normalize(got) != normalize(want) {
-			slog.Warn("description read back differs from what was written", "activity", stravaID, "before_save_equals_read_back", normalize(existing) == normalize(got), "diff", describeMismatch(want, got))
+			slog.Warn("description read back differs from what was written", "activity", stravaID, "before_save_equals_read_back", normalize(existing) == normalize(got), "field_matched_before_save", true, "diff", describeMismatch(want, got))
 			return errors.New("strava: verification failed: saved description differs from the intended text")
 		}
 		return w.exportCookies(ctx)
 	})
+}
+
+// replaceText makes the description field hold exactly want, then checks that
+// it does. Strava's edit page has been seen saving the new text with the old
+// text still behind it (every reprocess stacked one more block), so the field
+// is replaced the way a paste over a selection would: select everything, then
+// insert through the browser's own input path, which the page's editor
+// handles like typing. Setting the value from script is the fallback. If the
+// field still does not hold want, nothing is saved.
+func (w *Writer) replaceText(ctx context.Context, sel, want string) error {
+	selectAll := `(function(sel){const el=document.querySelector(sel);el.focus();el.select();return 'ok'})(` + jsStr(sel) + `)`
+	read := `document.querySelector(` + jsStr(sel) + `).value`
+	methods := []struct {
+		name string
+		run  func() error
+	}{
+		{"insert", func() error {
+			if _, err := evalString(ctx, selectAll); err != nil {
+				return err
+			}
+			return chromedp.Run(ctx, input.InsertText(want))
+		}},
+		{"set", func() error {
+			_, err := evalString(ctx, setValueJS(sel, want))
+			return err
+		}},
+	}
+	for _, m := range methods {
+		if err := m.run(); err != nil {
+			slog.Warn("description field: entering the text failed", "method", m.name, "err", err)
+			continue
+		}
+		w.pause()
+		got, err := evalString(ctx, read)
+		if err != nil {
+			return err
+		}
+		if normalize(got) == normalize(want) {
+			return nil
+		}
+		slog.Warn("description field does not hold the new text", "method", m.name, "diff", describeMismatch(want, got))
+	}
+	return errors.New("strava: the description field did not take the new text; nothing was saved")
 }
 
 // UploadPhoto implements jobs.PhotoWriter. It hands png to the edit page's
