@@ -181,7 +181,31 @@ func blockEnd(lines []string, start int) int {
 // idempotent regardless of how CR and LF are mixed in the input.
 func normalizeNewlines(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	return strings.ReplaceAll(s, "\r", "\n")
+	return endBlocksOnTheirOwnLine(strings.ReplaceAll(s, "\r", "\n"))
+}
+
+// endBlocksOnTheirOwnLine puts back the line break after a block's
+// endSentinel when it was lost. Strava has been observed storing
+// "...spark<end>\n<start>🩸 TIR..." with that newline gone, which glues a
+// block's start onto the previous block's last line: the start is then no
+// longer at the start of a line, the block is not recognised, and every
+// reprocess stacks one more block on top. Text that already has a line break
+// (or nothing) after the end marker is left alone, so this is idempotent.
+func endBlocksOnTheirOwnLine(s string) string {
+	var b strings.Builder
+	for {
+		i := strings.Index(s, endSentinel)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		i += len(endSentinel)
+		b.WriteString(s[:i])
+		s = s[i:]
+		if s != "" && s[0] != '\n' {
+			b.WriteByte('\n')
+		}
+	}
 }
 
 // Strip removes every Glucava block from existing and keeps the other text.
